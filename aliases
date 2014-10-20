@@ -1,5 +1,6 @@
 alias subl=vim
 alias git=hub
+alias v=vagrant
 
 # git aliases
 alias gl='git pull --prune'
