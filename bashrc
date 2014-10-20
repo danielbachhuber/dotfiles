@@ -9,3 +9,4 @@ done
 DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 source $DIR/aliases
+source $DIR/environment
