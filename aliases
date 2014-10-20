@@ -1,4 +1,4 @@
-alias subl="/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl"
+alias subl=vim
 alias git=hub
 
 # git aliases
