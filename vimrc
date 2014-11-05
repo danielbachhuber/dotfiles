@@ -24,5 +24,10 @@ syntax on
 " Colorscheme
 colorscheme flattr
 
+" Make backup more flexible
+set backup
+set backupdir=~/.vim/tmp
+set directory=~/.vim/tmp
+
 " Indentation / formatting
 set smartindent
