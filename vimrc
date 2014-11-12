@@ -45,3 +45,5 @@ set noexpandtab
 autocmd FileType php setlocal noexpandtab shiftwidth=4
 " Real tabs in JS as well
 autocmd FileType js setlocal noexpandtab shiftwidth=4
+" Spaces for YML
+autocmd FileType yml setlocal expandtab shiftwidth=2 softtabstop=2
