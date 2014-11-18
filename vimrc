@@ -46,4 +46,5 @@ autocmd FileType php setlocal noexpandtab shiftwidth=4
 " Real tabs in JS as well
 autocmd FileType js setlocal noexpandtab shiftwidth=4
 " Spaces for YML
-autocmd FileType yml setlocal expandtab shiftwidth=2 softtabstop=2
+autocmd FileType yml setlocal noexpandtab shiftwidth=2 tabstop=2
+autocmd FileType *.feature setlocal noexpandtab shiftwidth=2 tabstop=2
