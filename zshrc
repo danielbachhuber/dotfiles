@@ -55,6 +55,10 @@ plugins=(git osx autojump)
 
 source $ZSH/oh-my-zsh.sh
 
+export WORKON_HOME=~/.venv
+mkdir -p $WORKON_HOME
+source /usr/local/bin/virtualenvwrapper.sh
+
 # User configuration
 
 export PATH=$HOME/bin:/usr/local/bin:/opt/subversion/bin:$PATH
