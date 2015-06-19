@@ -1,8 +1,5 @@
 #!/bin/zsh
 
-source $HOME/.dotfiles/aliases
-source $HOME/.dotfiles/environment
-
 # Path to your oh-my-zsh installation.
 export ZSH=$HOME/.oh-my-zsh
 
@@ -91,3 +88,6 @@ export PATH=$HOME/bin:/usr/local/bin:/opt/subversion/bin:/Library/PostgreSQL/9.4
 
 ### Added by the Heroku Toolbelt
 export PATH="/usr/local/heroku/bin:$PATH"
+
+source $HOME/.dotfiles/aliases
+source $HOME/.dotfiles/environment
