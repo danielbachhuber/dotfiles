@@ -91,3 +91,6 @@ export PATH="/usr/local/heroku/bin:$PATH"
 
 source $HOME/.dotfiles/aliases
 source $HOME/.dotfiles/environment
+
+# added by travis gem
+[ -f /Users/danielbachhuber/.travis/travis.sh ] && source /Users/danielbachhuber/.travis/travis.sh

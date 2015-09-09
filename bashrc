@@ -10,3 +10,6 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 
 source $DIR/aliases
 source $DIR/environment
+
+# added by travis gem
+[ -f /Users/danielbachhuber/.travis/travis.sh ] && source /Users/danielbachhuber/.travis/travis.sh
