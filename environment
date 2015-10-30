@@ -1,2 +1,3 @@
 export EDITOR=vim
+export VAGRANT_CWD=~/salty-wordpress
 export PATH=$HOME/.rvm/bin:/usr/local/lib/node_modules/:/usr/local/share/npm/bin/:/usr/:$PATH
