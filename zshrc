@@ -48,13 +48,21 @@ ZSH_THEME="dannybachhuber"
 # Custom plugins may be added to ~/.oh-my-zsh/custom/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git osx autojump)
+if [[ $OSTYPE == *"darwin"* ]]
+then
+	plugins=(git osx autojump)
+else
+	plugins=(git autojump)
+fi
 
 source $ZSH/oh-my-zsh.sh
 
-export WORKON_HOME=~/.venv
-mkdir -p $WORKON_HOME
-source /usr/local/bin/virtualenvwrapper.sh
+if [[ $OSTYPE == *"darwin"* ]]
+then
+	export WORKON_HOME=~/.venv
+	mkdir -p $WORKON_HOME
+	source /usr/local/bin/virtualenvwrapper.sh
+fi
 
 # User configuration
 
