@@ -1,4 +1,4 @@
-alias subl="/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl"
+alias subl=atom
 alias git=hub
 alias v=vagrant
 
