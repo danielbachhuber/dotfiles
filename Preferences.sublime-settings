@@ -1,0 +1,28 @@
+{
+	"color_scheme": "Packages/User/SublimeLinter/cobalt2 (SL).tmTheme",
+	"default_line_ending": "LF",
+	"ensure_newline_at_eof_on_save": true,
+	"folder_exclude_patterns":
+	[
+		".svn",
+		".git",
+		".hg",
+		"CVS",
+		".sass-cache"
+	],
+	"font_face": "Source Code Pro",
+	"font_size": 15,
+	"hot_exit": false,
+	"ignored_packages":
+	[
+		"EditorConfig",
+		"Vintage"
+	],
+	"remember_open_files": false,
+	"rulers":
+	[
+		80
+	],
+	"theme": "Default.sublime-theme",
+	"trim_automatic_white_space": false
+}
