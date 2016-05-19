@@ -3,6 +3,7 @@ alias git=hub
 alias v=vagrant
 
 alias reload!='. ~/.zshrc'
+alias untargz='tar -zxvf'
 
 # git aliases
 unalias gpu # Added by ZSH git plugin :(
