@@ -97,6 +97,10 @@ export PATH=$HOME/bin:/usr/local/bin:/opt/subversion/bin:/Library/PostgreSQL/9.4
 ### Added by the Heroku Toolbelt
 export PATH="/usr/local/heroku/bin:$PATH"
 
+function letsencrypt_webfaction {
+	PATH=$PATH:$GEM_HOME/bin GEM_HOME=$HOME/.letsencrypt_webfaction/gems RUBYLIB=$GEM_HOME/lib ruby2.2 $HOME/.letsencrypt_webfaction/gems/bin/letsencrypt_webfaction $*
+}
+
 source $HOME/.dotfiles/aliases
 source $HOME/.dotfiles/environment
 
