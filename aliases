@@ -5,6 +5,7 @@ alias wpcs='(phpcs -s --standard=phpcs.ruleset.xml $(find . -name "*.php"))'
 
 alias reload!='. ~/.zshrc'
 alias untargz='tar -zxvf'
+alias svn-git-up='bash ~/.dotfiles/svn-git-up'
 
 # git aliases
 unalias gpu # Added by ZSH git plugin :(
