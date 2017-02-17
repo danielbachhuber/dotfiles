@@ -3,3 +3,4 @@ export VAGRANT_CWD=~/salty-wordpress
 export PATH=$HOME/.rvm/bin:/usr/local/lib/node_modules/:$HOME/.composer/vendor/bin:/usr/local/share/npm/bin/:/usr/:$PATH
 export WP_CLI_PACKAGES_DIR=~/wp-cli/packages/
 export WP_TESTS_DIR=~/projects/wordpress-develop/tests/phpunit
+export WP_DEVELOP_DIR=~/projects/wordpress-develop
