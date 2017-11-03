@@ -6,6 +6,7 @@ alias wpcs=phpcs
 alias reload!='. ~/.zshrc'
 alias untargz='tar -zxvf'
 alias svn-git-up='bash ~/.dotfiles/svn-git-up'
+alias grun='/usr/local/bin/gr'
 
 # git aliases
 unalias gpu # Added by ZSH git plugin :(

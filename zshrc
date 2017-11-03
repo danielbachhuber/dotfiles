@@ -106,3 +106,5 @@ source $HOME/.dotfiles/environment
 
 # added by travis gem
 [ -f /Users/danielbachhuber/.travis/travis.sh ] && source /Users/danielbachhuber/.travis/travis.sh
+
+export PATH="$HOME/.yarn/bin:$PATH"
