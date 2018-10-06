@@ -57,12 +57,12 @@ fi
 
 source $ZSH/oh-my-zsh.sh
 
-if [[ $OSTYPE == *"darwin"* ]]
-then
-	export WORKON_HOME=~/.venv
-	mkdir -p $WORKON_HOME
-	source /usr/local/bin/virtualenvwrapper.sh
-fi
+# if [[ $OSTYPE == *"darwin"* ]]
+# then
+# 	export WORKON_HOME=~/.venv
+# 	mkdir -p $WORKON_HOME
+# 	source /usr/local/bin/virtualenvwrapper.sh
+# fi
 
 # User configuration
 
