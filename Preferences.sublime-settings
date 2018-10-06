@@ -1,5 +1,6 @@
 {
-	"color_scheme": "Packages/User/SublimeLinter/cobalt2 (SL).tmTheme",
+	"color_scheme": "Packages/Theme - Cobalt2/cobalt2.tmTheme",
+	"theme": "Cobalt2.sublime-theme",
 	"default_line_ending": "LF",
 	"ensure_newline_at_eof_on_save": true,
 	"folder_exclude_patterns":
