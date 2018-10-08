@@ -24,6 +24,9 @@ syntax on
 " Colorscheme
 colorscheme flattr
 
+" The best commit subjects are under 70 characters
+set colorcolumn=50,70
+
 " Make backup more flexible
 set backup
 set backupdir=~/.vim/tmp
