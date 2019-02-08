@@ -2,6 +2,7 @@ alias subl="/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl"
 alias git=hub
 alias v=vagrant
 alias wpcs=phpcs
+alias artisan="php artisan"
 
 alias reload!='. ~/.zshrc'
 alias untargz='tar -zxvf'
