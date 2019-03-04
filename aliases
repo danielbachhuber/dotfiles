@@ -5,6 +5,7 @@ alias wpcs=phpcs
 alias artisan="php artisan"
 
 alias reload!='. ~/.zshrc'
+alias targz='tar -cvzf'
 alias untargz='tar -zxvf'
 alias svn-git-up='bash ~/.dotfiles/svn-git-up'
 alias grun='/usr/local/bin/gr'
