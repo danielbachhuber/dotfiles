@@ -115,3 +115,5 @@ unset npm_config_prefix
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 export PATH="/usr/local/opt/curl-openssl/bin:$PATH"
 export PATH="/usr/local/opt/openssl/bin:$PATH"
+export PATH="$HOME/wp-cli/vendor/bin:$PATH"
+export PATH="$HOME/.composer/vendor/bin:$PATH"
