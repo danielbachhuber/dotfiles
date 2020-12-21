@@ -4,3 +4,4 @@ export PATH=$HOME/.rvm/bin:/usr/local/lib/node_modules/:$HOME/.composer/vendor/b
 export WP_CLI_PACKAGES_DIR=~/wp-cli/packages/
 export WP_TESTS_DIR=~/projects/wordpress-develop/tests/phpunit
 export WP_DEVELOP_DIR=~/projects/wordpress-develop
+export PMC_PHPUNIT_BOOTSTRAP=~/projects/wordpress-develop/wp-content/themes/vip/pmc-plugins/pmc-unit-test/bootstrap.php
