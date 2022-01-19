@@ -50,7 +50,7 @@ ZSH_THEME="dannybachhuber"
 # Add wisely, as too many plugins slow down shell startup.
 if [[ $OSTYPE == *"darwin"* ]]
 then
-	plugins=(git osx autojump)
+	plugins=(git macos autojump)
 else
 	plugins=(git autojump)
 fi
