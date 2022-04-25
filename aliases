@@ -1,4 +1,4 @@
-alias subl="/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl"
+alias subl=code
 alias v=vagrant
 alias wpcs=phpcs
 alias artisan="php artisan"
