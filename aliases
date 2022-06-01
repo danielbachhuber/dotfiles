@@ -1,6 +1,7 @@
 alias subl=code
 alias v=vagrant
 alias wpcs=phpcs
+alias wp='~/wp-cli/bin/wp'
 alias artisan="php artisan"
 
 alias reload!='. ~/.zshrc'
