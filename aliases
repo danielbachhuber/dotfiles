@@ -4,6 +4,7 @@ alias wpcs=phpcs
 alias wp='~/wp-cli/bin/wp'
 alias artisan="php artisan"
 alias hosts='sudo vim /etc/hosts'
+alias wpdev='ssh wpdev'
 
 alias reload!='. ~/.zshrc'
 alias targz='tar -cvzf'
