@@ -32,6 +32,11 @@ class WordPressDevelopValetDriver extends WordPressValetDriver
      */
     public function isStaticFile($sitePath, $siteName, $uri)
     {
+        // Might be located at the direct filepath.
+        $direct = parent::isStaticFile($sitePath, $siteName, $uri);
+        if ($direct) {
+            return $direct;
+        }
         return parent::isStaticFile($sitePath . self::SITE_PATH_SUFFIX, $siteName, $uri);
     }
 
