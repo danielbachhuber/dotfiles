@@ -15,6 +15,7 @@ alias grun='/usr/local/bin/gr'
 # git aliases
 unalias gpu 2>/dev/null # Added by ZSH git plugin :(
 alias ga='git add'
+alias gp='git push'
 alias gl='git pull --prune'
 alias glog="git log --graph --pretty=format:'%Cred%h%Creset %an: %s - %Creset %C(yellow)%d%Creset %Cgreen(%cr)%Creset' --abbrev-commit --date=relative"
 # alias gp='git push origin HEAD' # Using `gp` from ZSH Git plugin
