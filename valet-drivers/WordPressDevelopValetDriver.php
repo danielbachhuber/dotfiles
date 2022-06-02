@@ -19,7 +19,6 @@ class WordPressDevelopValetDriver extends WordPressValetDriver
      */
     public function serves($sitePath, $siteName, $uri)
     {
-        error_log($sitePath);
         return file_exists($sitePath . '/wp-config.php') && is_dir($sitePath . self::SITE_PATH_SUFFIX);
     }
 
