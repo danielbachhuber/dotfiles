@@ -124,3 +124,10 @@ export PATH="/usr/local/opt/curl-openssl/bin:$PATH"
 export PATH="/usr/local/opt/openssl/bin:$PATH"
 export PATH="$HOME/wp-cli/vendor/bin:$PATH"
 export PATH="$HOME/.composer/vendor/bin:$PATH"
+
+# pnpm
+export PNPM_HOME="/Users/danielbachhuber/Library/pnpm"
+export PATH="$PNPM_HOME:$PATH"
+# pnpm end
+
+export PATH=$(pyenv root)/shims:$PATH
