@@ -12,6 +12,9 @@ export ZSH=$HOME/.oh-my-zsh
 ZSH_CUSTOM=$HOME/.dotfiles/oh-my-zsh-themes
 ZSH_THEME="dannybachhuber"
 
+# Autoload .nvmrc files.
+NVM_AUTOLOAD=1
+
 # Uncomment the following line to use case-sensitive completion.
 # CASE_SENSITIVE="true"
 
@@ -57,7 +60,7 @@ add-zsh-hook precmd iterm_tab_title
 # Add wisely, as too many plugins slow down shell startup.
 if [[ $OSTYPE == *"darwin"* ]]
 then
-	plugins=(git macos autojump)
+	plugins=(git macos autojump nvm)
 else
 	plugins=(git autojump)
 fi
