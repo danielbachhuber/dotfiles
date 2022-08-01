@@ -1,7 +1,6 @@
 alias subl=code
 alias v=vagrant
 alias wpcs=phpcs
-alias wp='/Users/danielbachhuber/projects/wp-cli-dev/vendor/bin/wp'
 alias artisan="php artisan"
 alias hosts='sudo vim /etc/hosts'
 alias wpdev='ssh wpdev'
