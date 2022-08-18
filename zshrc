@@ -122,8 +122,9 @@ unset npm_config_prefix
 export PATH="/usr/local/opt/curl-openssl/bin:$PATH"
 export PATH="/usr/local/opt/openssl/bin:$PATH"
 export PATH="$HOME/wp-cli/vendor/bin:$PATH"
-export PATH="$HOME/projects/wp-cli-dev/vendor/bin:$PATH"
 export PATH="$HOME/.composer/vendor/bin:$PATH"
+
+alias wp="$HOME/projects/wp-cli-dev/vendor/bin/wp"
 
 # pnpm
 export PNPM_HOME="/Users/danielbachhuber/Library/pnpm"
