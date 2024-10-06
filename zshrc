@@ -115,6 +115,10 @@ source $HOME/.dotfiles/environment
 
 export PATH="$HOME/.yarn/bin:$PATH"
 
+export PATH="$HOME/.pyenv/bin:$PATH"
+eval "$(pyenv init --path)"
+eval "$(pyenv init -)"
+
 export NVM_DIR="$HOME/.nvm"
 unset npm_config_prefix
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
