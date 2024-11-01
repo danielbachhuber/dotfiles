@@ -76,7 +76,7 @@ source $ZSH/oh-my-zsh.sh
 
 # User configuration
 
-export PATH=$HOME/bin:/usr/local/opt/:/usr/local/bin:/opt/subversion/bin:/Library/PostgreSQL/9.4/bin:$PATH
+export PATH=$HOME/bin:/opt/homebrew/bin:/usr/local/opt/:/usr/local/bin:/opt/subversion/bin:/Library/PostgreSQL/9.4/bin:$PATH
 # export MANPATH="/usr/local/man:$MANPATH"
 
 # You may need to manually set your language environment
