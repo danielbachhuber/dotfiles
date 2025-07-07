@@ -121,8 +121,8 @@ eval "$(pyenv init -)"
 
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
-# export CPPFLAGS="-I/opt/homebrew/opt/openjdk@17/include"
+export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+export CPPFLAGS="-I/opt/homebrew/opt/openjdk@17/include"
 
 export NVM_DIR="$HOME/.nvm"
 unset npm_config_prefix
