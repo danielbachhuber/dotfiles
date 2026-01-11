@@ -144,3 +144,4 @@ export PATH=$(pyenv root)/shims:$PATH
 
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:/Users/danielbachhuber/.lmstudio/bin"
+export PATH="$HOME/.local/bin:$PATH"
