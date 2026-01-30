@@ -148,3 +148,6 @@ export PATH="$PATH:/Users/danielbachhuber/.lmstudio/bin"
 # Added by Antigravity
 export PATH="/Users/danielb/.antigravity/antigravity/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
+
+# opencode
+export PATH=/Users/danielb/.opencode/bin:$PATH
