@@ -105,17 +105,6 @@ cd client && pnpm storybook --no-open --port $STORYBOOK_PORT & pid=\$!; wait \$p
 EOF
 chmod +x scripts/run-storybook-worktree.sh
 
-# Hide worktree-generated files from git status. Git does not read info/exclude
-# in worktree admin dirs, so use .gitignore and assume-unchanged on it.
-echo "Adding worktree-specific generated files to git exclude"
-echo "\n" >> .gitignore
-for entry in "mprocs.worktree.yaml" "scripts/run-client-worktree.sh" "scripts/run-storybook-worktree.sh"; do
-    grep -qFx "$entry" .gitignore 2>/dev/null || echo "$entry" >> .gitignore
-done
-if git ls-files --error-unmatch .gitignore &>/dev/null; then
-    git update-index --assume-unchanged .gitignore
-fi
-
 echo "Setting up Claude Code"
 claude mcp add --transport http figma https://mcp.figma.com/mcp || true
 cp "$PSI_PROJECT_DIR/.claude/settings.local.json" "$WORKTREE_DIR/.claude/settings.local.json"
