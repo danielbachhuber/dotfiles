@@ -1,3 +1,4 @@
+.claude
 mprocs.worktree.yaml
 scripts/run-client-worktree.sh
 scripts/run-storybook-worktree.sh
