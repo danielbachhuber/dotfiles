@@ -116,6 +116,13 @@ if git ls-files --error-unmatch .gitignore &>/dev/null; then
     git update-index --assume-unchanged .gitignore
 fi
 
+echo "Setting up Claude Code"
+claude mcp add --transport http figma https://mcp.figma.com/mcp || true
+cp "$PSI_PROJECT_DIR/.claude/settings.local.json" "$WORKTREE_DIR/.claude/settings.local.json"
+
+echo "Copying necessary ignored files"
+cp "$PSI_PROJECT_DIR/server/.env" "$WORKTREE_DIR/server/.env"
+
 echo ""
 echo "Worktree setup complete!"
 echo "  Branch: $BRANCH_NAME"
