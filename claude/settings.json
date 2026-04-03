@@ -29,6 +29,7 @@
       "Bash(gws gmail users messages modify *)",
       "Bash(gh pr view *)",
       "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
       "Bash(gh notification *)",
       "Bash(gh api graphql *)",
       "Bash(gh pr diff *)",
