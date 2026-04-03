@@ -4,6 +4,20 @@
     "frontend-design@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true
   },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/notify.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(gws gmail * list *)",
