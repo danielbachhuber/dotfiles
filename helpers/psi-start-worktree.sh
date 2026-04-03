@@ -112,6 +112,9 @@ cp "$PSI_PROJECT_DIR/.claude/settings.local.json" "$WORKTREE_DIR/.claude/setting
 echo "Copying necessary ignored files"
 cp "$PSI_PROJECT_DIR/server/.env" "$WORKTREE_DIR/server/.env"
 
+echo "Build shared packages"
+(cd packages/shared && pnpm build)
+
 echo ""
 echo "Worktree setup complete!"
 echo "  Branch: $BRANCH_NAME"
