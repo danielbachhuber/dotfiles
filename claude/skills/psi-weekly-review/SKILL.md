@@ -54,9 +54,18 @@ Present a structured overview including:
 - Highlights from Reflect daily notes
 - Open threads from 1:1 docs relevant to the week
 
-## Phase 2: Coaching Questions & Dialogue
+## Phase 2: Day-by-Day Walkthrough & Coaching Questions
 
-Generate 5-7 targeted reflection questions grounded in the week's actual data.
+After the weekly summary, walk through each day of the week individually. For each day, present:
+- What you worked on (from Harvest entries, Reflect notes, PRs, Slack)
+- Hours breakdown for that day
+- 1-2 targeted questions specific to that day's events
+
+This surfaces patterns that get lost in the aggregate: a day that was all meetings, a day where you got pulled into reactive work, a day where you were in flow. After completing the day-by-day walkthrough, present 3-5 additional questions about the week as a whole.
+
+### Week-Level Question Framework
+
+Generate targeted reflection questions grounded in the week's actual data.
 
 ### Question Framework
 
