@@ -24,12 +24,12 @@ Gather data from 8 sources, running queries in parallel where possible. Then pre
 
 3. **GitHub PRs reviewed** — PRs where Daniel left reviews in `wearenewpublic/psi-product`. Include title, author, and review outcome.
 
-4. **Todoist completed tasks** — `td completed --since <start> --until <end> --json` for tasks completed during the week.
+4. **Todoist completed tasks** — `td completed --since <start> --until <end> --json` for tasks completed during the week. Note: `td completed` only returns completed tasks.
 
-5. **Todoist all incomplete tasks** — `td task list --json` to get the full backlog (typically a few dozen). Flag:
-   - **Overdue tasks** — past their due date
-   - **Stale tasks** — no due date and not recently touched
-   - **Upcoming tasks** — due in the next week or two
+5. **Todoist incomplete tasks** — `td task list --json` to get all incomplete (not yet completed) tasks. Note: `td task list` only returns incomplete tasks. Do not cross-reference these two lists to infer completion status — treat each as authoritative for its own domain. Flag:
+   - **Overdue tasks** — incomplete tasks past their due date
+   - **Stale tasks** — incomplete tasks with no due date and not recently touched
+   - **Upcoming tasks** — incomplete tasks due in the next week or two
 
 6. **Reflect daily notes** — Daily notes within the date range via Reflect MCP. Captures meeting notes, ad-hoc observations, and context.
 
