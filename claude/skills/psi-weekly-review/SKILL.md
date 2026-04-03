@@ -18,7 +18,7 @@ Gather data from 8 sources, running queries in parallel where possible. Then pre
 
 ### Data Sources
 
-1. **Harvest time entries** — `hrvst time-entries list --from <start> --to <end> --project_id 45188004 --per_page 2000 --page all --fields task.name,hours,notes,spent_date`. Aggregate hours by category (Development, Code Review, Documentation, Support, Meetings, Admin, Biz, etc.) and surface any notable entry notes.
+1. **Harvest time entries** — `hrvst time-entries list --from <start> --to <end> --project_id 45188004 --per_page 2000 --page all --fields task.name,hours,notes,spent_date`. Aggregate hours by category (Development, Code Review, Documentation, Support, Meetings, Admin, Biz, etc.) and surface any notable entry notes. Note: "Biz" is a general catch-all category for overhead work (responding to email, chatting in Slack, etc.). Treat it as necessary daily overhead (~1h/day) rather than a category worth questioning or drilling into.
 
 2. **GitHub PRs authored** — PRs created or merged by `danielbachhuber` in `wearenewpublic/psi-product` during the period. Include title, status, merge date, and key details.
 

@@ -37,7 +37,9 @@
       "mcp__eight-arms__*",
       "Bash(gws docs documents get *)",
       "Bash(tsx ~/.claude/scripts/fetch-google-doc.ts *)",
-      "Bash(~/.claude/scripts/fetch-google-doc.ts *)"
+      "Bash(~/.claude/scripts/fetch-google-doc.ts *)",
+      "Bash(hrvst time-entries:*)",
+      "mcp__reflect-notes__get_daily_note"
     ]
   }
 }
