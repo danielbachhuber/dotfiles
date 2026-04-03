@@ -61,6 +61,8 @@ After the weekly summary, walk through each day of the week individually. For ea
 - Hours breakdown for that day
 - 1-2 targeted questions specific to that day's events
 
+When summarizing conversations, meetings, or events, include the actual substance — names, decisions, key points, outcomes — not just that they happened. "1:1 with Corey about your future" is too vague. Include the scenarios discussed, what was decided, and what was left open.
+
 This surfaces patterns that get lost in the aggregate: a day that was all meetings, a day where you got pulled into reactive work, a day where you were in flow. After completing the day-by-day walkthrough, present 3-5 additional questions about the week as a whole.
 
 ### Week-Level Question Framework
