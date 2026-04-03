@@ -8,7 +8,7 @@ A user-invocable Claude Code skill that helps Daniel prepare his weekly work jou
 
 **Invocation:** `/psi-weekly-review` with an optional date range argument. Defaults to the current work week (Monday of this week through today). If invoked on a weekend, defaults to the most recent full work week (Monday–Friday).
 
-**Target document:** Google Doc `1uu2O_n2BtjQmTiyUHB4PcFPYkfe1FUoB7xbDs1HnwAI` (Daniel's public work journal).
+**Target document:** Google Doc `1uu2O_n2BtjQmTiyUHB4PcFPYkfe1FUoB7xbDs1HnwAI` (Daniel's New_ Public work journal).
 
 ## Three-Phase Workflow
 
@@ -39,6 +39,8 @@ Gather data from 8 sources, running queries in parallel where possible. Then pre
    - `1crn913WdQoSeUVwTTjMdERQd4AtHkBk6-ODF1MhH8MI` — Annual goals
    - `12zcKSshHLQNYjS1kgFUFnnWTBHjkjNNLxcp3vxEASr0` — Daniel and Brendan check-ins
    - `1lRLDo5ykuU2P_vuWnGA-WjbkJRxXZ8hjj1qPg5Y48GA` — Daniel and Rob check-ins
+   - `1zXjK_GJ3sJVEi7qExn68N94eDZpPkrWZK5opEpmjgmI` - Daniel and Kasiana check-ins
+   - `1d5MRwf9_SJtIEaXr2i6b8aqy7x7wgN33dcfMRUwnfSg` - PSI Team check-in
 
 **Summary presentation:** A structured overview including:
 - Hours breakdown by category with totals
@@ -57,7 +59,7 @@ Generate 5-7 targeted reflection questions grounded in the week's actual data.
 **Question framework:** The 11 reflection questions from the journal doc serve as a starting framework:
 - What did I accomplish that I'm genuinely proud of?
 - What felt like wasted effort or low-leverage work? Why did it happen?
-- Where can I make Kasiana or Corey's jobs easier? Where did I make their jobs harder?
+- Where can I make my peers' or boss' jobs easier? Where did I make their jobs harder?
 - Did I push on anything that made me uncomfortable? What was the result?
 - What decisions or bets did I make? How would I evaluate them now?
 - Where am I slipping behind? What do I feel ahead on?
