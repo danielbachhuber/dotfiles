@@ -1,0 +1,42 @@
+{
+  "model": "opus[1m]",
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(gws gmail * list *)",
+      "Bash(gws gmail * get *)",
+      "Bash(for *; do gws gmail * get *; done)",
+      "Bash(for *; do gws gmail * list *; done)",
+      "Bash(gws calendar * list *)",
+      "Bash(gws calendar * get *)",
+      "Bash(td today)",
+      "Bash(td today *)",
+      "Bash(td upcoming)",
+      "Bash(td upcoming *)",
+      "Bash(td inbox)",
+      "Bash(td inbox *)",
+      "Bash(td task list *)",
+      "Bash(td task show *)",
+      "Bash(td project list *)",
+      "Bash(td project show *)",
+      "Bash(td stats)",
+      "Bash(td stats *)",
+      "Bash(td completed)",
+      "Bash(td completed *)",
+      "Bash(gws gmail users messages modify *)",
+      "Bash(gh pr view *)",
+      "Bash(gh issue view *)",
+      "Bash(gh notification *)",
+      "Bash(gh api graphql *)",
+      "Bash(gh pr diff *)",
+      "Bash(~/.claude/scripts/gmail-fetch-metadata.sh *)",
+      "mcp__eight-arms__*",
+      "Bash(gws docs documents get *)",
+      "Bash(tsx ~/.claude/scripts/fetch-google-doc.ts *)",
+      "Bash(~/.claude/scripts/fetch-google-doc.ts *)"
+    ]
+  }
+}
