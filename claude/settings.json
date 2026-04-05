@@ -31,6 +31,7 @@
       "Bash(gh pr diff *)",
       "Bash(gh run list *)",
       "Bash(gh run view *)",
+      "Bash(gh run watch *)",
       "Bash(~/.claude/scripts/gmail-fetch-metadata.sh *)",
       "mcp__eight-arms__*",
       "Bash(gws docs documents get *)",
