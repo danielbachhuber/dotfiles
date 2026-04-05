@@ -31,27 +31,30 @@ Gather from these sources in parallel:
 Produce a journal entry ready to paste into the Google Doc. Use this exact format:
 
 ```
-### <Month Day, Year>
+<Month Dayth, Year>
 *Oregon Housing Project — <X> hours <Y> minutes of work*
+
+<1 sentence of personal context about the day>
 
 <1-3 narrative paragraphs with specific accomplishments>
 ```
+
+Note: The date line has no markdown heading prefix (no `###`) — it's styled as a heading in Google Docs directly. Use ordinal suffixes on the day (e.g., "April 5th", "March 22nd", "January 1st").
 
 ### Style Guide — Match Existing Entries
 
 Study these real entries for tone and structure:
 
-> I figured out that GitHub Copilot has access to Claude Sonnet 4.5 and Opus 4.5, so I used it to spin up a couple of pull requests:
-> - Add Canby city entry with Housing Production Strategy and Housing Needs Analysis
-> - Collapse about page into homepage
-
-> Today's progress:
-> - Improved the fetch-legislation script to be more restart tolerant
-> - Fetch 2026 Oregon legislative session housing-related bills
-> - Added a script to refine internal links
+> April 5th, 2026
+> *Oregon Housing Project — 3 hours 55 minutes of work*
+>
+> I disappeared from the family on a Sunday morning to hack on the project for a few hours.
+>
+> Big day of structural improvements and new content. The headline effort was [reorganizing legislation by session](https://github.com/danielbachhuber/oregon-housing-project/pull/251) — legislation directories are now named like `2025-regular-session/` instead of just `2025/`, which supports Oregon's structure where bill numbers can repeat across sessions. Also [split Key Concepts into individual pages](https://github.com/danielbachhuber/oregon-housing-project/pull/242) and [hid sidebar subpages by default](https://github.com/danielbachhuber/oregon-housing-project/pull/243), showing only prominent people and organizations.
 
 Key patterns:
-- **Open with 1-2 sentences of narrative context**, then use a bullet list for specific items when there are multiple discrete accomplishments.
+- **Open with a personal context sentence** about the day (e.g., "I disappeared from the family on a Sunday morning to hack on the project for a few hours." or "Squeezed in some work between meetings."). This is a personal journal — set the scene before diving into accomplishments. Daniel will refine this himself, so a reasonable placeholder is fine.
+- **Follow with 1-3 substantive paragraphs**, using a bullet list for specific items when there are multiple discrete accomplishments.
 - **Be specific.** Name bills, people, cities, scripts. "Added a profile for Mary Kyle McCurdy covering her 35-year career in Oregon land use advocacy" not "added a new person profile."
 - **Group related PRs into one bullet** rather than listing each separately. Three PRs about legislation reorganization = one bullet.
 - **Link PRs inline** using markdown links woven into the narrative text: `[reorganized legislation by session](https://github.com/danielbachhuber/oregon-housing-project/pull/251)`. Every PR should be linked, but the link text should be descriptive prose, not a PR number. When grouping related PRs, link the most representative one.
@@ -90,3 +93,9 @@ Commits not associated with PRs (<count>):
 ```
 
 Omit any section that has zero items. This section is for review only — it is not part of the journal entry.
+
+## Personal Context Prompt
+
+After presenting the draft and source data, prompt Daniel for what's on his mind — the personal context sentence at the top of the entry. For example:
+
+> What's on your mind for the personal opener? (e.g., "I disappeared from the family on a Sunday morning to hack on the project for a few hours.")
