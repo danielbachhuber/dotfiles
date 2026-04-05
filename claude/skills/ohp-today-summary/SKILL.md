@@ -59,3 +59,34 @@ Key patterns:
 - **Note tooling context** when relevant (Claude Code, GitHub Actions, workflows) — the journal tracks how the project is built, not just what.
 - **Include reflections** if something was interesting, challenging, or led to a realization. The journal is personal, not a changelog.
 - **Hours go in the italicized header** — derive from Harvest, round to nearest 5 minutes (e.g. "2 hours 25 minutes", "4 hours"). Omit minutes if zero.
+
+## Source Data Appendix
+
+After the drafted entry, print a "Source Data" section listing everything referenced so the user can spot-check. Format:
+
+```
+---
+
+**Source Data**
+
+Harvest: <total hours>, task: <task name>, notes: <notes or "none">
+
+PRs merged (<count>):
+- #123 — Title
+- #124 — Title
+...
+
+PRs opened (<count>):
+- #125 — Title
+...
+
+Issues (<count>):
+- #126 — Title (state)
+...
+
+Commits not associated with PRs (<count>):
+- <short commit message>
+...
+```
+
+Omit any section that has zero items. This section is for review only — it is not part of the journal entry.
