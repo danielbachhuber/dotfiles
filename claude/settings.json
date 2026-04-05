@@ -1,23 +1,4 @@
 {
-  "model": "opus[1m]",
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true
-  },
-  "hooks": {
-    "Notification": [
-      {
-        "matcher": "permission_prompt|idle_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/notify.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(gws gmail * list *)",
@@ -47,6 +28,8 @@
       "Bash(gh notification *)",
       "Bash(gh api graphql *)",
       "Bash(gh pr diff *)",
+      "Bash(gh run list *)",
+      "Bash(gh run view *)",
       "Bash(~/.claude/scripts/gmail-fetch-metadata.sh *)",
       "mcp__eight-arms__*",
       "Bash(gws docs documents get *)",
@@ -55,5 +38,24 @@
       "Bash(hrvst time-entries:*)",
       "mcp__reflect-notes__get_daily_note"
     ]
+  },
+  "model": "opus[1m]",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "permission_prompt|idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/notify.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
   }
 }
