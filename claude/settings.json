@@ -38,7 +38,8 @@
       "Bash(tsx ~/.claude/scripts/fetch-google-doc.ts *)",
       "Bash(~/.claude/scripts/fetch-google-doc.ts *)",
       "Bash(hrvst time-entries:*)",
-      "mcp__reflect-notes__get_daily_note"
+      "mcp__reflect-notes__get_daily_note",
+      "mcp__reflect-notes__search_notes"
     ]
   },
   "model": "opus[1m]",
