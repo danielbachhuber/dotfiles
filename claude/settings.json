@@ -37,6 +37,7 @@
       "Bash(gws docs documents get *)",
       "Bash(tsx ~/.claude/scripts/fetch-google-doc.ts *)",
       "Bash(~/.claude/scripts/fetch-google-doc.ts *)",
+      "Bash(~/.claude/scripts/fetch-google-slides.ts *)",
       "Bash(hrvst time-entries:*)",
       "mcp__reflect-notes__get_daily_note",
       "mcp__reflect-notes__search_notes",
