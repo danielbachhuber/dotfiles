@@ -24,20 +24,23 @@ Gather data from 8 sources, running queries in parallel where possible. Then pre
 
 3. **GitHub PRs reviewed** — PRs where Daniel left reviews in `wearenewpublic/psi-product`. Include title, author, and review outcome.
 
-4. **Todoist completed tasks** — `td completed --since <start> --until <end> --json` for tasks completed during the week. Note: `td completed` only returns completed tasks.
+4. **GitHub issues created** - Issues created by Daniel in `wearenewpublic/psi-product`. Include title and key details.
 
-5. **Todoist incomplete tasks** — `td task list --json` to get all incomplete (not yet completed) tasks. Note: `td task list` only returns incomplete tasks. Do not cross-reference these two lists to infer completion status — treat each as authoritative for its own domain. Flag:
+5. **Todoist completed tasks** — `td completed --since <start> --until <end> --json` for tasks completed during the week. Note: `td completed` only returns completed tasks.
+
+6. **Todoist incomplete tasks** — `td task list --json` to get all incomplete (not yet completed) tasks. Note: `td task list` only returns incomplete tasks. Do not cross-reference these two lists to infer completion status — treat each as authoritative for its own domain. Flag:
    - **Overdue tasks** — incomplete tasks past their due date
    - **Stale tasks** — incomplete tasks with no due date and not recently touched
    - **Upcoming tasks** — incomplete tasks due in the next week or two
 
-6. **Reflect daily notes** — Daily notes within the date range via Reflect MCP. Captures meeting notes, ad-hoc observations, and context.
+7. **Reflect daily notes** — Daily notes within the date range via Reflect MCP. Captures meeting notes, ad-hoc observations, and context.
 
-7. **Slack conversations** — Search recent messages/conversations for the week via Slack MCP. Captures discussions, decisions, and interpersonal dynamics not reflected in other sources.
+8. **Slack conversations** — Search recent messages/conversations for the week via Slack MCP. Captures discussions, decisions, and interpersonal dynamics not reflected in other sources.
 
-8. **Google Docs (1:1s and goals)** — Fetch via `~/.claude/scripts/fetch-google-doc.ts`:
+9. **Google Docs (1:1s and goals)** — Fetch via `~/.claude/scripts/fetch-google-doc.ts`:
    - `1crn913WdQoSeUVwTTjMdERQd4AtHkBk6-ODF1MhH8MI` — Annual goals
    - `12zcKSshHLQNYjS1kgFUFnnWTBHjkjNNLxcp3vxEASr0` — Daniel and Brendan check-ins
+   - `1lyU3xFVD-C91CD7soEwE1aT-hHbgIMSfpslUYvgaU6Q` - Daniel and Randall check-ins
    - `1lRLDo5ykuU2P_vuWnGA-WjbkJRxXZ8hjj1qPg5Y48GA` — Daniel and Rob check-ins
    - `1zXjK_GJ3sJVEi7qExn68N94eDZpPkrWZK5opEpmjgmI` — Daniel and Kasiana check-ins
    - `1d5MRwf9_SJtIEaXr2i6b8aqy7x7wgN33dcfMRUwnfSg` — PSI Team check-in
