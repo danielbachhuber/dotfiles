@@ -9,6 +9,7 @@
 - When editing an issue body, first fetch the existing body — same reason as PR descriptions.
 - No headings in the body. Write the context as prose, then any bulleted considerations or scope, then the "Done is:" block.
 - End every issue with a `**Done is:**` section: a short bulleted list of concrete, verifiable completion criteria. See https://danielbachhuber.com/done-is/ for the reasoning.
+- Let me verify the issue content before you create it.
 
 ## Tools
 
