@@ -7,6 +7,8 @@
       "Bash(for *; do gws gmail * list *; done)",
       "Bash(gws calendar * list *)",
       "Bash(gws calendar * get *)",
+      "Bash(gws sheets spreadsheets * get *)",
+      "Bash(gws sheets spreadsheets * update *)",
       "Bash(td today)",
       "Bash(td today *)",
       "Bash(td upcoming)",
