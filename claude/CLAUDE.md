@@ -3,6 +3,7 @@
 ## Pull Requests
 
 - When editing a pull request description, make sure to first fetch the existing description. I may have edited it in the interim and it's frustrating to have my edits blown away.
+- When replying to PR review comments, push the commit first, then leave the reply. That way the reply can reference the commit SHA, and the reviewer can follow the link to the exact changeset.
 
 ## GitHub Issues
 
