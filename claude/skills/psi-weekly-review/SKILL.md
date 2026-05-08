@@ -20,11 +20,14 @@ Gather data from 8 sources, running queries in parallel where possible. Then pre
 
 1. **Harvest time entries** — `hrvst time-entries list --from <start> --to <end> --project_id 45188004 --per_page 2000 --page all --fields task.name,hours,notes,spent_date`. Aggregate hours by category (Development, Code Review, Documentation, Support, Meetings, Admin, Biz, etc.) and surface any notable entry notes. Note: "Biz" is a general catch-all category for overhead work (responding to email, chatting in Slack, etc.). Treat it as necessary daily overhead (~1h/day) rather than a category worth questioning or drilling into.
 
-2. **GitHub PRs authored** — PRs created or merged by `danielbachhuber` in `wearenewpublic/psi-product` during the period. Include title, status, merge date, and key details.
+2. **GitHub PRs authored** — PRs created or merged by `danielbachhuber` in `wearenewpublic/psi-product` during the period. Run two queries and union the results: one for PRs created in the range, one for PRs merged in the range (catches older PRs merged this week).
+   - Created: `gh search prs --author danielbachhuber --repo wearenewpublic/psi-product --created <start>..<end> --limit 1000 --json number,title,state,createdAt,closedAt,url,isDraft`
+   - Merged: `gh search prs --author danielbachhuber --repo wearenewpublic/psi-product --merged-at <start>..<end> --limit 1000 --json number,title,state,createdAt,closedAt,url`
+   - Notes: omit `--state` to include all states (the flag only accepts `open|closed`, not `all`); there is no `mergedAt` JSON field — derive merge info from `state == "merged"` plus `closedAt`. Include title, status, merge/close date, and key details.
 
-3. **GitHub PRs reviewed** — PRs where Daniel left reviews in `wearenewpublic/psi-product`. Include title, author, and review outcome.
+3. **GitHub PRs reviewed** — PRs where Daniel left reviews in `wearenewpublic/psi-product`. `gh search prs --reviewed-by danielbachhuber --repo wearenewpublic/psi-product --updated <start>..<end> --limit 1000 --json number,title,author,state,url,updatedAt`. Include title, author, and review outcome.
 
-4. **GitHub issues created** - Issues created by Daniel in `wearenewpublic/psi-product`. Include title and key details.
+4. **GitHub issues created** — Issues created by Daniel in `wearenewpublic/psi-product`. `gh search issues --author danielbachhuber --repo wearenewpublic/psi-product --created <start>..<end> --limit 1000 --json number,title,state,createdAt,url`. Include title and key details.
 
 5. **Todoist completed tasks** — `td completed --since <start> --until <end> --json` for tasks completed during the week. Note: `td completed` only returns completed tasks.
 
