@@ -49,18 +49,6 @@
   },
   "model": "opus[1m]",
   "hooks": {
-    "Notification": [
-      {
-        "matcher": "permission_prompt|idle_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/notify.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
