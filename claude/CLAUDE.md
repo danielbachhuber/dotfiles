@@ -15,3 +15,7 @@
 ## Tools
 
 - The `gws` executable can be used for accessing Google Docs, Slides, and Gmail. However, ~/.claude/scripts/fetch-google-doc.ts is even more helpful for Google Docs, and ~/.claude/scripts/fetch-google-slides.ts even more helpful for Google Slides. Both scripts accept the document ID as the first argument. If there's an authentication failure, inform the end user instead of trying to fetch the document instead.
+
+## Git Worktrees
+
+- Always use Claude Code's native git worktree support (the `EnterWorktree` / `ExitWorktree` tools, or `isolation: "worktree"` when dispatching an Agent) instead of the `superpowers:using-git-worktrees` skill. Do not invoke that skill — prefer the built-in tooling.
