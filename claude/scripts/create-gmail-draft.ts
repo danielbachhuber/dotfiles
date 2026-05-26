@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 
 const path = process.argv[2];
 if (!path) {
@@ -9,6 +9,9 @@ if (!path) {
     console.error('');
     console.error('The markdown file must have frontmatter with: from, to, subject (cc optional).');
     console.error('Body is rendered as HTML.');
+    console.error('');
+    console.error('If frontmatter contains draft-id, the existing draft is updated in place.');
+    console.error('Otherwise a new draft is created and its id is written back to frontmatter.');
     process.exit(1);
 }
 
@@ -56,6 +59,7 @@ const from = parseScalar('from');
 const subject = parseScalar('subject');
 const to = parseList('to');
 const cc = parseList('cc');
+const existingDraftId = parseScalar('draft-id');
 
 if (!from || !subject || to.length === 0) {
     console.error('Frontmatter must include from, subject, and at least one to recipient.');
@@ -146,18 +150,28 @@ const raw = Buffer.from(rfc822, 'utf-8')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 
-const payload = JSON.stringify({ message: { raw } });
+const payload = existingDraftId
+    ? JSON.stringify({ id: existingDraftId, message: { raw } })
+    : JSON.stringify({ message: { raw } });
 
-const result = execFileSync(
-    'gws',
-    ['gmail', 'users', 'drafts', 'create',
-     '--params', '{"userId": "me"}',
-     '--json', payload],
-    { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
-);
+const gwsArgs = existingDraftId
+    ? ['gmail', 'users', 'drafts', 'update',
+       '--params', JSON.stringify({ userId: 'me', id: existingDraftId }),
+       '--json', payload]
+    : ['gmail', 'users', 'drafts', 'create',
+       '--params', '{"userId": "me"}',
+       '--json', payload];
+
+const result = execFileSync('gws', gwsArgs, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
 
 const cleaned = result.replace(/^Using keyring backend:.*\n/, '');
 const draft = JSON.parse(cleaned);
-console.log(`Draft created: ${draft.id}`);
+
+if (!existingDraftId) {
+    const updated = content.replace(/^(---\n[\s\S]*?)\n---\n/, `$1\ndraft-id: ${draft.id}\n---\n`);
+    writeFileSync(path, updated, 'utf-8');
+}
+
+console.log(`Draft ${existingDraftId ? 'updated' : 'created'}: ${draft.id}`);
 console.log(`Recipients: To=${to.join(', ')}${cc.length ? `; Cc=${cc.join(', ')}` : ''}`);
 console.log(`Open: https://mail.google.com/mail/u/0/#drafts/${draft.message?.id ?? draft.id}`);
