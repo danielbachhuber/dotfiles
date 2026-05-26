@@ -20,6 +20,20 @@ const raw = execSync(
 const jsonStr = raw.replace(/^Using keyring backend:.*\n/, '');
 const data = JSON.parse(jsonStr);
 
+function renderTextRun(elem: any): string {
+    const content: string = elem.textRun?.content ?? '';
+    if (!content) return '';
+    const url: string | undefined = elem.textRun?.textStyle?.link?.url;
+    if (!url) return content;
+    // Preserve any trailing whitespace/newline outside the link.
+    const match = content.match(/^(\s*)([\s\S]*?)(\s*)$/);
+    const lead = match?.[1] ?? '';
+    const body = match?.[2] ?? content;
+    const trail = match?.[3] ?? '';
+    if (!body) return content;
+    return `${lead}[${body}](${url})${trail}`;
+}
+
 function extractText(content: any[]): string {
     const lines: string[] = [];
 
@@ -29,7 +43,7 @@ function extractText(content: any[]): string {
             const style = para.paragraphStyle?.namedStyleType ?? '';
             let text = '';
             for (const elem of para.elements ?? []) {
-                text += elem.textRun?.content ?? '';
+                text += renderTextRun(elem);
             }
             const isBullet = !!para.bullet;
             const nestingLevel = para.bullet?.nestingLevel ?? 0;
@@ -57,7 +71,7 @@ function extractText(content: any[]): string {
                     for (const content of cell.content ?? []) {
                         if (content.paragraph) {
                             for (const elem of content.paragraph.elements ?? []) {
-                                cellText += (elem.textRun?.content ?? '').trim();
+                                cellText += renderTextRun(elem).trim();
                             }
                         }
                     }
