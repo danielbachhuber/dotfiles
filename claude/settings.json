@@ -44,7 +44,9 @@
       "Bash(hrvst time-entries:*)",
       "mcp__reflect-notes__get_daily_note",
       "mcp__reflect-notes__search_notes",
-      "mcp__reflect-notes__get_note"
+      "mcp__reflect-notes__get_note",
+      "Write(.claude/drafts/**)",
+      "Edit(.claude/drafts/**)"
     ]
   },
   "model": "opus[1m]",
