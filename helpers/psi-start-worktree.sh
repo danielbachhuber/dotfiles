@@ -136,4 +136,10 @@ echo "Run mprocs to start the client and Storybook:"
 echo "  mprocs -c mprocs.worktree.yaml"
 echo ""
 
+# If launched from a Cursor terminal, open the worktree as a project
+if [ "$TERM_PROGRAM" = "vscode" ] && command -v cursor >/dev/null 2>&1; then
+    cursor "$WORKTREE_DIR"          # new window, focused on the worktree
+    # cursor -r "$WORKTREE_DIR"     # ...or repoint THIS window (reloads it, ends this terminal)
+fi
+
 exec $SHELL
