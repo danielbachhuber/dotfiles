@@ -109,6 +109,46 @@ echo "Setting up Claude Code"
 claude mcp add --transport http figma https://mcp.figma.com/mcp || true
 cp "$PSI_PROJECT_DIR/.claude/settings.local.json" "$WORKTREE_DIR/.claude/settings.local.json"
 
+# Generate a sandboxed devcontainer for this worktree from the default kept in
+# dotfiles, so Claude can run with --dangerously-skip-permissions inside it: the
+# image carries the PSI toolchain and init-firewall.sh applies a default-deny
+# outbound allowlist, limiting the blast radius to this container.
+#
+# The dotfiles dir is the source of truth (Dockerfile, init-firewall.sh,
+# devcontainer.json). We copy those into the worktree's .devcontainer/ and stamp
+# a distinct name so containers are distinguishable in the UI. Host ports don't
+# need pre-assigning: VS Code forwards the container's loopback ports and
+# auto-picks a free host port when one is taken, so several worktree containers
+# can run at once. PSI_GITHUB_TOKEN is passed through from the host shell via
+# devcontainer.json's containerEnv.
+echo "Setting up devcontainer"
+DEVCONTAINER_SRC="$HOME/.dotfiles/claude/psi-devcontainer"
+if [ -d "$DEVCONTAINER_SRC" ]; then
+    mkdir -p "$WORKTREE_DIR/.devcontainer"
+    cp "$DEVCONTAINER_SRC/Dockerfile" "$WORKTREE_DIR/.devcontainer/Dockerfile"
+    cp "$DEVCONTAINER_SRC/init-firewall.sh" "$WORKTREE_DIR/.devcontainer/init-firewall.sh"
+    jq --arg name "PSI: $BRANCH_NAME" '.name = $name' \
+        "$DEVCONTAINER_SRC/devcontainer.json" > "$WORKTREE_DIR/.devcontainer/devcontainer.json"
+    # The repo ignores .devcontainer/devcontainer.json but not the copied
+    # Dockerfile/init-firewall.sh; add them to this worktree's local git
+    # excludes so they don't clutter `git status`.
+    EXCLUDE_FILE="$(git -C "$WORKTREE_DIR" rev-parse --git-path info/exclude)"
+    case "$EXCLUDE_FILE" in
+        /*) : ;;
+        *) EXCLUDE_FILE="$WORKTREE_DIR/$EXCLUDE_FILE" ;;
+    esac
+    mkdir -p "$(dirname "$EXCLUDE_FILE")"
+    for pattern in ".devcontainer/Dockerfile" ".devcontainer/init-firewall.sh"; do
+        grep -qxF "$pattern" "$EXCLUDE_FILE" 2>/dev/null || echo "$pattern" >> "$EXCLUDE_FILE"
+    done
+    echo "  Created .devcontainer/ from $DEVCONTAINER_SRC (name: PSI: $BRANCH_NAME)"
+    if [ -z "${PSI_GITHUB_TOKEN:-}" ]; then
+        echo "  WARNING: PSI_GITHUB_TOKEN is not set in this shell; git/gh inside the container won't be authenticated"
+    fi
+else
+    echo "  Skipped: $DEVCONTAINER_SRC not found"
+fi
+
 echo "Copying necessary ignored files"
 cp "$PSI_PROJECT_DIR/server/.env" "$WORKTREE_DIR/server/.env"
 
@@ -131,6 +171,7 @@ echo "  Branch: $BRANCH_NAME"
 echo "  Directory: $WORKTREE_DIR"
 echo "  Client: http://localhost:$CLIENT_PORT"
 echo "  Storybook: http://localhost:$STORYBOOK_PORT"
+echo "  Devcontainer: .devcontainer/devcontainer.json (\"Reopen in Container\" to run Claude inside)"
 echo ""
 echo "Run mprocs to start the client and Storybook:"
 echo "  mprocs -c mprocs.worktree.yaml"

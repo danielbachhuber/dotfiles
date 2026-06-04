@@ -1,0 +1,96 @@
+{
+    "name": "PSI Development",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "workspaceFolder": "/app",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=delegated",
+    "remoteUser": "node",
+    "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+    "containerEnv": {
+        "TZ": "${localEnv:TZ:America/Los_Angeles}",
+        "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+        "NODE_OPTIONS": "--max-old-space-size=4096",
+        "EXPO_DEVTOOLS_LISTEN_ADDRESS": "0.0.0.0",
+        "PNPM_HOME": "/home/node/.local/share/pnpm",
+        "PATH": "/home/node/.local/share/pnpm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0",
+        "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "DISABLE_TELEMETRY": "1",
+        "PSI_GITHUB_TOKEN": "${localEnv:PSI_GITHUB_TOKEN}",
+        "GH_TOKEN": "${localEnv:PSI_GITHUB_TOKEN}"
+    },
+    "mounts": [
+        "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume",
+        "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+        "source=${localEnv:HOME}/.dotfiles/claude/psi-devcontainer/CLAUDE.md,target=/home/node/.claude/CLAUDE.md,type=bind,readonly",
+        "source=${localEnv:HOME}/.dotfiles/claude/CLAUDE.md,target=/home/node/.claude/host-CLAUDE.md,type=bind,readonly"
+    ],
+    "forwardPorts": [3000, 4000, 4500, 5001, 5002, 5010, 6006, 8081, 9001, 9099, 19000, 19001, 19006],
+    "otherPortsAttributes": {
+        "onAutoForward": "ignore"
+    },
+    "portsAttributes": {
+        "3000": {
+            "label": "App"
+        },
+        "4000": {
+            "label": "Firebase Emulator UI"
+        },
+        "4500": {
+            "label": "Firebase Emulator Hub"
+        },
+        "5001": {
+            "label": "Firebase Functions"
+        },
+        "5002": {
+            "label": "Firebase Functions (alt)"
+        },
+        "5010": {
+            "label": "Firebase Logging"
+        },
+        "6006": {
+            "label": "Storybook"
+        },
+        "8081": {
+            "label": "Metro Bundler"
+        },
+        "9001": {
+            "label": "Firebase Pub/Sub"
+        },
+        "9099": {
+            "label": "Firebase Auth"
+        },
+        "19000": {
+            "label": "Expo"
+        },
+        "19001": {
+            "label": "Expo DevTools"
+        },
+        "19006": {
+            "label": "Expo Web"
+        },
+        "*": {
+            "onAutoForward": "ignore"
+        }
+    },
+    "postCreateCommand": {
+        "init-figma-mcp": "claude mcp add --transport http figma-desktop http://host.docker.internal:3845/mcp",
+        "setup-git-auth": "/bin/bash -c 'if [ -n \"$GH_TOKEN\" ]; then gh auth setup-git; fi'"
+    },
+    "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+    "waitFor": "postStartCommand",
+    "postAttachCommand": "/bin/bash -c 'tmux attach-session -t mprocs 2>/dev/null || tmux new-session -s mprocs pnpm dev'",
+    "customizations": {
+        "vscode": {
+            "extensions": ["biomejs.biome", "anthropic.claude-code"],
+            "settings": {
+                "remote.forwardOnOpen": false,
+                "remote.autoForwardPorts": false,
+                "editor.defaultFormatter": "biomejs.biome"
+            }
+        }
+    }
+}
