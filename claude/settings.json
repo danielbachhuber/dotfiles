@@ -45,8 +45,10 @@
       "mcp__reflect-notes__get_daily_note",
       "mcp__reflect-notes__search_notes",
       "mcp__reflect-notes__get_note",
-      "Write(//**/.claude/drafts/**)",
-      "Edit(//**/.claude/drafts/**)"
+      "Write(//Users/danielb/projects/drafts/**)",
+      "Write(~/projects/drafts/**)",
+      "Edit(//Users/danielb/projects/drafts/**)",
+      "Edit(~/projects/drafts/**)"
     ]
   },
   "model": "opus[1m]",
