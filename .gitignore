@@ -1,3 +1,4 @@
+environment.local
 .DS_Store
 vim/tmp
 vim/.netrwhist
