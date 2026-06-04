@@ -1,0 +1,13 @@
+{
+  "name": "claude-browser-tool",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reusable headless-browser helper for Claude Code (Playwright/Chromium).",
+  "bin": {
+    "browse": "./browse.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}

@@ -16,6 +16,7 @@
 ## Tools
 
 - For Google Workspace access (Drive, Sheets, Gmail, Docs, Slides, Calendar, etc.), use the `gws-cli` skill. However, ~/.claude/scripts/fetch-google-doc.ts is even more helpful for Google Docs, and ~/.claude/scripts/fetch-google-slides.ts even more helpful for Google Slides. Both scripts accept the document ID as the first argument. If there's an authentication failure, inform the end user instead of trying to fetch the document instead.
+- For a headless browser (rendering JS-heavy pages, extracting metadata/taglines, detecting on-site comment platforms, screenshots), use the global Playwright tool at `~/.claude/tools/playwright/browse.mjs`. It is project-independent — no per-project install. Run it as `node ~/.claude/tools/playwright/browse.mjs <url ...>` or `--file urls.txt` (bare URLs or TSV rows whose last field is the URL); add `--jsonl out.jsonl`, `--screenshot <dir>`, `--timeout <ms>`, `--concurrency <n>`. It outputs one JSON object per URL (title, meta/og descriptions, h1, taglineGuess, commentVendors, finalUrl, screenshot path). Network access requires running it with the sandbox disabled. Playwright + Chromium are already installed there; if Chromium is missing after a version bump, run `npx playwright install chromium` from that dir. Soft anti-bot interstitials are auto-waited, but sites behind Cloudflare's *managed* challenge (e.g. "Just a moment…") will still return 403 — that's an inherent limit of headless scraping, not a misconfiguration.
 
 ## Git Worktrees
 
