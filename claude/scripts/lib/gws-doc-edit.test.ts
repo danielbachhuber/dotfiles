@@ -54,3 +54,33 @@ test('buildOutline lists paragraphs with style, text, and indices', () => {
   assert.deepEqual(outline[0], { tabId: null, style: 'HEADING_1', text: 'Section One', startIndex: 1, endIndex: 13 });
   assert.equal(outline[1].text, 'First paragraph.');
 });
+
+import {
+  buildFindReplaceRequests, buildInsertTextRequests, findIndexAfterHeading, appendIndex, selectTab,
+} from './gws-doc-edit';
+
+test('buildFindReplaceRequests builds a replaceAllText request', () => {
+  assert.deepEqual(buildFindReplaceRequests('old', 'new', { matchCase: true }), [
+    { replaceAllText: { containsText: { text: 'old', matchCase: true }, replaceText: 'new' } },
+  ]);
+});
+
+test('buildInsertTextRequests omits tabId when null and includes it otherwise', () => {
+  assert.deepEqual(buildInsertTextRequests(5, 'hi', null), [
+    { insertText: { location: { index: 5 }, text: 'hi' } },
+  ]);
+  assert.deepEqual(buildInsertTextRequests(5, 'hi', 't.0'), [
+    { insertText: { location: { index: 5, tabId: 't.0' }, text: 'hi' } },
+  ]);
+});
+
+test('findIndexAfterHeading returns the heading paragraph endIndex', () => {
+  const tab = selectTab(collectTabs(BODY_DOC));
+  assert.equal(findIndexAfterHeading(tab, 'Section One'), 13);
+  assert.throws(() => findIndexAfterHeading(tab, 'Nope'), /Heading not found/);
+});
+
+test('appendIndex returns the position before the final newline', () => {
+  const tab = selectTab(collectTabs(BODY_DOC));
+  assert.equal(appendIndex(tab), 29);
+});
