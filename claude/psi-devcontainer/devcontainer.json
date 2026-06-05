@@ -86,7 +86,6 @@
     },
     "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
     "waitFor": "postStartCommand",
-    "postAttachCommand": "/bin/bash -c 'tmux attach-session -t mprocs 2>/dev/null || tmux new-session -s mprocs pnpm dev'",
     "customizations": {
         "vscode": {
             "extensions": ["biomejs.biome", "anthropic.claude-code"],
