@@ -98,6 +98,22 @@ test('findIndexAfterHeading returns the heading paragraph endIndex', () => {
   assert.throws(() => findIndexAfterHeading(tab, 'Nope'), /Heading not found/);
 });
 
+test('findIndexAfterHeading matches case-insensitively and ignores trailing punctuation', () => {
+  const tab = selectTab(collectTabs(BODY_DOC));
+  assert.equal(findIndexAfterHeading(tab, 'section one:'), 13);
+  assert.equal(findIndexAfterHeading(tab, 'SECTION ONE'), 13);
+});
+
+test('findIndexAfterHeading falls back to prefix/substring match', () => {
+  const tab = selectTab(collectTabs(BODY_DOC));
+  assert.equal(findIndexAfterHeading(tab, 'Section'), 13);
+});
+
+test('findIndexAfterHeading error lists available headings', () => {
+  const tab = selectTab(collectTabs(BODY_DOC));
+  assert.throws(() => findIndexAfterHeading(tab, 'Nope'), /Headings in this tab: "Section One"/);
+});
+
 test('appendIndex returns the position before the final newline', () => {
   const tab = selectTab(collectTabs(BODY_DOC));
   assert.equal(appendIndex(tab), 29);
