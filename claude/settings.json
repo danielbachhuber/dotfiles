@@ -17,6 +17,7 @@
       "Bash(td inbox *)",
       "Bash(td task list *)",
       "Bash(td task show *)",
+      "Bash(td task add *)",
       "Bash(td project list *)",
       "Bash(td project show *)",
       "Bash(td stats)",
