@@ -33,24 +33,39 @@ try {
 
   // Otherwise: pin a URL or bare id.
   const { type, id } = parseGoogleUrl(cmd);
-  const info = gwsJson([
-    'drive', 'files', 'get',
-    '--params', JSON.stringify({ fileId: id, fields: 'name,mimeType', supportsAllDrives: true }),
-  ]);
 
+  // When the URL already tells us the type, read the title from the type-specific
+  // API so pinning works without the Drive API enabled. Fall back to a Drive
+  // lookup only for bare ids, where the type is unknown.
   let resolvedType: PinType;
-  if (type) {
-    resolvedType = type;
-  } else if (info.mimeType === 'application/vnd.google-apps.document') {
+  let title: string;
+  if (type === 'doc') {
     resolvedType = 'doc';
-  } else if (info.mimeType === 'application/vnd.google-apps.spreadsheet') {
+    title = gwsJson(['docs', 'documents', 'get', '--params', JSON.stringify({ documentId: id })]).title;
+  } else if (type === 'sheet') {
     resolvedType = 'sheet';
+    const sheet = gwsJson([
+      'sheets', 'spreadsheets', 'get',
+      '--params', JSON.stringify({ spreadsheetId: id, fields: 'properties.title' }),
+    ]);
+    title = sheet.properties?.title;
   } else {
-    console.error(`Unsupported file type: ${info.mimeType} (only Google Docs and Sheets).`);
-    process.exit(1);
+    const info = gwsJson([
+      'drive', 'files', 'get',
+      '--params', JSON.stringify({ fileId: id, fields: 'name,mimeType', supportsAllDrives: true }),
+    ]);
+    if (info.mimeType === 'application/vnd.google-apps.document') {
+      resolvedType = 'doc';
+    } else if (info.mimeType === 'application/vnd.google-apps.spreadsheet') {
+      resolvedType = 'sheet';
+    } else {
+      console.error(`Unsupported file type: ${info.mimeType} (only Google Docs and Sheets).`);
+      process.exit(1);
+    }
+    title = info.name;
   }
 
-  const pin = addPin({ type: resolvedType, id, title: info.name });
+  const pin = addPin({ type: resolvedType, id, title: title || id });
   console.log(`Pinned ${resolvedType}: "${pin.title}" as "${pin.alias}" (${pin.id}).`);
   process.exit(0);
 } catch (err: any) {
