@@ -18,6 +18,18 @@ function getFlag(args: string[], name: string): string | undefined {
 function hasFlag(args: string[], name: string): boolean {
   return args.includes(`--${name}`);
 }
+// Positionals = non-flag tokens, excluding the value that follows a value-taking flag.
+function getPositionals(args: string[], valueFlags: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('--')) continue;
+    const prev = args[i - 1];
+    if (prev && prev.startsWith('--') && valueFlags.includes(prev.slice(2))) continue;
+    out.push(a);
+  }
+  return out;
+}
 
 function fetchDoc(id: string): any {
   return gwsJson([
@@ -53,8 +65,9 @@ try {
   }
 
   if (sub === 'find-replace') {
-    const find = rest[0];
-    const replace = rest[1];
+    const pos = getPositionals(rest, ['doc']);
+    const find = pos[0];
+    const replace = pos[1];
     if (find === undefined || replace === undefined) {
       fail('Usage: find-replace <find> <replace> [--match-case] [--doc <alias|id>]');
     }
@@ -72,7 +85,10 @@ try {
     const idxFlag = getFlag(rest, 'index');
     let index: number;
     if (heading !== undefined) index = findIndexAfterHeading(tab, heading);
-    else if (idxFlag !== undefined) index = parseInt(idxFlag, 10);
+    else if (idxFlag !== undefined) {
+      index = parseInt(idxFlag, 10);
+      if (Number.isNaN(index)) fail('--index must be a number');
+    }
     else fail('insert requires --after-heading "<text>" or --index <n>');
     applyBatch(pin.id, buildInsertTextRequests(index, text, tab.tabId));
     process.exit(0);
@@ -88,7 +104,7 @@ try {
   }
 
   if (sub === 'apply') {
-    const file = rest[0];
+    const file = getPositionals(rest, ['doc'])[0];
     if (!file) fail('apply requires <requests.json>');
     const parsed = JSON.parse(readFileSync(file, 'utf-8'));
     const arr = Array.isArray(parsed) ? parsed : parsed.requests;

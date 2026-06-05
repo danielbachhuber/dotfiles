@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 import { readFileSync } from 'fs';
-import { gwsJson, runGws } from './lib/gws';
+import { runGws } from './lib/gws';
 import { resolveTarget } from './lib/gws-edit-pin';
 import { parseValues } from './lib/gws-sheet-edit';
 
