@@ -23,6 +23,7 @@ export function collectTabs(docJson: any): TabContent[] {
 
 export function selectTab(tabs: TabContent[], tabSelector?: string): TabContent {
   if (tabs.length === 0) throw new Error('Document has no content.');
+  // With no selector, default to the first tab.
   if (!tabSelector) return tabs[0];
   const match = tabs.find(t => t.tabId === tabSelector);
   if (!match) {

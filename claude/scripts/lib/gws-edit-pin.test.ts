@@ -111,3 +111,7 @@ test('parseGoogleUrl detects docs, sheets, and bare ids', () => {
   assert.deepEqual(parseGoogleUrl('https://docs.google.com/spreadsheets/d/XYZ-2/edit#gid=0'), { type: 'sheet', id: 'XYZ-2' });
   assert.deepEqual(parseGoogleUrl('ABC123'), { type: null, id: 'ABC123' });
 });
+
+test('parseGoogleUrl extracts the id from a Drive open?id= link', () => {
+  assert.deepEqual(parseGoogleUrl('https://drive.google.com/open?id=FILE_1'), { type: null, id: 'FILE_1' });
+});

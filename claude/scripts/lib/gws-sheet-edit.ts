@@ -1,6 +1,7 @@
 // claude/scripts/lib/gws-sheet-edit.ts
-/** Parse a values argument: a JSON 2-D array, a flat JSON array (one column),
- *  or newline/comma-delimited CSV. Returns a 2-D array of cell values. */
+/** Parse a values argument: a JSON 2-D array, a flat JSON array (one column per row),
+ *  or naive newline/comma-delimited text (no quoting — values containing commas must
+ *  use JSON). Returns a 2-D array of cell values. */
 export function parseValues(input: string): any[][] {
   const trimmed = input.trim();
   if (trimmed.startsWith('[')) {

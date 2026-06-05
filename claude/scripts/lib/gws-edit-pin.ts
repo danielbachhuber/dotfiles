@@ -108,5 +108,7 @@ export function parseGoogleUrl(input: string): { type: PinType | null; id: strin
   if (bare) return { type: null, id: bare[1] };
   const generic = input.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (generic) return { type: null, id: generic[1] };
+  const idParam = input.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParam) return { type: null, id: idParam[1] };
   throw new Error(`Could not parse a Google file id from: ${input}`);
 }

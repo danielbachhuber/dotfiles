@@ -42,10 +42,28 @@ test('collectTabs handles legacy body docs', () => {
   assert.equal(tabs[0].content.length, 2);
 });
 
+const TWO_TABS_DOC = {
+  documentId: 'DOC3',
+  tabs: [
+    {
+      tabProperties: { tabId: 't.0', title: 'First' },
+      documentTab: { body: { content: BODY_DOC.body.content } },
+    },
+    {
+      tabProperties: { tabId: 't.1', title: 'Second' },
+      documentTab: { body: { content: BODY_DOC.body.content } },
+    },
+  ],
+};
+
 test('collectTabs handles tabbed docs', () => {
   const tabs = collectTabs(TABS_DOC);
   assert.equal(tabs.length, 1);
   assert.equal(tabs[0].tabId, 't.0');
+});
+
+test('selectTab defaults to the first tab when no selector is given', () => {
+  assert.equal(selectTab(collectTabs(TWO_TABS_DOC)).tabId, 't.0');
 });
 
 test('buildOutline lists paragraphs with style, text, and indices', () => {
