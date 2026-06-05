@@ -17,7 +17,7 @@ FROM node:22-bookworm-slim
 SHELL ["/bin/bash", "-c"]
 
 ENV PNPM_HOME="/home/node/.local/share/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
+ENV PATH="$PNPM_HOME/bin:$PNPM_HOME:$PATH"
 ENV CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
 ENV CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ENV DISABLE_TELEMETRY=1
@@ -91,8 +91,16 @@ USER 1000
 # Necessary because pnpm doesn't know where to put global binaries as user 1000;
 # the user doesn't have a proper home directory configured.
 RUN mkdir -p $PNPM_HOME
+# Create the Claude config dir (CLAUDE_CONFIG_DIR) as the node user so the named
+# volume mounted here in devcontainer.json (claude-code-config-*) inherits node
+# ownership. Otherwise Docker initializes the fresh volume as root and claude
+# can't write /home/node/.claude/.claude.json (EACCES).
+RUN mkdir -p /home/node/.claude
 RUN corepack prepare pnpm@11.1.2 --activate
-RUN pnpm add -g firebase-tools@15.2.1 @expo/cli typescript@5.9.3 mprocs@0.8.2 @anthropic-ai/claude-code@2.1.6
+# --allow-build lets the @anthropic-ai/claude-code postinstall run; pnpm (v10+)
+# skips dependency build scripts by default, and that script installs the native
+# `claude` binary. Without it, `claude` errors with "native binary not installed".
+RUN pnpm add -g --allow-build=@anthropic-ai/claude-code firebase-tools@15.2.1 @expo/cli typescript@5.9.3 @anthropic-ai/claude-code
 RUN pnpm dlx playwright@1.58.2 install chromium
 CMD ["/bin/bash"]
 

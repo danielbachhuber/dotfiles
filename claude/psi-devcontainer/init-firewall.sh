@@ -70,7 +70,7 @@ while read -r cidr; do
         exit 1
     fi
     echo "Adding GitHub range $cidr"
-    ipset add allowed-domains "$cidr"
+    ipset add -exist allowed-domains "$cidr"
 done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
 # Resolve and add other allowed domains.
@@ -94,7 +94,10 @@ for domain in \
     `# "oauth2.googleapis.com" "accounts.google.com" "firebase.googleapis.com" "www.googleapis.com" `\
     ; do
     echo "Resolving $domain..."
-    ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
+    # `|| true` so a transient dig failure (non-zero exit) doesn't trip
+    # `set -euo pipefail` and abort the whole firewall — the empty-result check
+    # below then treats it the same as an unresolvable host and skips it.
+    ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}' || true)
     if [ -z "$ips" ]; then
         # Don't abort the whole firewall over one unresolvable host (e.g. a
         # telemetry domain that's temporarily down). The default-DROP policy
@@ -109,7 +112,7 @@ for domain in \
             exit 1
         fi
         echo "Adding $ip for $domain"
-        ipset add allowed-domains "$ip"
+        ipset add -exist allowed-domains "$ip"
     done < <(echo "$ips")
 done
 
