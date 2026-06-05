@@ -96,6 +96,10 @@ RUN mkdir -p $PNPM_HOME
 # ownership. Otherwise Docker initializes the fresh volume as root and claude
 # can't write /home/node/.claude/.claude.json (EACCES).
 RUN mkdir -p /home/node/.claude
+# Set a global git identity so commits work inside the container; the host
+# .gitconfig isn't mounted. Matches the host identity.
+RUN git config --global user.name "Daniel Bachhuber" \
+	&& git config --global user.email "daniel@newpublic.org"
 RUN corepack prepare pnpm@11.1.2 --activate
 # --allow-build lets the @anthropic-ai/claude-code postinstall run; pnpm (v10+)
 # skips dependency build scripts by default, and that script installs the native

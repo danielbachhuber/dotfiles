@@ -90,6 +90,8 @@ for domain in \
     "api.expo.dev" \
     "u.expo.dev" \
     "cdn.expo.dev" \
+    `# pnpm's devEngines check downloads a managed Node from here (husky hooks run pnpm exec)` \
+    "nodejs.org" \
     `# --- Optional: uncomment for firebase-tools / gcloud auth + deploy, then rebuild ---` \
     `# "oauth2.googleapis.com" "accounts.google.com" "firebase.googleapis.com" "www.googleapis.com" `\
     ; do
