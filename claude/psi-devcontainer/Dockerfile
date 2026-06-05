@@ -46,8 +46,9 @@ RUN apt-get install -y lsof
 RUN apt-get update && apt-get install -y chromium
 
 # Sandbox tooling: sudo + the networking utilities init-firewall.sh relies on.
-# socat republishes the forwarded host SSH agent socket for the node user.
-RUN apt-get install -y sudo iptables ipset iproute2 dnsutils aggregate socat
+# socat republishes the forwarded host SSH agent socket for the node user;
+# dnsmasq dynamically populates the egress allowlist ipset from DNS lookups.
+RUN apt-get install -y sudo iptables ipset iproute2 dnsutils aggregate socat dnsmasq
 
 # github cli client
 # https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian

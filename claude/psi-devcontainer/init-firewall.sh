@@ -3,13 +3,43 @@
 #
 # Applied at container start (postStartCommand in devcontainer.json) so that
 # `claude --dangerously-skip-permissions` can run unattended: anything Claude
-# does can only reach the allowlisted hosts below. Adapted from
-# psi-workflow-viz/.devcontainer/init-firewall.sh with a PSI-specific allowlist.
+# does can only reach the allowlisted hosts below.
 #
-# To allow another host: add it to the `for domain in ...` loop and recreate the
+# Allowlisting is driven by dnsmasq rather than a static IP snapshot. dnsmasq
+# runs as the container's resolver and, via its `ipset=` directives, adds the
+# resolved IPs of the allowed domains (and their subdomains) to the
+# `allowed-domains` ipset as they are looked up. iptables then permits egress
+# only to that set. Because the set is populated from live DNS, CDN-backed hosts
+# whose IPs rotate (e.g. nodejs.org behind Cloudflare) stay reachable, and a
+# transient DNS hiccup at startup no longer permanently drops a domain — it is
+# re-added on the next lookup. The ipset remains the kernel enforcement target
+# (a pure DNS allowlist wouldn't stop a process from dialing a raw IP).
+#
+# To allow another host: add it to ALLOWED_DOMAINS below and recreate the
 # container (devcontainer up --remove-existing-container, or "Rebuild Container").
 set -euo pipefail  # Exit on error, undefined vars, and pipeline failures
 IFS=$'\n\t'       # Stricter word splitting
+
+# Domains allowed out of the container. dnsmasq matches each entry AND all of its
+# subdomains, so e.g. github.com also covers api.github.com / codeload.github.com.
+ALLOWED_DOMAINS=(
+    github.com               # git + gh + api/codeload/uploads.github.com
+    githubusercontent.com    # objects/raw/avatars.githubusercontent.com
+    registry.npmjs.org
+    nodejs.org               # pnpm devEngines downloads a managed Node (husky hooks)
+    anthropic.com            # api.anthropic.com + statsig.anthropic.com
+    sentry.io
+    statsig.com
+    marketplace.visualstudio.com
+    vscode.blob.core.windows.net
+    update.code.visualstudio.com
+    fonts.googleapis.com
+    fonts.gstatic.com
+    exp.host
+    expo.dev                 # api/u/cdn.expo.dev
+    # --- Optional: add for firebase-tools / gcloud auth + deploy, then rebuild ---
+    # googleapis.com accounts.google.com
+)
 
 # Republish the forwarded host SSH agent on a node-owned socket. The forwarded
 # socket (mounted at /ssh-agent-host via devcontainer.json) is owned by the host
@@ -26,6 +56,15 @@ if [ -S "$SSH_AGENT_HOST_SOCK" ]; then
 else
     echo "No forwarded SSH agent at $SSH_AGENT_HOST_SOCK; skipping agent proxy"
 fi
+
+# Capture the upstream resolver(s) and host.docker.internal's address BEFORE we
+# repoint resolv.conf at dnsmasq. dnsmasq forwards to the same upstream the
+# container already used (e.g. OrbStack's 0.250.250.200), so internal names keep
+# resolving; host.docker.internal's IP is allowlisted directly below so the Figma
+# desktop MCP on host.docker.internal:3845 stays reachable.
+UPSTREAM_NS=$(awk '/^nameserver/ {print $2}' /etc/resolv.conf | tr '\n' ' ')
+HOST_INTERNAL_IP=$(getent hosts host.docker.internal 2>/dev/null | awk '{print $1; exit}' || true)
+echo "Upstream resolver(s): ${UPSTREAM_NS:-<none>}; host.docker.internal: ${HOST_INTERNAL_IP:-<none>}"
 
 # 1. Extract Docker DNS info BEFORE any flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
@@ -49,90 +88,40 @@ else
     echo "No Docker DNS rules to restore"
 fi
 
-# First allow DNS and localhost before any restrictions
-# Allow outbound DNS
+# Allow DNS (to the upstream resolver), SSH, and localhost before any restrictions.
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-# Allow inbound DNS responses
+iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 iptables -A INPUT -p udp --sport 53 -j ACCEPT
-# Allow outbound SSH
 iptables -A OUTPUT -p tcp --dport 22 -j ACCEPT
-# Allow inbound SSH responses
 iptables -A INPUT -p tcp --sport 22 -m state --state ESTABLISHED -j ACCEPT
-# Allow localhost
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
 
-# Create ipset with CIDR support
+# Create the ipset dnsmasq will populate (CIDR-capable).
 ipset create allowed-domains hash:net
 
-# Fetch GitHub meta information and aggregate + add their IP ranges.
-# Covers git + gh + the GitHub API calls Claude makes with PSI_GITHUB_TOKEN.
-echo "Fetching GitHub IP ranges..."
-gh_ranges=$(curl -s https://api.github.com/meta)
-if [ -z "$gh_ranges" ]; then
-    echo "ERROR: Failed to fetch GitHub IP ranges"
-    exit 1
+# Configure dnsmasq: forward to the captured upstream, listen only on loopback,
+# and add each allowed domain's resolved IPs to the ipset. Then point the
+# container's resolver at dnsmasq so every lookup flows through it.
+{
+    echo "no-resolv"
+    for ns in $UPSTREAM_NS; do echo "server=$ns"; done
+    echo "listen-address=127.0.0.1"
+    echo "bind-interfaces"
+    for domain in "${ALLOWED_DOMAINS[@]}"; do echo "ipset=/$domain/allowed-domains"; done
+} > /etc/dnsmasq.d/allowlist.conf
+echo "Starting dnsmasq..."
+pkill -x dnsmasq 2>/dev/null || true
+sleep 0.2
+dnsmasq --conf-file=/etc/dnsmasq.d/allowlist.conf
+printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
+
+# Allowlist host.docker.internal directly — its IP isn't learned via the domain
+# lookups above, and it usually sits outside the host /24 below.
+if [ -n "$HOST_INTERNAL_IP" ]; then
+    ipset add -exist allowed-domains "$HOST_INTERNAL_IP"
+    echo "Allowlisted host.docker.internal ($HOST_INTERNAL_IP)"
 fi
-
-if ! echo "$gh_ranges" | jq -e '.web and .api and .git' >/dev/null; then
-    echo "ERROR: GitHub API response missing required fields"
-    exit 1
-fi
-
-echo "Processing GitHub IPs..."
-while read -r cidr; do
-    if [[ ! "$cidr" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
-        echo "ERROR: Invalid CIDR range from GitHub meta: $cidr"
-        exit 1
-    fi
-    echo "Adding GitHub range $cidr"
-    ipset add -exist allowed-domains "$cidr"
-done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
-
-# Resolve and add other allowed domains.
-for domain in \
-    "registry.npmjs.org" \
-    "api.anthropic.com" \
-    "sentry.io" \
-    "statsig.anthropic.com" \
-    "statsig.com" \
-    "marketplace.visualstudio.com" \
-    "vscode.blob.core.windows.net" \
-    "update.code.visualstudio.com" \
-    `# --- PSI block: hosts the PSI toolchain needs ---` \
-    "fonts.googleapis.com" \
-    "fonts.gstatic.com" \
-    "exp.host" \
-    "api.expo.dev" \
-    "u.expo.dev" \
-    "cdn.expo.dev" \
-    `# pnpm's devEngines check downloads a managed Node from here (husky hooks run pnpm exec)` \
-    "nodejs.org" \
-    `# --- Optional: uncomment for firebase-tools / gcloud auth + deploy, then rebuild ---` \
-    `# "oauth2.googleapis.com" "accounts.google.com" "firebase.googleapis.com" "www.googleapis.com" `\
-    ; do
-    echo "Resolving $domain..."
-    # `|| true` so a transient dig failure (non-zero exit) doesn't trip
-    # `set -euo pipefail` and abort the whole firewall — the empty-result check
-    # below then treats it the same as an unresolvable host and skips it.
-    ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}' || true)
-    if [ -z "$ips" ]; then
-        # Don't abort the whole firewall over one unresolvable host (e.g. a
-        # telemetry domain that's temporarily down). The default-DROP policy
-        # still applies; we just skip adding this domain to the allowlist.
-        echo "WARNING: Failed to resolve $domain, skipping"
-        continue
-    fi
-
-    while read -r ip; do
-        if [[ ! "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            echo "ERROR: Invalid IP from DNS for $domain: $ip"
-            exit 1
-        fi
-        echo "Adding $ip for $domain"
-        ipset add -exist allowed-domains "$ip"
-    done < <(echo "$ips")
-done
 
 # Get host IP from default route
 HOST_IP=$(ip route | grep default | cut -d" " -f3)
@@ -146,24 +135,19 @@ fi
 # Claude could reach other services on the host LAN — an accepted tradeoff.
 HOST_NETWORK=$(echo "$HOST_IP" | sed "s/\.[0-9]*$/.0\/24/")
 echo "Host network detected as: $HOST_NETWORK"
-
-# Set up remaining iptables rules
 iptables -A INPUT -s "$HOST_NETWORK" -j ACCEPT
 iptables -A OUTPUT -d "$HOST_NETWORK" -j ACCEPT
 
-# Set default policies to DROP first
+# Set default policies to DROP
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
 iptables -P OUTPUT DROP
 
-# First allow established connections for already approved traffic
+# Allow established connections, then only the dnsmasq-populated allowlist;
+# REJECT everything else for immediate feedback.
 iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-# Then allow only specific outbound traffic to allowed domains
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
-
-# Explicitly REJECT all other outbound traffic for immediate feedback
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
 
 echo "Firewall configuration complete"
@@ -175,7 +159,7 @@ else
     echo "Firewall verification passed - unable to reach https://example.com as expected"
 fi
 
-# Verify GitHub API access
+# Verify GitHub API access (also confirms dnsmasq is populating the ipset).
 if ! curl --connect-timeout 5 https://api.github.com/zen >/dev/null 2>&1; then
     echo "ERROR: Firewall verification failed - unable to reach https://api.github.com"
     exit 1
