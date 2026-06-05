@@ -46,12 +46,31 @@ function applyBatch(id: string, requests: any[]): void {
   console.log(`Applied ${requests.length} request(s) to doc ${id}.`);
 }
 
+const HELP = `Usage: edit-google-doc.ts <command> [--doc <alias|id>]
+
+Edits the Google Doc pinned via /edit-google. Omit --doc when only one doc is
+pinned; otherwise pass the alias or id shown by \`edit-google-pin.ts list\`.
+
+Commands:
+  outline                 List every paragraph with its start/end index, style,
+                          and tab id. Run this first to find indices for insert.
+  find-replace <find> <replace> [--match-case]
+                          Replace text across the WHOLE document (all tabs).
+  insert --text "<s>" (--after-heading "<heading>" | --index <n>) [--tab <id>]
+                          Insert text after a matching heading, or at an explicit
+                          index (from \`outline\`). Defaults to the first tab.
+  append --text "<s>" [--tab <id>]
+                          Append text to the end of the (first or --tab) tab.
+  apply <requests.json>   Escape hatch: apply a raw JSON array of Docs batchUpdate
+                          request objects (or {"requests":[...]}). Use for
+                          formatting, tables, etc.`;
+
 const [sub, ...rest] = process.argv.slice(2);
 const docSel = getFlag(rest, 'doc');
 
 try {
-  if (!sub || sub === 'help') {
-    console.log('Usage: edit-google-doc.ts <outline|find-replace|insert|append|apply> [--doc <alias|id>] ...');
+  if (!sub || sub === 'help' || sub === '--help' || sub === '-h' || rest.includes('--help') || rest.includes('-h')) {
+    console.log(HELP);
     process.exit(0);
   }
 
