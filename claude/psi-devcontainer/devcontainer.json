@@ -20,7 +20,8 @@
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_TELEMETRY": "1",
         "PSI_GITHUB_TOKEN": "${localEnv:PSI_GITHUB_TOKEN}",
-        "GH_TOKEN": "${localEnv:PSI_GITHUB_TOKEN}"
+        "GH_TOKEN": "${localEnv:PSI_GITHUB_TOKEN}",
+        "SSH_AUTH_SOCK": "/ssh-agent"
     },
     "mounts": [
         "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume",
@@ -28,7 +29,8 @@
         "source=${localEnv:HOME}/.dotfiles/claude/psi-devcontainer/CLAUDE.md,target=/home/node/.claude/CLAUDE.md,type=bind,readonly",
         "source=${localEnv:HOME}/.dotfiles/claude/CLAUDE.md,target=/home/node/.claude/host-CLAUDE.md,type=bind,readonly",
         "source=${localEnv:HOME}/projects/psi-product/.git,target=${localEnv:HOME}/projects/psi-product/.git,type=bind",
-        "source=${localEnv:HOME}/projects/drafts,target=/home/node/projects/drafts,type=bind"
+        "source=${localEnv:HOME}/projects/drafts,target=/home/node/projects/drafts,type=bind",
+        "source=/run/host-services/ssh-auth.sock,target=/ssh-agent-host,type=bind"
     ],
     "forwardPorts": [3000, 4000, 4500, 5001, 5002, 5010, 6006, 8081, 9001, 9099, 19000, 19001, 19006],
     "otherPortsAttributes": {

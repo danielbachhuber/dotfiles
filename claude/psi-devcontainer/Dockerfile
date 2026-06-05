@@ -46,7 +46,8 @@ RUN apt-get install -y lsof
 RUN apt-get update && apt-get install -y chromium
 
 # Sandbox tooling: sudo + the networking utilities init-firewall.sh relies on.
-RUN apt-get install -y sudo iptables ipset iproute2 dnsutils aggregate
+# socat republishes the forwarded host SSH agent socket for the node user.
+RUN apt-get install -y sudo iptables ipset iproute2 dnsutils aggregate socat
 
 # github cli client
 # https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian
@@ -100,6 +101,11 @@ RUN mkdir -p /home/node/.claude
 # .gitconfig isn't mounted. Matches the host identity.
 RUN git config --global user.name "Daniel Bachhuber" \
 	&& git config --global user.email "daniel@newpublic.org"
+# Pre-seed GitHub's SSH host keys so pushes over SSH (using the host agent
+# forwarded via SSH_AUTH_SOCK in devcontainer.json) don't fail host key
+# verification. Build-time network is unrestricted, so ssh-keyscan can reach it.
+RUN mkdir -p /home/node/.ssh && chmod 700 /home/node/.ssh \
+	&& ssh-keyscan github.com >> /home/node/.ssh/known_hosts 2>/dev/null
 RUN corepack prepare pnpm@11.1.2 --activate
 # --allow-build lets the @anthropic-ai/claude-code postinstall run; pnpm (v10+)
 # skips dependency build scripts by default, and that script installs the native

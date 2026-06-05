@@ -11,6 +11,22 @@
 set -euo pipefail  # Exit on error, undefined vars, and pipeline failures
 IFS=$'\n\t'       # Stricter word splitting
 
+# Republish the forwarded host SSH agent on a node-owned socket. The forwarded
+# socket (mounted at /ssh-agent-host via devcontainer.json) is owned by the host
+# uid and unreadable by the unprivileged node user; this script runs as root, so
+# socat can bridge it to /ssh-agent (SSH_AUTH_SOCK) for ssh/git. The private key
+# never enters the container — only signing is forwarded. Unix-socket only, so
+# the firewall rules below don't affect it. No-op when no agent is forwarded.
+SSH_AGENT_HOST_SOCK=/ssh-agent-host
+SSH_AGENT_NODE_SOCK=/ssh-agent
+if [ -S "$SSH_AGENT_HOST_SOCK" ]; then
+    rm -f "$SSH_AGENT_NODE_SOCK"
+    setsid socat "UNIX-LISTEN:$SSH_AGENT_NODE_SOCK,fork,user=node,mode=600" "UNIX-CONNECT:$SSH_AGENT_HOST_SOCK" >/dev/null 2>&1 &
+    echo "SSH agent republished at $SSH_AGENT_NODE_SOCK"
+else
+    echo "No forwarded SSH agent at $SSH_AGENT_HOST_SOCK; skipping agent proxy"
+fi
+
 # 1. Extract Docker DNS info BEFORE any flushing
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 
