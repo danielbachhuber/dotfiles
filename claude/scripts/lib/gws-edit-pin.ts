@@ -78,3 +78,35 @@ export function removePin(aliasOrId: string): boolean {
 export function clearPins(): void {
   writePins([]);
 }
+
+export function resolveTarget(type: PinType, aliasOrId?: string): Pin {
+  const pins = readPins().filter(p => p.type === type);
+  if (aliasOrId) {
+    const match = pins.find(p => p.alias === aliasOrId || p.id === aliasOrId);
+    if (!match) {
+      const opts = pins.map(p => p.alias).join(', ') || '(none)';
+      throw new Error(`No pinned ${type} matching "${aliasOrId}". Pinned ${type}s: ${opts}.`);
+    }
+    return match;
+  }
+  if (pins.length === 0) {
+    throw new Error(`No ${type} pinned this session. Run /edit-google <url> first.`);
+  }
+  if (pins.length > 1) {
+    const opts = pins.map(p => p.alias).join(', ');
+    throw new Error(`Multiple ${type}s pinned; specify --${type} <alias|id>. Options: ${opts}.`);
+  }
+  return pins[0];
+}
+
+export function parseGoogleUrl(input: string): { type: PinType | null; id: string } {
+  const doc = input.match(/document\/d\/([a-zA-Z0-9_-]+)/);
+  if (doc) return { type: 'doc', id: doc[1] };
+  const sheet = input.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (sheet) return { type: 'sheet', id: sheet[1] };
+  const bare = input.match(/^([a-zA-Z0-9_-]+)$/);
+  if (bare) return { type: null, id: bare[1] };
+  const generic = input.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (generic) return { type: null, id: generic[1] };
+  throw new Error(`Could not parse a Google file id from: ${input}`);
+}

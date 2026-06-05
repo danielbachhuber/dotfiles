@@ -69,3 +69,45 @@ test('removePin removes by alias or id', () => {
     assert.equal(removePin('nope'), false);
   });
 });
+
+import { resolveTarget, parseGoogleUrl } from './gws-edit-pin';
+
+test('resolveTarget returns the sole pin of a type when no selector', () => {
+  withPinFile(() => {
+    clearPins();
+    addPin({ type: 'doc', id: 'DOC1', title: 'Only Doc' });
+    assert.equal(resolveTarget('doc').id, 'DOC1');
+  });
+});
+
+test('resolveTarget matches by alias or id', () => {
+  withPinFile(() => {
+    clearPins();
+    addPin({ type: 'doc', id: 'DOC1', title: 'Alpha' });
+    addPin({ type: 'doc', id: 'DOC2', title: 'Beta' });
+    assert.equal(resolveTarget('doc', 'beta').id, 'DOC2');
+    assert.equal(resolveTarget('doc', 'DOC1').id, 'DOC1');
+  });
+});
+
+test('resolveTarget throws when ambiguous', () => {
+  withPinFile(() => {
+    clearPins();
+    addPin({ type: 'doc', id: 'DOC1', title: 'Alpha' });
+    addPin({ type: 'doc', id: 'DOC2', title: 'Beta' });
+    assert.throws(() => resolveTarget('doc'), /Multiple docs pinned/);
+  });
+});
+
+test('resolveTarget throws when none pinned', () => {
+  withPinFile(() => {
+    clearPins();
+    assert.throws(() => resolveTarget('sheet'), /No sheet pinned/);
+  });
+});
+
+test('parseGoogleUrl detects docs, sheets, and bare ids', () => {
+  assert.deepEqual(parseGoogleUrl('https://docs.google.com/document/d/ABC_1/edit'), { type: 'doc', id: 'ABC_1' });
+  assert.deepEqual(parseGoogleUrl('https://docs.google.com/spreadsheets/d/XYZ-2/edit#gid=0'), { type: 'sheet', id: 'XYZ-2' });
+  assert.deepEqual(parseGoogleUrl('ABC123'), { type: null, id: 'ABC123' });
+});
