@@ -4,7 +4,9 @@ import { gwsJson, runGws } from './lib/gws';
 import { resolveTarget } from './lib/gws-edit-pin';
 import {
   buildOutline, collectTabs, selectTab, findIndexAfterHeading, appendIndex,
-  buildFindReplaceRequests, buildInsertTextRequests,
+  lastParagraphText, normalizeStyle,
+  buildFindReplaceRequests, buildInsertTextRequests, buildParagraphStyleRequests,
+  buildBulletRequests, buildDeleteRequests, parseMarkdownToBlocks, buildMarkdownRequests,
 } from './lib/gws-doc-edit';
 
 function fail(msg: string): never {
@@ -61,9 +63,23 @@ Commands:
                           index (from \`outline\`). Defaults to the first tab.
   append --text "<s>" [--tab <id>]
                           Append text to the end of the (first or --tab) tab.
+  markdown --text "<md>" [--after-heading "<h>" | --index <n>] [--tab <id>]
+                          Insert Markdown with formatting: # / ## headings, - / *
+                          bullets, 1. numbered lists, **bold**, *italic*, \`code\`,
+                          [text](url). Default appends to the end of the tab; styles
+                          each paragraph explicitly so nothing inherits a heading
+                          style. Use --file <path> instead of --text to read a file.
+  style --index <n> [--end <m>] --as <h1..h6|normal|title|HEADING_2|...>
+                          Set the paragraph style on a paragraph (or the range
+                          --index..--end, from \`outline\`).
+  bullets --start <n> --end <m> [--ordered] [--tab <id>]
+                          Turn the paragraphs in a range into a bulleted (or, with
+                          --ordered, numbered) list.
+  delete --start <n> --end <m> [--tab <id>]
+                          Delete the content in an index range (from \`outline\`).
   apply <requests.json>   Escape hatch: apply a raw JSON array of Docs batchUpdate
                           request objects (or {"requests":[...]}). Use for
-                          formatting, tables, etc.`;
+                          tables and anything not covered above.`;
 
 const [sub, ...rest] = process.argv.slice(2);
 const docSel = getFlag(rest, 'doc');
@@ -119,6 +135,76 @@ try {
     const pin = resolveTarget('doc', docSel);
     const tab = selectTab(collectTabs(fetchDoc(pin.id)), getFlag(rest, 'tab'));
     applyBatch(pin.id, buildInsertTextRequests(appendIndex(tab), text, tab.tabId));
+    process.exit(0);
+  }
+
+  if (sub === 'markdown' || sub === 'md') {
+    let text = getFlag(rest, 'text');
+    const file = getFlag(rest, 'file');
+    if (text === undefined && file !== undefined) text = readFileSync(file, 'utf-8');
+    if (text === undefined) fail('markdown requires --text "<md>" or --file <path>');
+    const blocks = parseMarkdownToBlocks(text);
+    if (blocks.length === 0) fail('markdown produced no content.');
+    const pin = resolveTarget('doc', docSel);
+    const tab = selectTab(collectTabs(fetchDoc(pin.id)), getFlag(rest, 'tab'));
+    const heading = getFlag(rest, 'after-heading');
+    const idxFlag = getFlag(rest, 'index');
+    let index: number;
+    let opts: { leadingBreak?: boolean; trailingNewline?: boolean };
+    if (heading !== undefined) {
+      index = findIndexAfterHeading(tab, heading);
+      opts = { trailingNewline: true };
+    } else if (idxFlag !== undefined) {
+      index = parseInt(idxFlag, 10);
+      if (Number.isNaN(index)) fail('--index must be a number');
+      opts = { trailingNewline: true };
+    } else {
+      index = appendIndex(tab);
+      opts = { leadingBreak: lastParagraphText(tab).length > 0 };
+    }
+    applyBatch(pin.id, buildMarkdownRequests(blocks, index, tab.tabId, opts));
+    process.exit(0);
+  }
+
+  if (sub === 'style') {
+    const idxFlag = getFlag(rest, 'index');
+    const as = getFlag(rest, 'as');
+    if (idxFlag === undefined) fail('style requires --index <n>');
+    if (as === undefined) fail('style requires --as <style>');
+    const start = parseInt(idxFlag, 10);
+    if (Number.isNaN(start)) fail('--index must be a number');
+    const endFlag = getFlag(rest, 'end');
+    const end = endFlag !== undefined ? parseInt(endFlag, 10) : start + 1;
+    if (Number.isNaN(end)) fail('--end must be a number');
+    const pin = resolveTarget('doc', docSel);
+    const tab = selectTab(collectTabs(fetchDoc(pin.id)), getFlag(rest, 'tab'));
+    applyBatch(pin.id, buildParagraphStyleRequests(start, end, normalizeStyle(as), tab.tabId));
+    process.exit(0);
+  }
+
+  if (sub === 'bullets') {
+    const startFlag = getFlag(rest, 'start');
+    const endFlag = getFlag(rest, 'end');
+    if (startFlag === undefined || endFlag === undefined) fail('bullets requires --start <n> --end <m>');
+    const start = parseInt(startFlag, 10);
+    const end = parseInt(endFlag, 10);
+    if (Number.isNaN(start) || Number.isNaN(end)) fail('--start and --end must be numbers');
+    const pin = resolveTarget('doc', docSel);
+    const tab = selectTab(collectTabs(fetchDoc(pin.id)), getFlag(rest, 'tab'));
+    applyBatch(pin.id, buildBulletRequests(start, end, hasFlag(rest, 'ordered'), tab.tabId));
+    process.exit(0);
+  }
+
+  if (sub === 'delete') {
+    const startFlag = getFlag(rest, 'start');
+    const endFlag = getFlag(rest, 'end');
+    if (startFlag === undefined || endFlag === undefined) fail('delete requires --start <n> --end <m>');
+    const start = parseInt(startFlag, 10);
+    const end = parseInt(endFlag, 10);
+    if (Number.isNaN(start) || Number.isNaN(end)) fail('--start and --end must be numbers');
+    const pin = resolveTarget('doc', docSel);
+    const tab = selectTab(collectTabs(fetchDoc(pin.id)), getFlag(rest, 'tab'));
+    applyBatch(pin.id, buildDeleteRequests(start, end, tab.tabId));
     process.exit(0);
   }
 
