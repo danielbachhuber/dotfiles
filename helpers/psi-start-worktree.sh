@@ -1,20 +1,47 @@
 #!/bin/bash
 
 # Script to create a git worktree, start client and Storybook, and open editor
-# Usage: psi-start-worktree.sh <branch-name>
+# Usage: psi-start-worktree.sh <branch-name | pr-number | pr-url>
+#
+# Given a branch name, creates (or reuses) a worktree for that branch. Given a
+# bare PR number or a GitHub PR URL, resolves the PR's head branch and checks it
+# out into a worktree via `gh pr checkout` (handles fork PRs and push tracking).
 
 set -e
 
 PSI_PROJECT_DIR="$HOME/projects/psi-product"
 
-# Check if branch name is provided
+# Check if an argument is provided
 if [ -z "$1" ]; then
-    echo "Error: Branch name required"
-    echo "Usage: $0 <branch-name>"
+    echo "Error: Branch name, PR number, or PR URL required"
+    echo "Usage: $0 <branch-name | pr-number | pr-url>"
     exit 1
 fi
 
-BRANCH_NAME="$1"
+# Detect whether the argument is a pull request (a bare number or a GitHub PR
+# URL). For a PR we resolve its head branch name up front so the worktree
+# directory is named after the branch, just like the branch-name case.
+IS_PR=false
+PR_NUMBER=""
+if [[ "$1" =~ ^[0-9]+$ ]]; then
+    PR_NUMBER="$1"
+elif [[ "$1" =~ ^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+) ]]; then
+    PR_NUMBER="${BASH_REMATCH[1]}"
+fi
+
+if [ -n "$PR_NUMBER" ]; then
+    IS_PR=true
+    echo "Resolving PR #$PR_NUMBER..."
+    BRANCH_NAME=$(gh pr view "$PR_NUMBER" --repo wearenewpublic/psi-product --json headRefName -q .headRefName)
+    if [ -z "$BRANCH_NAME" ]; then
+        echo "Error: could not resolve head branch for PR #$PR_NUMBER"
+        exit 1
+    fi
+    echo "PR #$PR_NUMBER head branch: $BRANCH_NAME"
+else
+    BRANCH_NAME="$1"
+fi
+
 # Sanitize branch name for directory and file names (replace / with -)
 SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
 WORKTREE_DIR="$HOME/projects/psi-product-$SAFE_BRANCH_NAME"
@@ -32,37 +59,55 @@ find_available_port() {
 # Navigate to main project directory
 cd "$PSI_PROJECT_DIR"
 
-# Check if branch exists locally
-if git show-ref --verify --quiet refs/heads/"$BRANCH_NAME"; then
-    echo "Branch $BRANCH_NAME exists locally, reusing it"
-    BRANCH_EXISTS=true
+if [ "$IS_PR" = true ]; then
+    # PR mode: create a detached worktree at the current HEAD, then let
+    # `gh pr checkout` switch it onto the PR's head branch from inside the
+    # worktree. This handles fork PRs (using/adding the right remote) and sets
+    # up push tracking, while leaving us in a worktree rather than a branch in
+    # the main checkout.
+    if [ -d "$WORKTREE_DIR" ]; then
+        echo "Worktree directory $WORKTREE_DIR already exists"
+        cd "$WORKTREE_DIR"
+    else
+        echo "Creating detached worktree for PR #$PR_NUMBER"
+        git worktree add --detach "$WORKTREE_DIR"
+        cd "$WORKTREE_DIR"
+        echo "Checking out PR #$PR_NUMBER ($BRANCH_NAME)"
+        gh pr checkout "$PR_NUMBER" --repo wearenewpublic/psi-product
+    fi
 else
-    # Check if branch exists on remote
-    if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
-        echo "Branch $BRANCH_NAME exists on remote, fetching it"
-        git fetch origin "$BRANCH_NAME:$BRANCH_NAME"
+    # Check if branch exists locally
+    if git show-ref --verify --quiet refs/heads/"$BRANCH_NAME"; then
+        echo "Branch $BRANCH_NAME exists locally, reusing it"
         BRANCH_EXISTS=true
     else
-        echo "Branch $BRANCH_NAME does not exist, will create it"
-        BRANCH_EXISTS=false
+        # Check if branch exists on remote
+        if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+            echo "Branch $BRANCH_NAME exists on remote, fetching it"
+            git fetch origin "$BRANCH_NAME:$BRANCH_NAME"
+            BRANCH_EXISTS=true
+        else
+            echo "Branch $BRANCH_NAME does not exist, will create it"
+            BRANCH_EXISTS=false
+        fi
     fi
-fi
 
-# Create worktree
-if [ -d "$WORKTREE_DIR" ]; then
-    echo "Worktree directory $WORKTREE_DIR already exists"
-else
-    if [ "$BRANCH_EXISTS" = true ]; then
-        echo "Creating worktree for existing branch $BRANCH_NAME"
-        git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+    # Create worktree
+    if [ -d "$WORKTREE_DIR" ]; then
+        echo "Worktree directory $WORKTREE_DIR already exists"
     else
-        echo "Creating worktree with new branch $BRANCH_NAME"
-        git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+        if [ "$BRANCH_EXISTS" = true ]; then
+            echo "Creating worktree for existing branch $BRANCH_NAME"
+            git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+        else
+            echo "Creating worktree with new branch $BRANCH_NAME"
+            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+        fi
     fi
-fi
 
-# Change to worktree directory
-cd "$WORKTREE_DIR"
+    # Change to worktree directory
+    cd "$WORKTREE_DIR"
+fi
 
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
