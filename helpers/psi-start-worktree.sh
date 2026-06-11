@@ -1,11 +1,15 @@
 #!/bin/bash
 
 # Script to create a git worktree, start client and Storybook, and open editor
-# Usage: psi-start-worktree.sh <branch-name | pr-number | pr-url>
+# Usage: psi-start-worktree.sh <branch-name | pr-number | pr-url> [base-ref]
 #
-# Given a branch name, creates (or reuses) a worktree for that branch. Given a
-# bare PR number or a GitHub PR URL, resolves the PR's head branch and checks it
-# out into a worktree via `gh pr checkout` (handles fork PRs and push tracking).
+# Given a branch name, creates (or reuses) a worktree for that branch. When the
+# branch is new, it is based on [base-ref] if given, otherwise on the branch of
+# the worktree this script was invoked from (so `wts foo` run from a feature
+# worktree branches off that feature), falling back to the main checkout's HEAD.
+# Given a bare PR number or a GitHub PR URL, resolves the PR's head branch and
+# checks it out into a worktree via `gh pr checkout` (handles fork PRs and push
+# tracking); [base-ref] is ignored in that case.
 
 set -e
 
@@ -14,8 +18,25 @@ PSI_PROJECT_DIR="$HOME/projects/psi-product"
 # Check if an argument is provided
 if [ -z "$1" ]; then
     echo "Error: Branch name, PR number, or PR URL required"
-    echo "Usage: $0 <branch-name | pr-number | pr-url>"
+    echo "Usage: $0 <branch-name | pr-number | pr-url> [base-ref]"
     exit 1
+fi
+
+# Optional explicit base ref for a brand-new branch.
+BASE_REF_ARG="$2"
+
+# Capture the branch of the worktree this script was invoked from, so a new
+# branch can be based on it. Only trust it when we're inside the PSI repo (a
+# shared worktree), not some unrelated git repo we happened to be standing in.
+# Must run before we cd into the main checkout below.
+INVOKING_BRANCH=""
+INVOKING_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+PSI_COMMON_DIR=$(git -C "$PSI_PROJECT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+if [ -n "$INVOKING_COMMON_DIR" ] && [ "$INVOKING_COMMON_DIR" = "$PSI_COMMON_DIR" ]; then
+    _invoking_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    if [ -n "$_invoking_branch" ] && [ "$_invoking_branch" != "HEAD" ]; then
+        INVOKING_BRANCH="$_invoking_branch"
+    fi
 fi
 
 # Detect whether the argument is a pull request (a bare number or a GitHub PR
@@ -100,8 +121,20 @@ else
             echo "Creating worktree for existing branch $BRANCH_NAME"
             git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
         else
-            echo "Creating worktree with new branch $BRANCH_NAME"
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+            # Base a brand-new branch on the explicit base ref, else the branch
+            # of the worktree we were invoked from, else the main checkout HEAD.
+            if [ -n "$BASE_REF_ARG" ]; then
+                BASE_REF="$BASE_REF_ARG"
+            else
+                BASE_REF="$INVOKING_BRANCH"
+            fi
+            if [ -n "$BASE_REF" ]; then
+                echo "Creating worktree with new branch $BRANCH_NAME based on $BASE_REF"
+                git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$BASE_REF"
+            else
+                echo "Creating worktree with new branch $BRANCH_NAME"
+                git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+            fi
         fi
     fi
 
