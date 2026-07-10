@@ -202,6 +202,8 @@ export interface MdBlock {
   text: string;
   style: string;
   list: 'bullet' | 'number' | null;
+  /** Nesting depth for list items (0 = top level), from the markdown's leading indentation. */
+  depth: number;
   runs: InlineRun[];
 }
 
@@ -238,6 +240,16 @@ function parseInline(src: string): { clean: string; runs: InlineRun[] } {
   return { clean, runs };
 }
 
+/** Max list nesting depth Google Docs' default bullet presets define (levels 0..8). */
+const MAX_LIST_DEPTH = 8;
+
+/** Nesting depth from a list item's leading whitespace: one level per tab, or per two spaces. */
+function indentDepth(indent: string): number {
+  let depth = 0;
+  for (const ch of indent) depth += ch === '\t' ? 1 : 0.5; // 1 tab or 2 spaces == one level
+  return Math.min(MAX_LIST_DEPTH, Math.floor(depth));
+}
+
 /** Parse a markdown string into paragraph blocks. Blank lines separate; each non-blank line is a paragraph. */
 export function parseMarkdownToBlocks(md: string): MdBlock[] {
   const blocks: MdBlock[] = [];
@@ -247,16 +259,16 @@ export function parseMarkdownToBlocks(md: string): MdBlock[] {
     let m: RegExpMatchArray | null;
     if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
       const { clean, runs } = parseInline(m[2].trim());
-      blocks.push({ text: clean, style: `HEADING_${m[1].length}`, list: null, runs });
-    } else if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) {
-      const { clean, runs } = parseInline(m[1]);
-      blocks.push({ text: clean, style: 'NORMAL_TEXT', list: 'bullet', runs });
-    } else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
-      const { clean, runs } = parseInline(m[1]);
-      blocks.push({ text: clean, style: 'NORMAL_TEXT', list: 'number', runs });
+      blocks.push({ text: clean, style: `HEADING_${m[1].length}`, list: null, depth: 0, runs });
+    } else if ((m = line.match(/^([ \t]*)[-*+]\s+(.*)$/))) {
+      const { clean, runs } = parseInline(m[2]);
+      blocks.push({ text: clean, style: 'NORMAL_TEXT', list: 'bullet', depth: indentDepth(m[1]), runs });
+    } else if ((m = line.match(/^([ \t]*)\d+[.)]\s+(.*)$/))) {
+      const { clean, runs } = parseInline(m[2]);
+      blocks.push({ text: clean, style: 'NORMAL_TEXT', list: 'number', depth: indentDepth(m[1]), runs });
     } else {
       const { clean, runs } = parseInline(line);
-      blocks.push({ text: clean, style: 'NORMAL_TEXT', list: null, runs });
+      blocks.push({ text: clean, style: 'NORMAL_TEXT', list: null, depth: 0, runs });
     }
   }
   return blocks;
@@ -267,32 +279,51 @@ export function parseMarkdownToBlocks(md: string): MdBlock[] {
  * paragraph styles, lists, and inline formatting. `leadingBreak` prepends a newline so
  * appended content starts a fresh paragraph; `trailingNewline` terminates the final block
  * so it stays separate from following content (use when inserting before existing paragraphs).
+ *
+ * Nesting: a list item's `depth` is encoded as that many leading tab characters in the
+ * inserted text. `createParagraphBullets` sets each paragraph's nesting level from its
+ * leading tabs and then strips them — this is the only reliable lever for nested lists
+ * (paragraph `indentStart` does not drive nesting level, and a magnitude of 0 is dropped).
+ * Because that strip shifts indices, the bullet requests are emitted last and in descending
+ * order so each range stays valid; the earlier style requests run against the tab-prefixed
+ * text, and their styles ride along with the characters when the tabs are removed.
+ *
+ * `nestUnder` is the start index of an existing top-level (level 0) bullet immediately before
+ * `startIndex`. When set, every inserted list item is pushed one level deeper and that anchor
+ * paragraph joins the first bullet group, so `createParagraphBullets` keeps the anchor at level
+ * 0 and nests the fragment beneath it (the only way to beat the "shallowest item becomes level
+ * 0" normalization). The anchor is re-bulleted with the same preset, so it must already be a
+ * level-0 bullet or it would be flattened to one.
  */
 export function buildMarkdownRequests(
   blocks: MdBlock[],
   startIndex: number,
   tabId: string | null,
-  opts: { leadingBreak?: boolean; trailingNewline?: boolean } = {},
+  opts: { leadingBreak?: boolean; trailingNewline?: boolean; nestUnder?: number } = {},
 ) {
   if (blocks.length === 0) return [];
+  const extraDepth = opts.nestUnder != null ? 1 : 0;
+  const tabsFor = (b: MdBlock) => (b.list ? '\t'.repeat(b.depth + extraDepth) : '');
   const lead = opts.leadingBreak ? '\n' : '';
-  const text = lead + blocks.map(b => b.text).join('\n') + (opts.trailingNewline ? '\n' : '');
+  const text = lead + blocks.map(b => tabsFor(b) + b.text).join('\n') + (opts.trailingNewline ? '\n' : '');
   const requests: any[] = [{ insertText: { location: locationFor(startIndex, tabId), text } }];
 
   let cursor = startIndex + lead.length;
   const placed = blocks.map(b => {
-    const start = cursor;
-    cursor += b.text.length + 1; // text + the joining newline
-    return { b, start };
+    const tabs = tabsFor(b).length;
+    const start = cursor;           // start of the tab prefix
+    const textStart = start + tabs; // start of the visible text
+    cursor += tabs + b.text.length + 1; // tabs + text + the joining newline
+    return { b, start, textStart };
   });
 
   // Explicit paragraph style for every block — guards against inheriting the insertion point's style.
-  for (const { b, start } of placed) {
-    requests.push(...buildParagraphStyleRequests(start, start + b.text.length + 1, b.style, tabId));
+  for (const { b, start, textStart } of placed) {
+    requests.push(...buildParagraphStyleRequests(start, textStart + b.text.length + 1, b.style, tabId));
   }
 
-  // Inline text styling.
-  for (const { b, start } of placed) {
+  // Inline text styling (offsets are relative to the visible text, past the tab prefix).
+  for (const { b, textStart } of placed) {
     for (const run of b.runs) {
       const textStyle: any = {};
       const fields: string[] = [];
@@ -303,7 +334,7 @@ export function buildMarkdownRequests(
       if (!fields.length) continue;
       requests.push({
         updateTextStyle: {
-          range: rangeFor(start + run.start, start + run.end, tabId),
+          range: rangeFor(textStart + run.start, textStart + run.end, tabId),
           textStyle,
           fields: fields.join(','),
         },
@@ -311,7 +342,10 @@ export function buildMarkdownRequests(
     }
   }
 
-  // Bullets/numbers over contiguous runs of same-type list blocks.
+  // Bullets/numbers over contiguous runs of same-type list blocks. Collect first, then emit
+  // in descending start order so createParagraphBullets stripping tabs never shifts a range
+  // we haven't applied yet.
+  const bulletGroups: { start: number; end: number; ordered: boolean }[] = [];
   let i = 0;
   while (i < placed.length) {
     const lt = placed[i].b.list;
@@ -319,9 +353,15 @@ export function buildMarkdownRequests(
     let j = i;
     while (j + 1 < placed.length && placed[j + 1].b.list === lt) j++;
     const runStart = placed[i].start;
-    const runEnd = placed[j].start + placed[j].b.text.length + 1;
-    requests.push(...buildBulletRequests(runStart, runEnd, lt === 'number', tabId));
+    const runEnd = placed[j].textStart + placed[j].b.text.length + 1;
+    bulletGroups.push({ start: runStart, end: runEnd, ordered: lt === 'number' });
     i = j + 1;
+  }
+  // Extend the first (document-order) group back over the anchor so it becomes the group's
+  // level-0 baseline and the inserted items nest under it.
+  if (opts.nestUnder != null && bulletGroups.length) bulletGroups[0].start = opts.nestUnder;
+  for (const g of bulletGroups.sort((a, b) => b.start - a.start)) {
+    requests.push(...buildBulletRequests(g.start, g.end, g.ordered, tabId));
   }
 
   return requests;

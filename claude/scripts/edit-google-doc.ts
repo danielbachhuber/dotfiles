@@ -66,9 +66,13 @@ Commands:
   markdown --text "<md>" [--after-heading "<h>" | --index <n>] [--tab <id>]
                           Insert Markdown with formatting: # / ## headings, - / *
                           bullets, 1. numbered lists, **bold**, *italic*, \`code\`,
-                          [text](url). Default appends to the end of the tab; styles
+                          [text](url). Indent nested bullets with a tab or two spaces
+                          per level. Default appends to the end of the tab; styles
                           each paragraph explicitly so nothing inherits a heading
                           style. Use --file <path> instead of --text to read a file.
+                          Add --nest-under-previous (with --index/--after-heading) to
+                          nest the fragment under the top-level bullet right before the
+                          insertion point instead of starting a new top-level list.
   style --index <n> [--end <m>] --as <h1..h6|normal|title|HEADING_2|...>
                           Set the paragraph style on a paragraph (or the range
                           --index..--end, from \`outline\`).
@@ -150,7 +154,7 @@ try {
     const heading = getFlag(rest, 'after-heading');
     const idxFlag = getFlag(rest, 'index');
     let index: number;
-    let opts: { leadingBreak?: boolean; trailingNewline?: boolean };
+    let opts: { leadingBreak?: boolean; trailingNewline?: boolean; nestUnder?: number };
     if (heading !== undefined) {
       index = findIndexAfterHeading(tab, heading);
       opts = { trailingNewline: true };
@@ -161,6 +165,14 @@ try {
     } else {
       index = appendIndex(tab);
       opts = { leadingBreak: lastParagraphText(tab).length > 0 };
+    }
+    if (hasFlag(rest, 'nest-under-previous')) {
+      const prev = tab.content.find((p: any) => p.endIndex === index && p.paragraph?.bullet);
+      if (!prev) fail('--nest-under-previous: the paragraph before the insertion point is not a bullet.');
+      if (prev.paragraph.bullet.nestingLevel) {
+        fail('--nest-under-previous: the preceding bullet must be top-level (level 0); nesting under a deeper bullet is not supported.');
+      }
+      opts.nestUnder = prev.startIndex;
     }
     applyBatch(pin.id, buildMarkdownRequests(blocks, index, tab.tabId, opts));
     process.exit(0);

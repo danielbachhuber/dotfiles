@@ -1,7 +1,7 @@
 // claude/scripts/lib/gws-doc-edit.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { collectTabs, buildOutline } from './gws-doc-edit';
+import { collectTabs, buildOutline, parseMarkdownToBlocks, buildMarkdownRequests } from './gws-doc-edit';
 
 const BODY_DOC = {
   documentId: 'DOC1',
@@ -117,4 +117,43 @@ test('findIndexAfterHeading error lists available headings', () => {
 test('appendIndex returns the position before the final newline', () => {
   const tab = selectTab(collectTabs(BODY_DOC));
   assert.equal(appendIndex(tab), 29);
+});
+
+test('parseMarkdownToBlocks records nesting depth from tabs and spaces', () => {
+  const blocks = parseMarkdownToBlocks('- top\n  - two-space child\n\t- tab child\n    - four-space grandchild');
+  assert.deepEqual(blocks.map(b => b.depth), [0, 1, 1, 2]);
+  assert.deepEqual(blocks.map(b => b.text), ['top', 'two-space child', 'tab child', 'four-space grandchild']);
+});
+
+test('buildMarkdownRequests prefixes nested bullets with tabs so createParagraphBullets nests them', () => {
+  const blocks = parseMarkdownToBlocks('- name\n  - detail');
+  const reqs = buildMarkdownRequests(blocks, 10, 't.0');
+  // Inserted text carries one tab on the nested item; createParagraphBullets strips it later.
+  assert.equal(reqs[0].insertText.text, 'name\n\tdetail');
+  assert.equal(reqs[0].insertText.location.index, 10);
+  // Exactly one bullet group spanning both paragraphs.
+  const bullets = reqs.filter(r => r.createParagraphBullets);
+  assert.equal(bullets.length, 1);
+  assert.equal(bullets[0].createParagraphBullets.range.startIndex, 10);
+});
+
+test('buildMarkdownRequests nestUnder pushes items one level deeper and anchors on the previous bullet', () => {
+  const blocks = parseMarkdownToBlocks('- name\n  - detail');
+  const reqs = buildMarkdownRequests(blocks, 20, 't.0', { nestUnder: 11 });
+  // Both items gain one extra tab: name -> 1 tab (level 1), detail -> 2 tabs (level 2).
+  assert.equal(reqs[0].insertText.text, '\tname\n\t\tdetail');
+  const bullets = reqs.filter(r => r.createParagraphBullets);
+  assert.equal(bullets.length, 1);
+  // The bullet range starts at the anchor (11), not the first inserted paragraph (20).
+  assert.equal(bullets[0].createParagraphBullets.range.startIndex, 11);
+});
+
+test('buildMarkdownRequests links land past the tab prefix on nested items', () => {
+  const blocks = parseMarkdownToBlocks('  - [Person](https://example.com/p)');
+  const reqs = buildMarkdownRequests(blocks, 100, null);
+  const link = reqs.find(r => r.updateTextStyle?.textStyle?.link);
+  // One leading tab (depth 1) sits before "Person", so the link starts at 101, not 100.
+  assert.equal(link.updateTextStyle.range.startIndex, 101);
+  assert.equal(link.updateTextStyle.range.endIndex, 101 + 'Person'.length);
+  assert.equal(link.updateTextStyle.textStyle.link.url, 'https://example.com/p');
 });
