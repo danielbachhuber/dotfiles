@@ -231,7 +231,7 @@ echo "Copying necessary ignored files"
 cp "$PSI_PROJECT_DIR/server/.env" "$WORKTREE_DIR/server/.env"
 
 echo "Setting up e2e-tests/.env"
-cp "$WORKTREE_DIR/e2e-tests/.env.local.example" "$WORKTREE_DIR/e2e-tests/.env"
+cp "$WORKTREE_DIR/e2e-tests/.env.example" "$WORKTREE_DIR/e2e-tests/.env"
 # Point the e2e tests at this worktree's client port (the server is shared with the main repo).
 sed -i '' "s|^CLIENT_BASE_URL=.*|CLIENT_BASE_URL=http://localhost:$CLIENT_PORT|" "$WORKTREE_DIR/e2e-tests/.env"
 # The e2e tests must authenticate with the same PUPPET_SECRET the server is running with.
