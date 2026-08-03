@@ -1,5 +1,16 @@
 # CLAUDE.md
 
+## Writing
+
+- When drafting GitHub issues, comments, or pull request descriptions on my behalf, use ASD-STE100 Simplified Technical English as much as possible.
+- When writing generally, use Orwell's rules:
+    - Never use a metaphor, simile, or other figure of speech which you are used to seeing in print.
+    - Never use a long word where a short one will do.
+    - If it is possible to cut a word out, always cut it out.
+    - Never use the passive where you can use the active.
+    - Never use a foreign phrase, a scientific word, or a jargon word if you can think of an everyday English equivalent.
+    - Break any of these rules sooner than say anything outright barbarous.
+
 ## Pull Requests
 
 - When editing a pull request description, make sure to first fetch the existing description. I may have edited it in the interim and it's frustrating to have my edits blown away.
