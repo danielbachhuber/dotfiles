@@ -1,8 +1,10 @@
 # CLAUDE.md
 
+When talking to me, always use ASD-STE100 Simplified Technical English and like I have ADHD.
+
 ## Writing
 
-- When drafting GitHub issues, comments, or pull request descriptions on my behalf, use ASD-STE100 Simplified Technical English as much as possible.
+- When drafting GitHub issues, comments, or pull request descriptions on my behalf, use ASD-STE100 Simplified Technical English as much as possible. Assume the reader has ADHD.
 - When writing generally, use Orwell's rules:
     - Never use a metaphor, simile, or other figure of speech which you are used to seeing in print.
     - Never use a long word where a short one will do.
