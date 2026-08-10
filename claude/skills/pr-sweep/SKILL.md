@@ -127,6 +127,10 @@ has any entry. Drafts are exempt. Two traps:
 
 ## 4. Work the queue, one PR at a time
 
+**Re-fetch step 1 before starting.** A table built minutes ago is already out of date: reviewers get
+assigned, runs finish, new PRs appear. Acting on a stale row wastes the user's time telling them about
+a problem they already fixed.
+
 After the table, offer to work through it. Take one PR, finish or park it, then stop and ask before
 starting the next. Never open two PRs at once, and never apply the same fix across several PRs in one
 step, however similar they look. Incremental means the user sees each PR resolve before the next one
@@ -148,9 +152,7 @@ begins.
 1. **Show the evidence.** The failed log, the thread bodies, the conflicting files. Never propose work
    from a table row alone; the row says a problem exists, not what it is.
 2. **Propose one action** in a sentence or two, then wait for a yes.
-3. **Work in a worktree** for that PR's branch, via the `EnterWorktree` tool. Do not run
-   `gh pr checkout` in the user's main checkout: it switches their branch under them and strands
-   whatever they had in progress. Edit at the worktree path, not the original.
+3. **Work in a worktree** if the PR needs a code change. See the rules below.
 4. **Make the change**, then run the checks that cover it, following the repo's own agent
    instructions. One heavy command at a time.
 5. **Show the diff and stop.** Leave the work uncommitted for review. Do not commit as a side effect
@@ -164,15 +166,42 @@ begins.
 resolving a thread, re-running CI, editing the PR body, or merging. Approval on one PR is not approval
 for the next one.
 
+### Every code change happens in a worktree
+
+**Never `gh pr checkout` or `git checkout` in the user's own checkout.** It switches their branch
+under them and strands whatever they had in progress. Use the `EnterWorktree` tool, one worktree per
+PR, and `ExitWorktree` when that PR is done.
+
+- **Edit at the worktree path**, not the original repo path. The paths look alike, and editing the
+  original silently puts the change on the wrong branch.
+- **A PR needing no code edit needs no worktree.** Re-running CI and assigning a reviewer are API
+  calls against a PR number. Do not create a worktree to run a `gh` command.
+- **A fresh worktree carries only tracked files.** Tests that read untracked local config, such as
+  `.env` files, fail there until those files are copied across from the main checkout. Copy them
+  rather than concluding the branch is broken.
+- **Finish one worktree before opening the next.** Parallel worktrees running the same heavy test
+  suite will thrash the machine.
+
 ### Per-problem playbooks
 
-**Cancelled CI.** Usually a superseded or manually stopped run, not a code problem. Confirm the run
-id belongs to the PR's head commit, then offer a re-run:
+**Cancelled CI.** Usually a superseded or manually stopped run, not a code problem. Prove that before
+offering a re-run, because a re-run of a genuinely broken build just wastes ten minutes:
 
 ```bash
-gh pr checks <n>
+gh run view <run-id> --json headSha,conclusion,event    # does it match the PR head?
+gh run list --branch <branch> --workflow <name> --limit 5   # did a newer run supersede it?
+gh run view <run-id> --job <job-id> --log | grep -iE "error|cancel" | tail
+```
+
+The log settles it. A job killed mid-command shows its command running and then
+`##[error]The operation was canceled`, with no errors of its own. Then re-run only the bad jobs:
+
+```bash
 gh run rerun <run-id> --failed
 ```
+
+**`gh pr checks` prints `CANCELLED` as `fail`.** Trusting that display sends you hunting a bug that
+does not exist. The rollup's `conclusion` field is authoritative.
 
 **No reviewer.** Read `EXPERTS.md` at the repo root if it exists. Match the PR's Conventional Commit
 scope and its changed paths to a subsystem row, then name one person and the row that put them there,
@@ -241,7 +270,12 @@ Resolve, run the checks, show the diff, then push after approval.
 | Using `reviewDecision` alone for feedback | It stays `REVIEW_REQUIRED` for comment-only reviews. Check `latestReviews` states too. |
 | Treating every open thread as work | Some are praise or already answered by a later push. Read the bodies. |
 | Working several PRs in one step | One PR, then stop and ask. The user watches each one resolve. |
+| Working the queue off a stale table | Re-fetch first. Reviewers and runs change between sweeps. |
+| Trusting `gh pr checks` on a cancelled job | It prints `fail`. Read the rollup `conclusion` instead. |
+| Re-running CI without reading the log | Prove the job was killed, not broken, or the re-run repeats it. |
 | `gh pr checkout` in the user's checkout | Switches their branch under them. Use a worktree. |
+| Editing the original path while a worktree is open | The change lands on the wrong branch. Edit at the worktree path. |
+| Opening a worktree to run a `gh` command | Re-runs and reviewer edits need no checkout at all. |
 | Committing as soon as the edit is done | Show the diff and stop. Commit after approval. |
 | Amending or force-pushing a pushed commit | Corrections go on top as a new commit. |
 | Replying to a thread before pushing | Push first so the reply can cite the SHA. |
