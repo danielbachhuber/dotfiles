@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "revised": {
+      "type": "string",
+      "description": "The full edited text, ready to replace the original file contents."
+    },
+    "notes": {
+      "type": "array",
+      "description": "Substantive edits only. Skip punctuation and single-word swaps.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "before": { "type": "string", "description": "Short quote from the original." },
+          "after": { "type": "string", "description": "The replacement." },
+          "why": { "type": "string", "description": "One short sentence." }
+        },
+        "required": ["before", "after", "why"],
+        "additionalProperties": false
+      }
+    },
+    "questions": {
+      "type": "array",
+      "description": "Things you could not fix without knowing more. Empty array if none.",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["revised", "notes", "questions"],
+  "additionalProperties": false
+}
