@@ -15,9 +15,15 @@ def trunc(n): if (. | length) > n then (.[0:n] + "…") else . end;
   # Both signals are needed. reviewDecision misses comment-only reviews; latestReviews misses a
   # reviewer who was re-requested after asking for changes.
   | ([.latestReviews[]? | .state]) as $states
+  # A review that still stands and wants something.
+  | (($states | index("CHANGES_REQUESTED")) or ($states | index("COMMENTED"))) as $liveFeedback
+  # Changes were requested, that review no longer stands, and a reviewer is on the hook again: the
+  # ball is with the reviewer, so this is not the user's work. reviewDecision stays
+  # CHANGES_REQUESTED until a new review lands, so it cannot tell the two apart on its own.
   | (.reviewDecision == "CHANGES_REQUESTED"
-      or ($states | index("CHANGES_REQUESTED"))
-      or ($states | index("COMMENTED"))) as $hasFeedback
+      and ($liveFeedback | not)
+      and ((.reviewRequests | length) > 0)) as $awaitingRereview
+  | ($liveFeedback or (.reviewDecision == "CHANGES_REQUESTED" and ($awaitingRereview | not))) as $hasFeedback
   | [
       (if (.mergeable == "CONFLICTING" or .mergeStateStatus == "DIRTY") then "merge conflict" else empty end),
       (if (.mergeable == "UNKNOWN") then "mergeability unknown" else empty end),

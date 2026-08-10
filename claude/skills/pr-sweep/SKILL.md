@@ -106,14 +106,33 @@ Two traps:
   `.conclusion`, with `StatusContext` entries, which carry `.state`. Reading `.conclusion` alone
   returns `null` for every status context and for every run still in progress.
 
-**Reviewer feedback.** Flag a PR when `reviewDecision` is `CHANGES_REQUESTED`, **or** any entry in
-`latestReviews` has state `CHANGES_REQUESTED` or `COMMENTED`. This covers drafts: feedback on a draft
-still needs an answer. Both signals are required, because each misses cases the other catches:
+**Reviewer feedback.** Flag a PR when a review still stands and wants something: any entry in
+`latestReviews` with state `CHANGES_REQUESTED` or `COMMENTED`. This covers drafts, since feedback on a
+draft still needs an answer.
 
-- `reviewDecision` stays `REVIEW_REQUIRED` for a comment-only review. On the sample sweep, #4043 had
-  five `COMMENTED` reviews and a decision of `REVIEW_REQUIRED`.
-- `latestReviews` goes empty once a reviewer is re-requested after asking for changes. #5479 read
-  `CHANGES_REQUESTED` with `latestReviews: []`.
+`reviewDecision` alone cannot carry this check, in either direction:
+
+- It stays `REVIEW_REQUIRED` for a comment-only review. On the sample sweep, #4043 had five
+  `COMMENTED` reviews and a decision of `REVIEW_REQUIRED`.
+- It stays `CHANGES_REQUESTED` after the user answers and re-requests review, so it keeps flagging a
+  PR whose ball is now in the reviewer's court.
+
+**A re-requested reviewer means the work is done.** When `reviewDecision` is `CHANGES_REQUESTED` but
+`latestReviews` holds no live review and `reviewRequests` is non-empty, the user already answered and
+re-requested. Do not put it in the table as work; count it as awaiting re-review. GitHub drops a
+reviewer from `latestReviews` when they are re-requested, which is what makes the two cases separable.
+
+On the sample sweep, #5479 read `CHANGES_REQUESTED` with `latestReviews: []` and
+`reviewRequests: [psi-orpc-experts, guillaumetecher-rc]`. Its timeline showed the review at 21:00, the
+user's reply at 00:15:48, and the re-request 3 seconds later. Nothing for the user to do.
+
+```bash
+jq -r '[.[] | select(.reviewDecision == "CHANGES_REQUESTED"
+  and ([.latestReviews[]? | .state] | (index("CHANGES_REQUESTED") or index("COMMENTED")) | not)
+  and ((.reviewRequests | length) > 0)) | .number]' /tmp/pr-sweep.json
+```
+
+If the user wants those chased, the action is a nudge to the reviewer, never a code change.
 
 **Reviewers.** A non-draft PR is covered when `reviewRequests` has any entry **or** `latestReviews`
 has any entry. Drafts are exempt. Two traps:
@@ -131,10 +150,30 @@ has any entry. Drafts are exempt. Two traps:
 assigned, runs finish, new PRs appear. Acting on a stale row wastes the user's time telling them about
 a problem they already fixed.
 
-After the table, offer to work through it. Take one PR, finish or park it, then stop and ask before
-starting the next. Never open two PRs at once, and never apply the same fix across several PRs in one
-step, however similar they look. Incremental means the user sees each PR resolve before the next one
-begins.
+Take one PR, finish or park it, then stop and ask before starting the next. Never open two PRs at
+once, and never apply the same fix across several PRs in one step, however similar they look.
+Incremental means the user sees each PR resolve before the next one begins.
+
+**Open with the plan, then ask which action to start with.** State the numbered actions you intend to
+take, one line each, naming the PR and the concrete change. Then ask which one to start with. Do not
+ask whether to begin, and do not ask about a single PR as though it were the only option — the user
+picks the order from a list they can see:
+
+```
+Here's what I plan to do:
+
+1. #5538 — re-run the killed lint job, and add psi-orpc-experts as reviewer
+2. #5530 — add psi-orpc-experts as reviewer, matching the rest of the docs series
+3. #5524 — add psi-orpc-experts as reviewer
+4. #5542 — read the failing server test, fix it in a worktree
+5. #4043 — read the failing lint job and the five comment threads
+
+Skipping #5521: CI still running. Skipping #5479: awaiting re-review.
+
+Which should I start with?
+```
+
+Say what you are skipping and why, so a missing PR does not read as an oversight.
 
 **Queue order.** Work the cheapest real problem first so the table shrinks fast:
 
@@ -267,7 +306,9 @@ Resolve, run the checks, show the diff, then push after approval.
 | Reading `.login` off `reviewRequests` | Team entries have no login. Count entries. |
 | Treating `UNKNOWN` mergeability as no conflict | Re-query once, then report it as unknown. |
 | Checking `reviewRequests` alone | A submitted review clears the request. Check `latestReviews` too. |
-| Using `reviewDecision` alone for feedback | It stays `REVIEW_REQUIRED` for comment-only reviews. Check `latestReviews` states too. |
+| Using `reviewDecision` alone for feedback | It stays `REVIEW_REQUIRED` for comment-only reviews and `CHANGES_REQUESTED` after a re-request. Read `latestReviews`. |
+| Flagging a PR whose reviewer was re-requested | The user already answered. Count it as awaiting re-review, no row. |
+| Asking "want me to start with #X?" | Give the numbered plan, then ask which action to start with. |
 | Treating every open thread as work | Some are praise or already answered by a later push. Read the bodies. |
 | Working several PRs in one step | One PR, then stop and ask. The user watches each one resolve. |
 | Working the queue off a stale table | Re-fetch first. Reviewers and runs change between sweeps. |
