@@ -6,9 +6,10 @@ description: Use when the user asks to sweep, triage, or check the health of the
 # PR Sweep
 
 Check every open PR the user authored for four problems — merge conflicts, CI trouble, unanswered
-reviewer feedback, and missing reviewers — then report only what needs attention and suggest next
-steps. Suggest them. Do not fix conflicts, re-run CI, assign reviewers, resolve threads, or merge
-anything.
+reviewer feedback, and missing reviewers — then help resolve them.
+
+Two phases. **Report first:** one table of what needs attention. **Then work the queue:** one PR at a
+time, proposing each action and waiting for a yes before doing anything that leaves the machine.
 
 Two files sit beside this one:
 
@@ -124,59 +125,103 @@ has any entry. Drafts are exempt. Two traps:
 - **Check `latestReviews` too.** Once a requested reviewer submits a review, GitHub drops them from
   `reviewRequests`. Checking requests alone flags PRs already under review.
 
-## 4. Suggest next steps, run nothing
+## 4. Work the queue, one PR at a time
 
-**Conflict.** Print the commands and ask before running any of them. Never force-push.
+After the table, offer to work through it. Take one PR, finish or park it, then stop and ask before
+starting the next. Never open two PRs at once, and never apply the same fix across several PRs in one
+step, however similar they look. Incremental means the user sees each PR resolve before the next one
+begins.
+
+**Queue order.** Work the cheapest real problem first so the table shrinks fast:
+
+| Problem | Actionable? |
+| --- | --- |
+| CI cancelled | Yes, a re-run |
+| No reviewer | Yes, a suggestion to confirm |
+| Reviewer feedback | Yes, usually a code change |
+| CI failing | Yes, a code change |
+| Merge conflict | Yes, a resolve |
+| CI pending | No. The run decides. Say you are skipping it and why. |
+
+**The loop, per PR.**
+
+1. **Show the evidence.** The failed log, the thread bodies, the conflicting files. Never propose work
+   from a table row alone; the row says a problem exists, not what it is.
+2. **Propose one action** in a sentence or two, then wait for a yes.
+3. **Work in a worktree** for that PR's branch, via the `EnterWorktree` tool. Do not run
+   `gh pr checkout` in the user's main checkout: it switches their branch under them and strands
+   whatever they had in progress. Edit at the worktree path, not the original.
+4. **Make the change**, then run the checks that cover it, following the repo's own agent
+   instructions. One heavy command at a time.
+5. **Show the diff and stop.** Leave the work uncommitted for review. Do not commit as a side effect
+   of finishing the edit.
+6. **On approval, commit and push.** Never force-push, and never amend or rebase a commit that is
+   already on the remote. A correction becomes a new commit on top.
+7. **Then reply**, so the reply can cite the pushed SHA. Report what changed and ask whether to move
+   to the next PR.
+
+**Stop and ask first, every time, before:** pushing, assigning a reviewer, replying to a thread,
+resolving a thread, re-running CI, editing the PR body, or merging. Approval on one PR is not approval
+for the next one.
+
+### Per-problem playbooks
+
+**Cancelled CI.** Usually a superseded or manually stopped run, not a code problem. Confirm the run
+id belongs to the PR's head commit, then offer a re-run:
 
 ```bash
-gh pr checkout <n>
-git fetch origin main && git merge origin/main   # resolve, commit, push
+gh pr checks <n>
+gh run rerun <run-id> --failed
 ```
 
-**Failing CI.** Name the failing check, then offer to look:
+**No reviewer.** Read `EXPERTS.md` at the repo root if it exists. Match the PR's Conventional Commit
+scope and its changed paths to a subsystem row, then name one person and the row that put them there,
+so the user can judge the pick:
+
+```bash
+gh pr view <n> --json files --jq '[.files[].path]'
+gh pr edit <n> --add-reviewer <handle>
+```
+
+Suggest one reviewer, not a list. Spread picks across PRs rather than routing everything to one
+person.
+
+**Reviewer feedback.** List the open threads first. The table does not say whether the feedback is
+still live:
+
+```bash
+~/.claude/skills/pr-sweep/unresolved-threads.sh <n>
+```
+
+Each thread is marked against the PR's last commit:
+
+- `AFTER-PUSH` threads are untouched. These are the real work.
+- `before-push` threads may already be answered by a later commit. Read the code at that path before
+  deciding, then say which it is.
+- `(outdated)` threads sit on code that has since changed. Usually stale.
+
+Not every thread asks for a change. On the sample sweep one open thread read "glad we got rid of the
+useEffect hack !!" — praise, needing only a resolve. Separate requests from remarks before proposing
+work, and group threads that share one underlying decision instead of treating each as its own task.
+
+**Failing CI.** Read the log before touching code. Guessing from the check name wastes a push:
 
 ```bash
 gh pr checks <n>
 gh run view --log-failed --job <job-id>   # job id from `gh pr checks <n>`
 ```
 
-**Cancelled CI.** Suggest a re-run rather than a code change, since the run was probably superseded:
+Reproduce the failure locally with the repo's own command, fix it, and re-run that command before
+pushing.
+
+**Merge conflict.** In the worktree, merge the base branch rather than rebasing, since the branch is
+already pushed:
 
 ```bash
-gh run rerun <run-id> --failed
+git fetch origin main && git merge origin/main
 ```
 
-**Reviewer feedback.** List the open threads first, because the table alone does not say whether the
-feedback is still live:
-
-```bash
-~/.claude/skills/pr-sweep/unresolved-threads.sh <n>
-```
-
-Each thread is marked `before-push` or `AFTER-PUSH`, compared against the PR's last commit.
-
-- `AFTER-PUSH` threads are untouched. These are the real work.
-- `before-push` threads may already be answered by a later commit. Check the code before assuming
-  either way, then say which it is.
-- `(outdated)` threads sit on code that has since changed. Usually stale.
-
-Not every thread asks for a change. On the sample sweep one open thread read "glad we got rid of the
-useEffect hack !!" — praise, needing only a resolve. Read the bodies and separate requests from
-remarks before proposing work.
-
-Then offer to address them: summarize what each reviewer wants, propose the change per thread, and
-ask which to take on. Reply to threads only after the fix is pushed, so the reply can cite the
-commit. Do not push, resolve a thread, or reply on the user's behalf without being asked.
-
-**No reviewer.** Read `EXPERTS.md` at the repo root if it exists. Match the PR's Conventional Commit
-scope and its changed paths (`gh pr view <n> --json files`) to a subsystem row, then suggest one
-person and name the row that put them there:
-
-```bash
-gh pr edit <n> --add-reviewer <handle>
-```
-
-The user assigns reviewers. Do not run that command unless they ask.
+Resolve, run the checks, show the diff, then push after approval.
 
 ## Common mistakes
 
@@ -195,4 +240,9 @@ The user assigns reviewers. Do not run that command unless they ask.
 | Checking `reviewRequests` alone | A submitted review clears the request. Check `latestReviews` too. |
 | Using `reviewDecision` alone for feedback | It stays `REVIEW_REQUIRED` for comment-only reviews. Check `latestReviews` states too. |
 | Treating every open thread as work | Some are praise or already answered by a later push. Read the bodies. |
-| Assigning the reviewer, re-running CI, resolving threads, or replying | Suggest the command. The user runs it. |
+| Working several PRs in one step | One PR, then stop and ask. The user watches each one resolve. |
+| `gh pr checkout` in the user's checkout | Switches their branch under them. Use a worktree. |
+| Committing as soon as the edit is done | Show the diff and stop. Commit after approval. |
+| Amending or force-pushing a pushed commit | Corrections go on top as a new commit. |
+| Replying to a thread before pushing | Push first so the reply can cite the SHA. |
+| Reading one approval as blanket approval | Ask again for each PR and each outward-facing action. |
