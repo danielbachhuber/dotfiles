@@ -1,19 +1,20 @@
 ---
 name: pr-sweep
-description: Use when the user asks to sweep, triage, or check the health of their own open pull requests — looking for merge conflicts, failing CI, unanswered reviewer feedback, and non-draft PRs with no reviewer assigned.
+description: Use when the user asks to sweep, triage, or check the health of their own open pull requests — looking for merge conflicts, failing CI, unanswered reviewer feedback, non-draft PRs with no reviewer assigned, and PRs approved and green enough to merge.
 ---
 
 # PR Sweep
 
 Check every open PR the user authored for four problems — merge conflicts, CI trouble, unanswered
-reviewer feedback, and missing reviewers — then help resolve them.
+reviewer feedback, and missing reviewers — and for one opportunity: a PR that is approved and green,
+so it can merge. Then help act on all five.
 
 Two phases. **Report first:** one table of what needs attention. **Then work the queue:** one PR at a
 time, proposing each action and waiting for a yes before doing anything that leaves the machine.
 
 Two files sit beside this one:
 
-- `report.jq` implements all four checks against the fetched JSON. Run it rather than rebuilding the
+- `report.jq` implements all five checks against the fetched JSON. Run it rather than rebuilding the
   logic by hand: the traps below are already handled there.
 - `unresolved-threads.sh <pr-number>` lists a PR's open review threads and marks each as older or
   newer than the last push.
@@ -24,7 +25,7 @@ Run from inside a repo checkout, which sweeps that repo:
 
 ```bash
 gh pr list --author @me --state open --limit 100 \
-  --json number,title,url,isDraft,mergeable,mergeStateStatus,reviewRequests,latestReviews,reviewDecision,statusCheckRollup \
+  --json number,title,url,author,isDraft,mergeable,mergeStateStatus,reviewRequests,latestReviews,reviews,reviewDecision,statusCheckRollup \
   > /tmp/pr-sweep.json
 ```
 
@@ -40,16 +41,19 @@ gh search prs --author=@me --state=open --limit 100 --json repository,number
 jq -rf ~/.claude/skills/pr-sweep/report.jq /tmp/pr-sweep.json
 ```
 
-That emits one markdown row per PR needing attention, worst problem first. Add the header, then the
-counts below it:
+That emits one markdown row per PR needing action, best-placed action first, so merge-ready PRs head
+the table. Add the header, then the counts below it:
 
 ```markdown
 | PR | Title | Needs |
 | --- | --- | --- |
+| [#5534](https://github.com/wearenewpublic/psi-product/pull/5534) | refactor(spaces): make thread pagination alwa… | ready to merge |
+| [#5528](https://github.com/wearenewpublic/psi-product/pull/5528) | refactor(spaces): make the single-response he… | ready to merge, waiting on psi-committers |
+| [#5522](https://github.com/wearenewpublic/psi-product/pull/5522) | refactor(spaces): make the comment post-menu … | ready to merge, waiting on psi-committers |
 | [#4043](https://github.com/wearenewpublic/psi-product/pull/4043) | docs: Document the v2 HTTP API design | CI failing (draft) |
 | [#5538](https://github.com/wearenewpublic/psi-product/pull/5538) | docs(orpc): describe the participants and pol… | CI cancelled, no reviewer |
 
-14 of 22 PRs are clean. No merge conflicts. 1 draft skipped by the reviewer check.
+12 of 22 PRs are clean. No merge conflicts. 1 draft skipped by the reviewer check.
 ```
 
 Get the counts with:
@@ -58,6 +62,31 @@ Get the counts with:
 jq -r '"total=\(length) drafts=\([.[] | select(.isDraft)] | length)"' /tmp/pr-sweep.json
 ```
 
+**Then expand every merge-ready PR.** A `ready to merge` row alone does not say whether the approval
+is one reviewer or three, whether anyone left comments, or how green the CI actually is. Same file,
+`--arg mode ready`, so the readiness rule stays defined once:
+
+```bash
+jq -r --arg mode ready -f ~/.claude/skills/pr-sweep/report.jq /tmp/pr-sweep.json
+```
+
+Put that block directly under the table, before the queue plan:
+
+```markdown
+**Ready to merge**
+
+- **[#5534](https://github.com/wearenewpublic/psi-product/pull/5534)** — approved by devunit-01, sharoncbc · commented by none · 27 checks: 20 passed, 7 skipped · waiting on none
+- **[#5528](https://github.com/wearenewpublic/psi-product/pull/5528)** — approved by sharoncbc · commented by guillaumetecher-rc (no standing approval) · 27 checks: 21 passed, 6 skipped · waiting on psi-committers
+```
+
+The four facts stay in that order — approvers, commenters, checks, outstanding — so the lines read as
+a column. Never drop a field because it is empty: `commented by none` and `waiting on none` are the
+answers to the questions the user is about to ask, and a missing field reads as an oversight rather
+than an absence.
+
+Keep the detail in this block, not in the `Needs` column. Four facts plus the title wrap every row
+into three lines and make the table unreadable, which is the same reason titles are truncated.
+
 Keep the table readable in a terminal:
 
 - **Never pad columns with spaces.** The renderer sets the widths. Hand-padding is what makes every
@@ -65,10 +94,57 @@ Keep the table readable in a terminal:
 - Titles are already cut to 45 characters by `report.jq`. Do not lengthen them.
 - On a cross-repo sweep, add a `Repo` column holding `nameWithOwner`.
 - Do not table every PR. With 20 or more open, a full list buries the rows that matter.
+- **Every merge-ready PR keeps its row**, however long the table runs. It is an action, not a status.
 
 ## 3. What each check means
 
 Read this when a result looks wrong, or before changing `report.jq`.
+
+**Ready to merge.** Everything the user controls is done: at least one standing approval, every check
+green, no conflict, not a draft. Report it as an action, not as a clean PR — an approved green PR
+sitting open is the most valuable row in the table and the cheapest to clear.
+
+Read the approval from `latestReviews`, never from `reviewDecision`. Branch protection holds
+`reviewDecision` at `REVIEW_REQUIRED` while an approval already stands, so it hides ready PRs.
+
+**Two fields, two jobs.** `latestReviews` holds one entry per reviewer, so it answers "which
+approvals stand right now" — that is the readiness test and the `approved by` list. `reviews` holds
+every submission ever, so it answers "who has left comments" — history `latestReviews` throws away.
+Both traps in `reviews` will misname people if ignored:
+
+- **It includes the PR author's own reviews.** On the sample sweep #4043 held 38 review entries, 22 of
+  them the user's own replies. Compare each review's `.author.login` against the PR's own
+  `.author.login` and drop the matches, which is why the fetch pulls the `author` field.
+- **It holds one entry per submission, not per person.** #4043 listed `robennals` five times.
+  Deduplicate, or the block reads as five reviewers.
+
+**How a commenter reaches a merge-ready PR at all**, given that a live `COMMENTED` review disqualifies
+one: the reviewer commented and was then re-requested. GitHub drops a re-requested reviewer from
+`latestReviews`, so their comments vanish from the readiness signals while the request stays open. That
+PR reads `ready to merge, waiting on rob` — and rob has already said something. Mark them
+`(no standing approval)` so the user sees it before merging. Someone who commented and later approved
+is marked `(also approved)`, which is a different situation and reads as one.
+
+**One approval does not decide the merge. The user does.** When `reviewRequests` still holds entries,
+those reviewers were asked and have not answered. Name them in the row — `waiting on psi-committers` —
+and let the user choose between merging now and waiting. Never merge past an outstanding reviewer on
+your own reading that one approval is enough. On the sample sweep, 4 of 5 approved PRs had a reviewer
+outstanding, so this is the normal case, not the edge case.
+
+Three traps:
+
+- **`UNKNOWN` mergeability hides ready PRs.** A first query returns `UNKNOWN` often. On the sample
+  sweep #5526 was approved with 27 green checks and read `UNKNOWN`, so it surfaced as
+  `mergeability unknown`; the re-query returned `CLEAN`. Re-query before reporting, or the table
+  buries a merge-ready PR under a non-problem.
+- **An empty rollup is not green.** Zero checks means CI never ran. Approved plus no checks is not
+  ready.
+- **`BLOCKED` plus an approval means a required review is missing.** GitHub will refuse the merge, so
+  the row reads `approved, merge blocked`, not `ready to merge`. Find which required review or
+  ruleset is unsatisfied instead of offering a merge that cannot run.
+
+A live `COMMENTED` or `CHANGES_REQUESTED` review outranks the approval: that PR is feedback work, not
+a merge.
 
 **Merge conflicts.**
 
@@ -83,7 +159,9 @@ branch behind its base, and failing checks. None is a conflict, and `BLOCKED` is
 state for most open PRs.
 
 GitHub computes mergeability lazily, so a fresh query can return `UNKNOWN`. Wait a few seconds, then
-re-query only those PRs, once. Still `UNKNOWN`? Report it as unknown, never as clean.
+re-query only those PRs, once. Still `UNKNOWN`? Report it as unknown, never as clean. Do the re-query
+before building the table: an `UNKNOWN` on an approved green PR is what stops it reading as ready to
+merge.
 
 ```bash
 gh pr view <n> --json number,mergeable,mergeStateStatus
@@ -162,9 +240,10 @@ picks the order from a list they can see:
 ```
 Here's what I plan to do:
 
-1. #5538 — re-run the killed lint job, and add psi-orpc-experts as reviewer
-2. #5530 — add psi-orpc-experts as reviewer, matching the rest of the docs series
-3. #5524 — add psi-orpc-experts as reviewer
+1. #5534 — merge: approved by devunit-01 and sharoncbc, 27 checks green, nobody outstanding
+2. #5528, #5522, #5516 — approved and green, but psi-committers has not reviewed. #5528 also has
+   comments from guillaumetecher-rc with no approval. Your call on each: merge now, or wait
+3. #5538 — re-run the killed lint job, and add psi-orpc-experts as reviewer
 4. #5542 — read the failing server test, fix it in a worktree
 5. #4043 — read the failing lint job and the five comment threads
 
@@ -173,12 +252,18 @@ Skipping #5521: CI still running. Skipping #5479: awaiting re-review.
 Which should I start with?
 ```
 
+Merge-ready PRs go in the plan like any other action. Group the ones waiting on a reviewer into a
+single line and hand the choice back, rather than proposing a merge for each.
+
 Say what you are skipping and why, so a missing PR does not read as an oversight.
 
 **Queue order.** Work the cheapest real problem first so the table shrinks fast:
 
 | Problem | Actionable? |
 | --- | --- |
+| Ready to merge, nobody outstanding | Yes, a merge to confirm |
+| Ready to merge, reviewer outstanding | Yes, but the user decides whether to wait |
+| Approved, merge blocked | Yes, find the missing required review |
 | CI cancelled | Yes, a re-run |
 | No reviewer | Yes, a suggestion to confirm |
 | Reviewer feedback | Yes, usually a code change |
@@ -222,6 +307,39 @@ PR, and `ExitWorktree` when that PR is done.
   suite will thrash the machine.
 
 ### Per-problem playbooks
+
+**Ready to merge.** The detail block from step 2 already carries what the decision needs — approvers,
+commenters, check counts, outstanding reviewers — so restate that PR's line and ask. One approving
+review clears the technical bar; whether it clears the social one is the user's judgment, not yours.
+
+Merge with a method the repo allows. Squash-only repos reject `--merge`, so read the setting
+rather than guessing:
+
+```bash
+gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed,viewerDefaultMergeMethod
+gh pr merge <n> --squash
+```
+
+Merging is the one action in this skill that cannot be undone with another command. So:
+
+- **One explicit yes per PR.** "Merge them all" covers only the PRs named in that sentence. A yes on
+  #5534 is not a yes on #5528.
+- **A reviewer still outstanding needs the user to say so.** Report who is waiting and stop. Do not
+  argue the reviewer is redundant, and do not read their silence as agreement.
+- **Re-check the state at merge time**, not from the table. `gh pr view <n> --json mergeStateStatus`
+  should read `CLEAN`. A row built ten minutes ago may predate a pushed commit or a new review.
+- **`--admin` is never yours to use.** If GitHub refuses the merge, report why.
+
+**Approved, merge blocked.** The approval stands and CI is green, but GitHub still says `BLOCKED`, so a
+required review or ruleset is unsatisfied — commonly a CODEOWNERS team that has not approved. Name what
+is missing so the user can chase it:
+
+```bash
+gh pr view <n> --json reviewDecision,mergeStateStatus,reviewRequests
+gh api repos/{owner}/{repo}/pulls/<n>/requested_reviewers
+```
+
+Do not offer a merge here. It will fail.
 
 **Cancelled CI.** Usually a superseded or manually stopped run, not a code problem. Prove that before
 offering a re-run, because a re-run of a genuinely broken build just wastes ten minutes:
@@ -300,7 +418,19 @@ Resolve, run the checks, show the diff, then push after approval.
 | Counting `SKIPPED` checks as failures | Conditional workflows skip by design. Only the `bad` list fails. |
 | Reading `.conclusion` off every check | `StatusContext` uses `.state`. In-progress runs have no conclusion. |
 | Calling a PR green while checks run | Pending is not passing. Report it as in flight. |
-| Reading an empty rollup as green | Zero checks means CI never ran. Report it. |
+| Reading an empty rollup as green | Zero checks means CI never ran. Report it, and never as ready to merge. |
+| Leaving an approved green PR out of the table | It reads as clean and stays open. Ready to merge is a row, ranked first. |
+| Using `reviewDecision == "APPROVED"` to find ready PRs | Branch protection holds it at `REVIEW_REQUIRED`. Read `latestReviews`. |
+| Flagging a PR ready with no approver names, comments, or check counts | Run `--arg mode ready`. The bare row cannot support a merge decision. |
+| Counting the user's own review replies as reviewer comments | `reviews` includes the PR author. #4043 held 22 of them. Drop self. |
+| Naming a reviewer once per review submission | `reviews` is per submission. #4043 listed `robennals` five times. Deduplicate. |
+| Dropping `commented by none` because it is empty | The empty answer is the useful one. A missing field reads as an oversight. |
+| Putting approvers and check counts in the `Needs` column | Rows wrap to three lines. Detail goes in the block under the table. |
+| Merging past an outstanding reviewer | One approval clears the technical bar, not the social one. Name who is waiting, then ask. |
+| Reading "merge them all" as covering the whole table | It covers the PRs named in that sentence. One yes per merge. |
+| Merging off the table's row | Re-check `mergeStateStatus` at merge time. The row may predate a push. |
+| Offering a merge on an `approved, merge blocked` PR | GitHub will refuse it. Find the missing required review. |
+| Building the table before re-querying `UNKNOWN` | An `UNKNOWN` on an approved green PR hides a merge-ready row. |
 | Skipping the CI check on drafts | Red CI matters on a draft. Only the reviewer check exempts drafts. |
 | Reporting `BLOCKED` as a conflict | `BLOCKED` means review required. Only `CONFLICTING` or `DIRTY` conflicts. |
 | Reading `.login` off `reviewRequests` | Team entries have no login. Count entries. |
