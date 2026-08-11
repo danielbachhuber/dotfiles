@@ -1,12 +1,13 @@
-# Turns `gh pr list` JSON into markdown table rows, best-placed action first.
-# A PR produces a row when it needs attention or when it is ready to merge.
+# Turns `gh pr list` JSON into markdown table rows for the two tables a sweep prints.
 #
-# Default mode emits table rows. `--arg mode ready` emits one detail line per merge-ready PR
-# instead, so the readiness rule lives here once and both outputs agree.
+# `--arg mode ready` emits the Ready to merge table, six columns wide. Default mode emits the Needs
+# attention table and leaves merge-ready PRs out, so no PR appears twice. The readiness rule lives
+# here once and both outputs agree.
 
 def bad: ["FAILURE", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"];
 
-# Titles longer than this wrap in a terminal and break the table.
+# Titles longer than this wrap in a terminal and break the table. The ready table carries six
+# columns, so its titles have to be shorter than the three-column one.
 def trunc(n): if (. | length) > n then (.[0:n] + "…") else . end;
 
 def names: if (. | length) == 0 then "none" else join(", ") end;
@@ -41,13 +42,13 @@ def names: if (. | length) == 0 then "none" else join(", ") end;
   | .author.login as $me
   | ([.reviews[]? | select(.state == "COMMENTED" and .author.login != $me) | .author.login]
       | unique
-      | map(. + (if (. | IN($approvers[])) then " (also approved)" else " (no standing approval)" end))) as $commenters
+      | map(. + (if (. | IN($approvers[])) then " (also approved)" else " (no approval)" end))) as $commenters
   # Passed first, then skips. A skip is not a failure, so it is reported as its own count rather
   # than folded into either side.
   | ([$checks[] | (.conclusion // .state // "")]) as $outcomes
   | ([
-      "\([$outcomes[] | select(. == "SUCCESS")] | length) passed",
-      (if ([$outcomes[] | select(. == "SKIPPED")] | length) > 0 then "\([$outcomes[] | select(. == "SKIPPED")] | length) skipped" else empty end),
+      "\([$outcomes[] | select(. == "SUCCESS")] | length) pass",
+      (if ([$outcomes[] | select(. == "SKIPPED")] | length) > 0 then "\([$outcomes[] | select(. == "SKIPPED")] | length) skip" else empty end),
       (if ([$outcomes[] | select(. == "NEUTRAL")] | length) > 0 then "\([$outcomes[] | select(. == "NEUTRAL")] | length) neutral" else empty end)
     ] | join(", ")) as $checkBreakdown
   # Everything the user controls is done: approved, green, no conflict, nothing in flight.
@@ -87,13 +88,13 @@ def names: if (. | length) == 0 then "none" else join(", ") end;
         else 5 end
       ),
       row: "| [#\(.number)](\(.url)) | \(.title | trunc(45)) | \($needs | join(", "))\(if .isDraft then " (draft)" else "" end) |",
-      detail: ("- **[#\(.number)](\(.url))** — approved by \($approvers | names)"
-        + " · commented by \($commenters | names)"
-        + " · \($checks | length) checks: \($checkBreakdown)"
-        + " · waiting on \($outstanding | names)")
+      # A branch behind its base is also standing between the PR and a merge, so it belongs in the
+      # same column as the reviewers who have not answered.
+      readyRow: ("| [#\(.number)](\(.url)) | \(.title | trunc(32)) | \($approvers | names) | \($commenters | names)"
+        + " | \($checkBreakdown) | \($outstanding + (if .mergeStateStatus == "BEHIND" then ["base update"] else [] end) | names) |")
     }
 ]
 | if ($ARGS.named.mode == "ready")
-  then (map(select(.ready)) | .[].detail)
-  else (sort_by(.rank) | .[].row)
+  then (map(select(.ready)) | .[].readyRow)
+  else (map(select(.ready | not)) | sort_by(.rank) | .[].row)
   end

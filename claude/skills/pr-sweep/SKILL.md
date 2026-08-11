@@ -9,8 +9,9 @@ Check every open PR the user authored for four problems — merge conflicts, CI 
 reviewer feedback, and missing reviewers — and for one opportunity: a PR that is approved and green,
 so it can merge. Then help act on all five.
 
-Two phases. **Report first:** one table of what needs attention. **Then work the queue:** one PR at a
-time, proposing each action and waiting for a yes before doing anything that leaves the machine.
+Two phases. **Report first:** two tables — what can merge, then what is broken. **Then work the
+queue:** one PR at a time, proposing each action and waiting for a yes before doing anything that
+leaves the machine.
 
 Two files sit beside this one:
 
@@ -35,21 +36,39 @@ If the working directory is not a repo, sweep across repos instead and say so in
 gh search prs --author=@me --state=open --limit 100 --json repository,number
 ```
 
-## 2. Build the table
+## 2. Build the two tables
+
+The report is **two tables, in this order**: what can merge, then what is broken. A PR appears in one
+or the other, never both — `report.jq` leaves merge-ready PRs out of the second table itself.
+
+**Ready to merge** carries six columns, because "ready to merge" alone cannot support a merge
+decision. Whether the approval is one reviewer or three, whether anyone left comments, and how green
+CI actually is all belong in the table, not in a note under it:
+
+```bash
+jq -r --arg mode ready -f ~/.claude/skills/pr-sweep/report.jq /tmp/pr-sweep.json
+```
+
+```markdown
+**Ready to merge**
+
+| PR | Title | Approved by | Comments | Checks | Waiting on |
+| --- | --- | --- | --- | --- | --- |
+| [#5534](https://github.com/wearenewpublic/psi-product/pull/5534) | refactor(spaces): make thread pa… | devunit-01, sharoncbc | none | 20 pass, 7 skip | none |
+| [#5528](https://github.com/wearenewpublic/psi-product/pull/5528) | refactor(spaces): make the singl… | sharoncbc | guillaumetecher-rc (no approval) | 21 pass, 6 skip | psi-committers |
+```
+
+**Needs attention** keeps the original three columns, worst problem first:
 
 ```bash
 jq -rf ~/.claude/skills/pr-sweep/report.jq /tmp/pr-sweep.json
 ```
 
-That emits one markdown row per PR needing action, best-placed action first, so merge-ready PRs head
-the table. Add the header, then the counts below it:
-
 ```markdown
+**Needs attention**
+
 | PR | Title | Needs |
 | --- | --- | --- |
-| [#5534](https://github.com/wearenewpublic/psi-product/pull/5534) | refactor(spaces): make thread pagination alwa… | ready to merge |
-| [#5528](https://github.com/wearenewpublic/psi-product/pull/5528) | refactor(spaces): make the single-response he… | ready to merge, waiting on psi-committers |
-| [#5522](https://github.com/wearenewpublic/psi-product/pull/5522) | refactor(spaces): make the comment post-menu … | ready to merge, waiting on psi-committers |
 | [#4043](https://github.com/wearenewpublic/psi-product/pull/4043) | docs: Document the v2 HTTP API design | CI failing (draft) |
 | [#5538](https://github.com/wearenewpublic/psi-product/pull/5538) | docs(orpc): describe the participants and pol… | CI cancelled, no reviewer |
 
@@ -62,39 +81,20 @@ Get the counts with:
 jq -r '"total=\(length) drafts=\([.[] | select(.isDraft)] | length)"' /tmp/pr-sweep.json
 ```
 
-**Then expand every merge-ready PR.** A `ready to merge` row alone does not say whether the approval
-is one reviewer or three, whether anyone left comments, or how green the CI actually is. Same file,
-`--arg mode ready`, so the readiness rule stays defined once:
+**Print all six columns, every sweep.** `none` is an answer, not an empty cell: `Comments: none` and
+`Waiting on: none` are what tell the user a merge is uncontested. Dropping a column because every
+value reads `none` deletes the reassurance the table exists to give.
 
-```bash
-jq -r --arg mode ready -f ~/.claude/skills/pr-sweep/report.jq /tmp/pr-sweep.json
-```
-
-Put that block directly under the table, before the queue plan:
-
-```markdown
-**Ready to merge**
-
-- **[#5534](https://github.com/wearenewpublic/psi-product/pull/5534)** — approved by devunit-01, sharoncbc · commented by none · 27 checks: 20 passed, 7 skipped · waiting on none
-- **[#5528](https://github.com/wearenewpublic/psi-product/pull/5528)** — approved by sharoncbc · commented by guillaumetecher-rc (no standing approval) · 27 checks: 21 passed, 6 skipped · waiting on psi-committers
-```
-
-The four facts stay in that order — approvers, commenters, checks, outstanding — so the lines read as
-a column. Never drop a field because it is empty: `commented by none` and `waiting on none` are the
-answers to the questions the user is about to ask, and a missing field reads as an oversight rather
-than an absence.
-
-Keep the detail in this block, not in the `Needs` column. Four facts plus the title wrap every row
-into three lines and make the table unreadable, which is the same reason titles are truncated.
-
-Keep the table readable in a terminal:
+Keep the tables readable in a terminal:
 
 - **Never pad columns with spaces.** The renderer sets the widths. Hand-padding is what makes every
   row wrap.
-- Titles are already cut to 45 characters by `report.jq`. Do not lengthen them.
+- Titles are cut by `report.jq` — 45 characters in Needs attention, 32 in Ready to merge, which
+  carries three more columns. Do not lengthen either.
 - On a cross-repo sweep, add a `Repo` column holding `nameWithOwner`.
-- Do not table every PR. With 20 or more open, a full list buries the rows that matter.
-- **Every merge-ready PR keeps its row**, however long the table runs. It is an action, not a status.
+- Do not table every PR in Needs attention. With 20 or more open, a full list buries the rows that
+  matter.
+- **Every merge-ready PR keeps its row**, however long that table runs. It is an action, not a status.
 
 ## 3. What each check means
 
@@ -102,7 +102,7 @@ Read this when a result looks wrong, or before changing `report.jq`.
 
 **Ready to merge.** Everything the user controls is done: at least one standing approval, every check
 green, no conflict, not a draft. Report it as an action, not as a clean PR — an approved green PR
-sitting open is the most valuable row in the table and the cheapest to clear.
+sitting open is the most valuable row in the report and the cheapest to clear.
 
 Read the approval from `latestReviews`, never from `reviewDecision`. Branch protection holds
 `reviewDecision` at `REVIEW_REQUIRED` while an approval already stands, so it hides ready PRs.
@@ -122,8 +122,8 @@ Both traps in `reviews` will misname people if ignored:
 one: the reviewer commented and was then re-requested. GitHub drops a re-requested reviewer from
 `latestReviews`, so their comments vanish from the readiness signals while the request stays open. That
 PR reads `ready to merge, waiting on rob` — and rob has already said something. Mark them
-`(no standing approval)` so the user sees it before merging. Someone who commented and later approved
-is marked `(also approved)`, which is a different situation and reads as one.
+`(no approval)` in the `Comments` column so the user sees it before merging. Someone who commented and
+later approved is marked `(also approved)`, which is a different situation and reads as one.
 
 **One approval does not decide the merge. The user does.** When `reviewRequests` still holds entries,
 those reviewers were asked and have not answered. Name them in the row — `waiting on psi-committers` —
@@ -308,8 +308,8 @@ PR, and `ExitWorktree` when that PR is done.
 
 ### Per-problem playbooks
 
-**Ready to merge.** The detail block from step 2 already carries what the decision needs — approvers,
-commenters, check counts, outstanding reviewers — so restate that PR's line and ask. One approving
+**Ready to merge.** The Ready to merge table already carries what the decision needs — approvers,
+commenters, check counts, outstanding reviewers — so restate that PR's row and ask. One approving
 review clears the technical bar; whether it clears the social one is the user's judgment, not yours.
 
 Merge with a method the repo allows. Squash-only repos reject `--merge`, so read the setting
@@ -419,13 +419,15 @@ Resolve, run the checks, show the diff, then push after approval.
 | Reading `.conclusion` off every check | `StatusContext` uses `.state`. In-progress runs have no conclusion. |
 | Calling a PR green while checks run | Pending is not passing. Report it as in flight. |
 | Reading an empty rollup as green | Zero checks means CI never ran. Report it, and never as ready to merge. |
-| Leaving an approved green PR out of the table | It reads as clean and stays open. Ready to merge is a row, ranked first. |
+| Leaving an approved green PR out of the report | It reads as clean and stays open. It gets a row in Ready to merge. |
+| Printing one merged table | Two tables: Ready to merge, then Needs attention. Six columns cannot live in a `Needs` cell. |
+| Listing a merge-ready PR in both tables | `report.jq` already drops them from the second. Do not add them back. |
 | Using `reviewDecision == "APPROVED"` to find ready PRs | Branch protection holds it at `REVIEW_REQUIRED`. Read `latestReviews`. |
 | Flagging a PR ready with no approver names, comments, or check counts | Run `--arg mode ready`. The bare row cannot support a merge decision. |
 | Counting the user's own review replies as reviewer comments | `reviews` includes the PR author. #4043 held 22 of them. Drop self. |
 | Naming a reviewer once per review submission | `reviews` is per submission. #4043 listed `robennals` five times. Deduplicate. |
 | Dropping `commented by none` because it is empty | The empty answer is the useful one. A missing field reads as an oversight. |
-| Putting approvers and check counts in the `Needs` column | Rows wrap to three lines. Detail goes in the block under the table. |
+| Dropping the `Comments` or `Waiting on` column when every value is `none` | `none` is the answer that says the merge is uncontested. Print all six. |
 | Merging past an outstanding reviewer | One approval clears the technical bar, not the social one. Name who is waiting, then ask. |
 | Reading "merge them all" as covering the whole table | It covers the PRs named in that sentence. One yes per merge. |
 | Merging off the table's row | Re-check `mergeStateStatus` at merge time. The row may predate a push. |
