@@ -48,18 +48,31 @@
       "mcp__reflect-notes__get_daily_note",
       "mcp__reflect-notes__search_notes",
       "mcp__reflect-notes__get_note",
-      "Write(//Users/danielb/projects/drafts/**)",
-      "Write(~/projects/drafts/**)",
       "Edit(//Users/danielb/projects/drafts/**)",
       "Edit(~/projects/drafts/**)"
     ]
   },
   "model": "opus[1m]",
-  "hooks": {
-  },
+  "hooks": {},
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true
+    "superpowers@claude-plugins-official": true,
+    "humanizer@humanizer": true
   },
-  "effortLevel": "high"
+  "extraKnownMarketplaces": {
+    "humanizer": {
+      "source": {
+        "source": "github",
+        "repo": "blader/humanizer"
+      }
+    }
+  },
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "voiceEnabled": true
 }
