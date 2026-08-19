@@ -67,6 +67,16 @@ fi
 SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
 WORKTREE_DIR="$HOME/projects/psi-product-$SAFE_BRANCH_NAME"
 
+# Print the path of the worktree that already has a branch checked out, if any.
+# A branch may live in a worktree whose directory name doesn't match the one we
+# derive from the branch name, so ask git instead of guessing.
+worktree_path_for_branch() {
+    git worktree list --porcelain | awk -v ref="refs/heads/$1" '
+        /^worktree / { path = substr($0, 10) }
+        $0 == "branch " ref { print path; exit }
+    '
+}
+
 # Function to find an available port
 find_available_port() {
     local start_port=$1
@@ -79,6 +89,22 @@ find_available_port() {
 
 # Navigate to main project directory
 cd "$PSI_PROJECT_DIR"
+
+# If the branch is already checked out somewhere, go to that worktree instead of
+# trying to create a second one (git refuses, and the user just wants to be
+# taken to the existing workspace).
+EXISTING_WORKTREE=$(worktree_path_for_branch "$BRANCH_NAME")
+if [ -n "$EXISTING_WORKTREE" ]; then
+    if [ "$EXISTING_WORKTREE" = "$PSI_PROJECT_DIR" ]; then
+        echo "Error: branch $BRANCH_NAME is checked out in the main checkout $PSI_PROJECT_DIR"
+        echo "Switch the main checkout to another branch first, or pick a different branch."
+        exit 1
+    fi
+    if [ "$EXISTING_WORKTREE" != "$WORKTREE_DIR" ]; then
+        echo "Branch $BRANCH_NAME is already checked out at $EXISTING_WORKTREE, using that worktree"
+        WORKTREE_DIR="$EXISTING_WORKTREE"
+    fi
+fi
 
 if [ "$IS_PR" = true ]; then
     # PR mode: create a detached worktree at the current HEAD, then let
