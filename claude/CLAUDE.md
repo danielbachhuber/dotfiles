@@ -46,6 +46,8 @@ Do not write:
 - Three parallel items when you only have two, or a rule-of-three cadence for rhythm.
 - Em dashes as a default connector. A period, a colon, or a comma usually does the job better.
 
+Use the `unslop` skill on any prose you write for me. It names the AI tells and gives the fix for each one. The rules above win where the two disagree. The skill is a copy of https://github.com/cursor/plugins/blob/main/pstack/skills/unslop/SKILL.md, so fetch that file again to update it.
+
 ## Pull Requests
 
 - When editing a pull request description, make sure to first fetch the existing description. I may have edited it in the interim and it's frustrating to have my edits blown away.
