@@ -42,6 +42,11 @@ section a thin brief always skips, and the one reviewers most often say was usef
 If a figure is dominated by a few outliers, say so here: the description must carry that
 caveat.
 
+Placement matters and only you know it. A figure that is the case for the change belongs
+with the prior state, where it reads as History; a figure describing what the change
+achieves belongs here. A number in the wrong section argues in the wrong place, so say
+which one you want.
+
 Method belongs here too, in as few words as carry it. Keep it short rather than keep it out:
 a figure a reviewer cannot place is a figure they cannot trust.
 
