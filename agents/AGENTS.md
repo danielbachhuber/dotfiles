@@ -11,6 +11,23 @@
 - End every issue with a `**Done is:**` section: a short bulleted list of concrete, verifiable completion criteria. See https://danielbachhuber.com/done-is/ for the reasoning.
 - Let me verify the issue content before you create it.
 
+## Git workflow
+
+- Do not create git commits unless I explicitly ask. Leave changes in the working tree for review.
+- Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
+- Do not commit brainstorming or design-spec documents; leave them available for review.
+
+## Writing
+
+- Avoid em dashes in drafted text, except when preserving a verbatim quote.
+- When synthesizing bullet points from a source, include the supporting verbatim quote beneath each bullet, with a speaker and timestamp/locator when available.
+- Describe the current system on its own terms. Do not document prior-state behavior unless I explicitly ask for it.
+
+## Working style
+
+- For small, well-scoped changes, use a lightweight plan rather than creating a formal spec.
+- Put temporary working files in `/tmp`, not in the repository or tool-state directories.
+
 ## Tools
 
 - For Google Workspace access (Drive, Sheets, Gmail, Docs, Slides, Calendar, etc.), use the `gws-cli` skill. However, ~/.claude/scripts/fetch-google-doc.ts is even more helpful for Google Docs, and ~/.claude/scripts/fetch-google-slides.ts even more helpful for Google Slides. Both scripts accept the document ID as the first argument. If there's an authentication failure, inform the end user instead of trying to fetch the document instead.
