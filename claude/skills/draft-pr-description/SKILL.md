@@ -97,7 +97,7 @@ it cannot verify. Expect up to a couple of minutes. `codex` echoes the prompt to
 which is why stdout goes to the log. If the result file is missing or `jq` cannot parse
 it, read `/tmp/pr-description-run.log`.
 
-## 4. Read the result before showing it
+## 4. Fact-check before showing it
 
 ```bash
 jq -r .body /tmp/pr-description-result.json > ~/projects/drafts/pr-<slug>.md
@@ -106,7 +106,8 @@ jq -r 'if (.gaps | length) == 0 then "(no gaps)" else .gaps[] | "- \(.)" end' /t
 jq -r 'if (.unused | length) == 0 then "(all used)" else .unused[] | "- \(.)" end' /tmp/pr-description-result.json
 ```
 
-Check the body against the brief yourself, and name what you find:
+Check the body against the code, not only against the brief. The brief can be wrong, and
+`codex` can read the repo and still land a claim slightly off.
 
 - **Invented facts.** Any claim with no line in the brief behind it. This is the failure
   to hunt for hardest, because it reads as confident.
@@ -114,6 +115,19 @@ Check the body against the brief yourself, and name what you find:
   attached to it.
 - **Overclaiming.** "Fixes", "removes", "resolves" where the brief only supports "reduces".
 - **Lost structure.** Headings from the repo template, or an expander the format requires.
+- **Claims you can check in under a minute.** Check them. A job name, a `needs:` edge, a
+  file path, whether a downstream workflow really is scoped to one branch.
+
+Then decide where the fix goes. The test is not how big the error is. It is whether the
+brief was right:
+
+| What you found | Where the fix goes |
+| --- | --- |
+| Wording, a link repeated four times, a vague noun where the real identifier reads better, a dropped backtick | Edit the draft yourself. The brief was right and the prose slipped. |
+| A wrong or missing fact, an invented or dropped criterion, a hypothesis written as fact, the wrong structure | Fix the brief and re-run. |
+
+Editing the body to paper over a brief defect leaves the brief wrong, so the next run
+reproduces it. That is the one case where a hand edit costs more than a re-run.
 
 `gaps` is the useful half of the output. It names what to go measure before the next run,
 and flags anything `codex` had to read the repo to resolve, which is a brief that needed
@@ -163,6 +177,7 @@ result in with Edit.
 | Numbers without provenance | A figure with no method and no caveat comes back as a confident claim the reviewer cannot check. |
 | Skipping the manifest on stderr | Without the repo's format document, `codex` invents a structure and the body arrives in the wrong shape. |
 | Regenerating a whole body to fix one section | Splice one section. Wholesale regeneration rewrites prose the author already signed off. |
+| Fact-checked only against the brief | The brief can be wrong. Re-run the greps behind the load-bearing claims; a confident sentence built on a stale fact is the expensive failure. |
 | Posting because the prose reads well | Fluent and wrong is the expected failure. Check every claim against a brief line. |
 | Verbose brief, verbose description | `codex` mirrors the register it is fed. Write brief bullets as a clause per fact; tightening the brief tightens the output more reliably than asking for brevity in the prompt. |
 | Reciting how a number was measured | Provenance is one clause, not a sentence of sample sizes and API limits. Only a correction to your own earlier analysis is banned outright, with `(background)`. |
