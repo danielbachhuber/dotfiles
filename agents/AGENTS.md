@@ -5,6 +5,7 @@
 
 ## Pull Requests
 
+- Whenever a pull request description needs writing or rewriting, prioritize the `draft-pr-description` skill first. It owns the workflow. A repo's own PR-description skill (for example `writing-pr-descriptions` in psi-product) supplies that repo's required format and sections, so load both when both apply. A project CLAUDE.md naming its own skill is not a reason to skip `draft-pr-description`.
 - When editing a pull request description, make sure to first fetch the existing description. I may have edited it in the interim and it's frustrating to have my edits blown away.
 - When replying to PR review comments, push the commit first, then leave the reply. That way the reply can reference the commit SHA, and the reviewer can follow the link to the exact changeset.
 
