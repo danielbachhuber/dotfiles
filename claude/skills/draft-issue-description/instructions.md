@@ -35,8 +35,10 @@ The shape, in order:
 3. **`**Done is:**`** followed by a blank line and a short bulleted list of concrete,
    verifiable completion criteria.
 
-Every code reference is a link. The brief supplies SHA-pinned permalinks; use them inline on
-the symbol or path, never as a bare backticked name and never as a footnote.
+Every code reference is a link, using the SHA-pinned permalinks the brief supplies, inline on
+the symbol or path rather than as a footnote. Link only what the brief gives you a permalink
+for. A name with no permalink stays a plain backticked name: pointing it at a file that does
+not contain it is worse than not linking it.
 
 An issue is usually shorter than you expect. Two paragraphs and three criteria is a normal,
 good issue in this repository. Length is not thoroughness.

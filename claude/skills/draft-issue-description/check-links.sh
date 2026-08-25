@@ -59,8 +59,15 @@ while IFS=$'\t' read -r text url; do
             ;;
     esac
     echo "ok    $path${anchor:+#$anchor}"
-done < <(grep -oE '\[[^]]+\]\(https://github\.com/[^)]+/blob/[^)]+\)' "$DRAFT" |
-         sed -E 's/^\[([^]]+)\]\((.*)\)$/\1\t\2/')
+done < <(python3 - "$DRAFT" <<'EXTRACT'
+# Link text can itself contain brackets — `dependabot[bot]` is a real case — so a
+# [^]]+ character class silently skips those links. Balance one level of nesting instead.
+import re, sys
+text = open(sys.argv[1]).read()
+for m in re.finditer(r"\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\((https://[^)]*?/blob/[^)]+)\)", text):
+    print(m.group(1) + "\t" + m.group(2))
+EXTRACT
+)
 
 echo "---"
 echo "$checked permalink(s) checked, $fails failure(s)"
