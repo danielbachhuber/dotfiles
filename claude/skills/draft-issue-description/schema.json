@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "One-line issue title. Plain statement of the defect, or the honest shape of the work (\"Figure out how to retire X\"). No trailing period."
+    },
+    "draft_path": {
+      "type": "string",
+      "description": "Absolute path of the markdown file written, which must be the output path given in the task."
+    },
+    "done_is": {
+      "type": "array",
+      "description": "The completion criteria as written into the body, so the author can check them without opening the file.",
+      "items": { "type": "string" }
+    },
+    "has_headings": {
+      "type": "boolean",
+      "description": "True if the body contains any markdown heading. Must be false; an issue body is prose, bullets, then the Done is block."
+    },
+    "unused": {
+      "type": "array",
+      "description": "Brief facts deliberately left out, with the reason. Empty array if everything was used.",
+      "items": { "type": "string" }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Specific details the brief lacked, including anything you had to read the repository to resolve. Empty array if none.",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["title", "draft_path", "done_is", "has_headings", "unused", "gaps"],
+  "additionalProperties": false
+}
