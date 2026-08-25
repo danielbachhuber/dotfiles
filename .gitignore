@@ -1,4 +1,5 @@
 environment.local
 .DS_Store
+docs/superpowers/specs
 vim/tmp
 vim/.netrwhist
