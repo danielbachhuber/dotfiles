@@ -64,6 +64,11 @@ the diff. Write them from what this session actually did:
 | `Verified, not assumed` | Everything checked with a command or an API call rather than reasoned about, and the check itself. Branch protection, downstream consumers, whether a flag survives, whether a skipped job blocks a merge. |
 | `Uncertainties` | Estimated versus measured, what a reviewer should doubt, figures that rest on outliers. |
 
+`(background)` marks a brief bullet that must not reach the description at all. Reserve it
+for corrections to your own earlier analysis: a number you got wrong and fixed belongs in
+the brief, never in a pull request body. Method stays publishable otherwise, held to one
+clause by concision rather than banned.
+
 Scan back through the session for corrections. A number you revised, a design you priced
 and rejected, an assumption that turned out wrong: those belong in `Decisions` or
 `Uncertainties`. They are the details a reviewer would otherwise spend an hour
@@ -159,5 +164,7 @@ result in with Edit.
 | Skipping the manifest on stderr | Without the repo's format document, `codex` invents a structure and the body arrives in the wrong shape. |
 | Regenerating a whole body to fix one section | Splice one section. Wholesale regeneration rewrites prose the author already signed off. |
 | Posting because the prose reads well | Fluent and wrong is the expected failure. Check every claim against a brief line. |
+| Verbose brief, verbose description | `codex` mirrors the register it is fed. Write brief bullets as a clause per fact; tightening the brief tightens the output more reliably than asking for brevity in the prompt. |
+| Reciting how a number was measured | Provenance is one clause, not a sentence of sample sizes and API limits. Only a correction to your own earlier analysis is banned outright, with `(background)`. |
 | Hand-patching a fact `codex` dropped | Put it under `Must appear` and re-run. Editing the body leaves the brief wrong, so the next run drops it again. |
 | Filling empty slots with plausible text | `None.` is a valid answer and a useful signal. Invented content in the brief becomes invented content in the description. |

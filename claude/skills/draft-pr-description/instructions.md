@@ -45,6 +45,13 @@ inside `<details>` expanders.
 Use the brief's own numbers, paths, and PR references. A description that could be pasted
 onto a different pull request says nothing about this one.
 
+Give a figure the provenance it needs to be believed, and give it one clause. "Measured from
+draft-state timeline events rather than the current draft flag" earns its place; a sentence
+reciting sample sizes, API limits and query shape does not.
+
+Never mention a correction to an earlier analysis. Brief bullets prefixed `(background)`
+stay out of the body.
+
 Every fact under `Must appear` in the brief has to be in the body. Those are the author's
 non-negotiables, usually the totals that frame the change. Never move one to `unused`.
 
@@ -62,6 +69,10 @@ afterwards. A missing pull request number is not a gap, so do not report it as o
 
 Prefer prose to bullet fragments for anything explanatory. Reserve bullets for genuine
 lists: affected files, alternatives, out-of-scope items.
+
+Say each thing once, in as few words as carry it. The brief is written to be complete, not
+to be published: expect to state its facts in a fraction of its words. A sentence that
+needs three subordinate clauses is two sentences. Never pad a section to look substantial.
 
 Scale to the diff. A two-file change gets a short body and no expanders. Sections with
 nothing real to say are omitted, not padded.

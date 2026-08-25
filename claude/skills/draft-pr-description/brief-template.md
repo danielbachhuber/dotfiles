@@ -7,6 +7,11 @@ produced the change, so anything absent from this brief cannot appear in the des
 
 Bullets throughout. Every claim carries its evidence: a path, a line, a number, a PR
 number, a command. Bare adjectives are worthless here.
+
+Write the bullets tersely. `codex` mirrors the register it is fed, so a brief of long
+compound sentences produces a description of long compound sentences. Aim for a clause per
+fact, not a paragraph per bullet. Terse does not mean fewer facts: cut words, keep
+substance.
 -->
 
 ## What changed
@@ -33,9 +38,16 @@ section a thin brief always skips, and the one reviewers most often say was usef
 
 ## Measurements
 
-<!-- Every number that will appear in the description, with how it was obtained and what
-it does not cover. Distinguish measured from estimated. If a figure is dominated by a few
-outliers, say so here — the description must carry that caveat, not bury it. -->
+<!-- Every number that will appear in the description. Distinguish measured from estimated.
+If a figure is dominated by a few outliers, say so here: the description must carry that
+caveat.
+
+Method belongs here too, in as few words as carry it. Keep it short rather than keep it out:
+a figure a reviewer cannot place is a figure they cannot trust.
+
+Prefix a bullet `(background)` only to keep it out of the description entirely. The case
+that always earns it is a correction to your own earlier analysis. A number you got wrong
+and fixed is what makes this brief trustworthy, and has no place in a pull request body. -->
 
 -
 
