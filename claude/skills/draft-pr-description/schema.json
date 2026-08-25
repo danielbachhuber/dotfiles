@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Conventional Commits title: type(scope): subject. Imperative, no trailing period."
+    },
+    "draft_path": {
+      "type": "string",
+      "description": "Absolute path of the markdown file written, which must be the output path given in the task."
+    },
+    "outline": {
+      "type": "array",
+      "description": "The headings written, in order, so the author can see the shape without opening the file.",
+      "items": { "type": "string" }
+    },
+    "unused": {
+      "type": "array",
+      "description": "Brief facts deliberately left out, with the reason. Empty array if everything was used.",
+      "items": { "type": "string" }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Specific details the brief lacked, including anything you had to read the repository to resolve. Empty array if none.",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["title", "draft_path", "outline", "unused", "gaps"],
+  "additionalProperties": false
+}
