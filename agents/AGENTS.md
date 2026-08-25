@@ -1,8 +1,12 @@
+## Writing
+
+- Whenever you prepare a PR description, PR comment, issue body, or issue comment on my behalf, first write the content to a markdown file in `~/projects/drafts/` so I can easily access and edit it before anything is posted. Don't post to GitHub until I've confirmed. Once the GitHub operation succeeds, delete the draft file from `~/projects/drafts/`.
+  - Pull requests should be prefixed with `pull-request-`, issues with `issue-`, and replies with `reply-`. Each should then have a stable descriptive suffix, likely the branch name. If the PR or issue already exists, then include the number immediately after the prefix.
+
 ## Pull Requests
 
 - When editing a pull request description, make sure to first fetch the existing description. I may have edited it in the interim and it's frustrating to have my edits blown away.
 - When replying to PR review comments, push the commit first, then leave the reply. That way the reply can reference the commit SHA, and the reviewer can follow the link to the exact changeset.
-- Whenever you prepare a PR description, PR comment, issue body, or issue comment on my behalf, first write the content to a markdown file in `~/projects/drafts/` so I can easily access and edit it before anything is posted. Don't post to GitHub until I've confirmed. Once the GitHub operation succeeds, delete the draft file from `~/projects/drafts/`.
 
 ## GitHub Issues
 
