@@ -10,7 +10,7 @@
     "name": "GitHub Workflow",
     "description": "Pull requests, reviews, and issues that need Daniel, with one click to start the work.",
     "branding": {
-      "icon": "Github"
+      "icon": "GitPullRequest"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
