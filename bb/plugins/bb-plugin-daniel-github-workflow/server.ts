@@ -2,6 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { MIGRATIONS } from "./shared/store.js";
 import { registerPullRequests } from "./prs/register.js";
 import { registerReviews } from "./reviews/register.js";
+import { registerIssues } from "./issues/register.js";
 
 export { rpcContract } from "./prs/contract.js";
 
@@ -77,4 +78,5 @@ export default async function plugin(bb: BbPluginApi) {
 
   registerPullRequests(bb, settings, db as never);
   registerReviews(bb, settings as never, db as never);
+  registerIssues(bb, settings as never, db as never);
 }

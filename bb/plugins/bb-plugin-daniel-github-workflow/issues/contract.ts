@@ -13,7 +13,7 @@ const rowSchema = z.object({
 });
 
 export const rpcContract = defineRpcContract({
-  listRows: {
+  listIssues: {
     input: z.null(),
     output: z.object({
       rows: z.array(rowSchema),
@@ -22,7 +22,7 @@ export const rpcContract = defineRpcContract({
       lastError: z.string().nullable(),
     }),
   },
-  refresh: {
+  refreshIssues: {
     input: z.null(),
     output: z.object({ ok: z.boolean(), error: z.string().nullable() }),
   },
