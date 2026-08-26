@@ -25,6 +25,6 @@
     "app.tsx",
     "components",
     "lib",
-    "hooks"
+    "issues"
   ]
 }
