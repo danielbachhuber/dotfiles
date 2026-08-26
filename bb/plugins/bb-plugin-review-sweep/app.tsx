@@ -27,7 +27,7 @@ import {
 import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
-  actionLabel,
+  START_THREAD_LABEL,
   ageLabel,
   ageTone,
   displaySection,
@@ -160,7 +160,7 @@ function Action({
         onClick={() => onReview(row)}
         className="whitespace-nowrap"
       >
-        {isStarting ? "Starting…" : actionLabel(row.state)}
+        {isStarting ? "Starting…" : START_THREAD_LABEL}
       </Button>
     </span>
   );

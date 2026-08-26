@@ -24,6 +24,15 @@ export function actionLabel(state: ReviewState): string {
 }
 
 /**
+ * The button says what the click does, not what kind of review it is: every
+ * row here starts a thread, and "Review" read like it opened the diff.
+ *
+ * The thread title still uses actionLabel, so the sidebar keeps the
+ * first-look/re-review distinction that the button no longer carries.
+ */
+export const START_THREAD_LABEL = "Start thread";
+
+/**
  * The sidebar clips a thread title past roughly this width, and the row above
  * it already names the project, so the repository is wasted characters here.
  */
@@ -110,11 +119,30 @@ export function ageTone(requestedAt: number, now: number, staleAfterDays: number
   return ageInDays(requestedAt, now) >= staleAfterDays ? "stale" : "quiet";
 }
 
-/** "today", "1 day", "6 days". */
+/** Below this, an age is reported in hours; at or above it, in days. */
+export const HOURS_BEFORE_DAYS = 48;
+
+/**
+ * "3 hours", "27 hours", "2 days", "6 days".
+ *
+ * Under two days the hour count is the useful number: a request that arrived
+ * this morning and one that arrived last night both read "today", which is
+ * the difference between answering now and having already sat overnight. Past
+ * two days the hour count stops meaning anything and days read better.
+ */
 export function ageLabel(requestedAt: number, now: number): string {
+  const hours = ageInHours(requestedAt, now);
+  if (hours < HOURS_BEFORE_DAYS) {
+    if (hours < 1) return "just now";
+    return hours === 1 ? "1 hour" : `${hours} hours`;
+  }
   const days = ageInDays(requestedAt, now);
-  if (days === 0) return "today";
   return days === 1 ? "1 day" : `${days} days`;
+}
+
+/** Whole hours since the request, never negative for a clock skewed forward. */
+export function ageInHours(requestedAt: number, now: number): number {
+  return Math.max(0, Math.floor((now - requestedAt) / 3_600_000));
 }
 
 /**
