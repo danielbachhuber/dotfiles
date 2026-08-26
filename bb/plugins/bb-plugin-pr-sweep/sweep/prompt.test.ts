@@ -84,7 +84,20 @@ describe("buildPrompt", () => {
       const prompt = buildPrompt(row({ flags }));
       expect(prompt).toMatch(/You already have a git worktree/);
       expect(prompt).toMatch(/not this pull request's/);
-      expect(prompt).toMatch(/never point `git worktree add` at the directory you are already in/);
+      expect(prompt).toMatch(/never point `git worktree add` at the directory you are already in/i);
+    }
+  });
+
+  it("confines any new worktree to the directory bb owns", () => {
+    // bb has no API to register a worktree after the fact, so containment is
+    // the only thing that gets one cleaned up: bb deletes the thread's
+    // directory on archive, taking anything inside it. A /tmp worktree
+    // outlives the thread and has to be found by hand.
+    for (const flags of [["ci-failing"], ["conflict"], ["conflict", "feedback"]]) {
+      const prompt = buildPrompt(row({ flags }));
+      expect(prompt).toMatch(/INSIDE the one you start in/);
+      expect(prompt).toMatch(/`\.claude\/worktrees\/pr-<n>`/);
+      expect(prompt).toMatch(/`\/tmp` especially/);
     }
   });
 

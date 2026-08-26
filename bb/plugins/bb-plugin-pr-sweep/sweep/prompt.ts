@@ -78,7 +78,8 @@ export function buildPrompt(row: ClassifiedRow): string {
     // agent that was already in one to build a second at an arbitrary /tmp
     // path, where bb could not see the work and the diff panel read "no
     // changes".
-    "You already have a git worktree: the one this thread starts in. It is on a new branch, not this pull request's, so check the branch before editing anything. Get onto the PR's head branch — the skills above tell you how — and never point `git worktree add` at the directory you are already in.",
+    "You already have a git worktree: the one this thread starts in. It is on a new branch, not this pull request's, so check the branch before editing anything. Get onto the PR's head branch — the skills above tell you how.",
+    "If a skill has you create a worktree, create it at a path INSIDE the one you start in, using a relative path such as `.claude/worktrees/pr-<n>`. bb owns the directory this thread runs in and deletes it when the thread is archived, so a worktree inside it is cleaned up with everything else. One created somewhere else, `/tmp` especially, outlives the thread, stays invisible to bb's diff, and has to be found and removed by hand. Never point `git worktree add` at the directory you are already in.",
     ...(usesPrSweep
       ? [
           "",
