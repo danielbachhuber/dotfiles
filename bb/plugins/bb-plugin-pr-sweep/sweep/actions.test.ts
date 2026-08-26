@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MODEL_BY_ACTION,
+  PERMISSION_MODES,
   MAX_THREAD_TITLE,
   actionLabel,
   modelForFlags,
   parseModelByAction,
+  parsePermissionMode,
   skillFor,
   skillOwnsWorkflow,
   threadTitle,
@@ -149,7 +151,7 @@ describe("parseModelByAction", () => {
   });
 
   it("defaults to a cheap model for merge conflicts", () => {
-    expect(DEFAULT_MODEL_BY_ACTION.conflict).toBe("claude-haiku-4-5-20251001");
+    expect(DEFAULT_MODEL_BY_ACTION.conflict).toBe("claude-sonnet-5");
   });
 
   it("reads a flag-to-model object", () => {
@@ -177,5 +179,21 @@ describe("parseModelByAction", () => {
     expect(parseModelByAction('{"conflict":"","feedback":null,"ci-failing":"x"}').models).toEqual({
       "ci-failing": "x",
     });
+  });
+});
+
+describe("parsePermissionMode", () => {
+  it("accepts each mode bb defines", () => {
+    for (const mode of PERMISSION_MODES) {
+      expect(parsePermissionMode(mode)).toBe(mode);
+    }
+  });
+
+  it("falls back to full for an unset or unrecognized value", () => {
+    // A select cannot produce these, but a hand-edited settings file can, and
+    // an unknown string would be rejected by threads.spawn.
+    for (const bad of [undefined, "", "bypass", "ACCEPT-EDITS", "plan"]) {
+      expect(parsePermissionMode(bad)).toBe("full");
+    }
   });
 });

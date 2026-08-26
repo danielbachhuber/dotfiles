@@ -171,7 +171,7 @@ describe("workOnThis is one thread per pull request", () => {
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { model?: string; providerId?: string },
     ]];
-    expect(spawnArgs.model).toBe("claude-haiku-4-5-20251001");
+    expect(spawnArgs.model).toBe("claude-sonnet-5");
     expect(spawnArgs.providerId).toBe("claude-code");
   });
 
@@ -288,5 +288,53 @@ describe("workOnThis is one thread per pull request", () => {
 
     await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(2);
+  });
+});
+
+describe("permission mode", () => {
+  async function hostWithSettings(settings: Record<string, string>) {
+    spawnCount = 0;
+    const fixture = createFakePluginHost({
+      pluginId: "pr-sweep",
+      settings,
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: { spawn: async () => ({ id: `thr_${++spawnCount}` }), list: async () => [] },
+      },
+    });
+    await plugin(fixture.bb);
+    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      seedRow(),
+    ] as never);
+    return fixture;
+  }
+
+  async function spawnedWith(settings: Record<string, string>) {
+    const { harness } = await hostWithSettings(settings);
+    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
+      { permissionMode?: string },
+    ]];
+    return args.permissionMode;
+  }
+
+  it("defaults to full, the only mode that reaches the remote", async () => {
+    // accept-edits stops at the first shell command; auto keeps the workspace
+    // sandbox, which blocks network egress, so the commit lands and the push
+    // fails. Only full carries a resolution through to the PR.
+    expect(await spawnedWith({})).toBe("full");
+  });
+
+  it("honours a configured mode", async () => {
+    expect(await spawnedWith({ permissionMode: "accept-edits" })).toBe("accept-edits");
+    expect(await spawnedWith({ permissionMode: "auto" })).toBe("auto");
+  });
+
+  it("never passes a mode bb would reject", async () => {
+    expect(await spawnedWith({ permissionMode: "bypass-everything" })).toBe("full");
   });
 });

@@ -29,12 +29,17 @@ bb plugin install . --yes
 - **Path to the gh CLI** — override when `gh` is not on the server's PATH.
 - **Provider for spawned threads** — defaults to `claude-code`, which is the
   provider the routed skills belong to. Blank uses bb's default.
+- **Permission mode for spawned threads** — defaults to `full`. `accept-edits` stops
+  at the first shell command; `auto` keeps the workspace sandbox, which blocks
+  network egress, so a conflict resolution commits but cannot push. Only `full`
+  carries the work through to the PR unattended, and it grants unsandboxed
+  command execution in the worktree.
 - **Model by action** — a JSON object keyed by flag, picking the model for that
   action's thread. An unlisted flag takes the provider's default model, and a
   malformed value is logged and ignored rather than blocking a spawn.
 
   ```json
-  { "conflict": "claude-haiku-4-5-20251001" }
+  { "conflict": "claude-sonnet-5" }
   ```
 
   Worth knowing before tuning this down: `resolve-merge-conflicts` is explicit

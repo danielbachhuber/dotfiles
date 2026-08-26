@@ -5,6 +5,7 @@ import { buildPrompt } from "./sweep/prompt.js";
 import {
   modelForFlags,
   parseModelByAction,
+  parsePermissionMode,
   threadTitle,
 } from "./sweep/actions.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./sweep/spawn-target.js";
@@ -31,10 +32,23 @@ export default async function plugin(bb: BbPluginApi) {
       type: "string",
       label: "Model by action",
       experimental_multiline: true,
-      // A JSON object keyed by flag: {"conflict": "claude-haiku-4-5-20251001"}.
+      // A JSON object keyed by flag: {"conflict": "claude-sonnet-5"}.
       // An unlisted flag takes the provider's default model. Blank restores
       // the defaults.
-      default: '{\n  "conflict": "claude-haiku-4-5-20251001"\n}',
+      default: '{\n  "conflict": "claude-sonnet-5"\n}',
+    },
+    permissionMode: {
+      type: "select",
+      label: "Permission mode for spawned threads",
+      // accept-edits sandboxes the workspace and routes every escalation to
+      // the user, so a thread stops at its first shell command. auto keeps
+      // that same sandbox with automatic approval, which is enough to do the
+      // work but not to finish it: the sandbox blocks network egress, so the
+      // commit lands and the push fails with a proxy authentication error.
+      // full bypasses the sandbox and the approval, and is the only mode that
+      // carries a resolution through to the PR unattended.
+      options: ["accept-edits", "auto", "full"],
+      default: "full",
     },
     providerId: {
       type: "string",
@@ -219,7 +233,8 @@ export default async function plugin(bb: BbPluginApi) {
           };
         }
 
-        const { providerId, modelByAction } = await settings.get();
+        const { providerId, modelByAction, permissionMode } = await settings.get();
+        const mode = parsePermissionMode(permissionMode);
         const { models, error } = parseModelByAction(modelByAction);
         if (error) bb.log.warn(`"Model by action" setting: ${error}`);
         const model = modelForFlags(row.flags, models);
@@ -229,13 +244,15 @@ export default async function plugin(bb: BbPluginApi) {
           environment: { type: "project-default" },
           ...(providerId ? { providerId } : {}),
           ...(model ? { model } : {}),
+          permissionMode: mode,
           prompt: buildPrompt(row),
           title: threadTitle(row.flags, number),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +
             ` on ${providerId || "the default provider"}` +
-            (model ? ` with ${model}` : ""),
+            (model ? ` with ${model}` : "") +
+            `, permission mode ${mode}`,
         );
         store.linkThread(repo, number, thread.id, Date.now());
         bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });

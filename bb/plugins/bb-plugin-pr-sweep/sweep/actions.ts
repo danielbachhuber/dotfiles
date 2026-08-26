@@ -89,7 +89,7 @@ export function threadTitle(flags: readonly string[], number: number): string {
  * user's explicit choice; override it with the "Model by action" setting.
  */
 export const DEFAULT_MODEL_BY_ACTION: Record<string, string> = {
-  conflict: "claude-haiku-4-5-20251001",
+  conflict: "claude-sonnet-5",
 };
 
 /**
@@ -140,4 +140,20 @@ export function modelForFlags(
     if (flags.includes(flag)) return models[flag];
   }
   return undefined;
+}
+
+export const PERMISSION_MODES = ["accept-edits", "auto", "full"] as const;
+
+export type PermissionModeSetting = (typeof PERMISSION_MODES)[number];
+
+/**
+ * Narrows the stored setting, which the SDK types only as `string`, to the
+ * union `threads.spawn` accepts. An unrecognized value falls back to the
+ * declared default rather than being passed through, so a hand-edited settings
+ * file cannot reach the spawn call with a mode bb would reject.
+ */
+export function parsePermissionMode(raw: string | undefined): PermissionModeSetting {
+  return (PERMISSION_MODES as readonly string[]).includes(raw ?? "")
+    ? (raw as PermissionModeSetting)
+    : "full";
 }
