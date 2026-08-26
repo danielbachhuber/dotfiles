@@ -45,12 +45,12 @@ afterEach(() => {
 
 function render(result: Record<string, unknown>, extraRpc: Record<string, unknown> = {}) {
   const slot = renderSlot(
-    app.navPanels[0]!,
+    app.navPanels.find((panel) => panel.id === "prs")!,
     { subPath: "" },
     {
       rpc: {
-        listRows: () => result,
-        refresh: () => ({ ok: true, error: null }),
+        listPullRequests: () => result,
+        refreshPullRequests: () => ({ ok: true, error: null }),
         ...extraRpc,
       },
     },
@@ -60,9 +60,16 @@ function render(result: Record<string, unknown>, extraRpc: Record<string, unknow
 }
 
 describe("panel", () => {
-  it("registers one nav panel", () => {
-    expect(app.navPanels).toHaveLength(1);
-    expect(app.navPanels[0]!.path).toBe("prs");
+  it("registers a nav panel per domain, with stable ids", () => {
+    // Same ids and paths the four separate plugins used, so nothing the user
+    // pinned or learned moves when they merge.
+    expect(app.navPanels.map((panel) => panel.id).sort()).toEqual([
+      "issues",
+      "new-issue",
+      "prs",
+      "reviews",
+    ]);
+    expect(app.navPanels.find((panel) => panel.id === "prs")!.path).toBe("prs");
   });
 
   it("shows a flagged PR under Needs action", async () => {
@@ -268,11 +275,11 @@ describe("panel", () => {
   it("calls archiveThread when Archive thread is clicked", async () => {
     const slot = render(
       listing({ rows: [rowFixture({ flags: [], group: "clean", threadId: "thr_1" })] }),
-      { archiveThread: () => ({ ok: true, reason: null }) },
+      { archivePullRequestThread: () => ({ ok: true, reason: null }) },
     );
     (await slot.findByRole("button", { name: /archive thread/i })).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(slot.inspection.rpcCalls.some((call) => call.method === "archiveThread")).toBe(true);
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "archivePullRequestThread")).toBe(true);
   });
 
   it("renders column headers", async () => {
@@ -469,7 +476,7 @@ describe("panel", () => {
   it("disables the button and says Starting while the thread is created", async () => {
     let release: (() => void) | undefined;
     const slot = render(listing(), {
-      workOnThis: async () => {
+      workOnPullRequest: async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
@@ -489,7 +496,7 @@ describe("panel", () => {
   it("does not fire a second call when the button is clicked twice", async () => {
     let release: (() => void) | undefined;
     const slot = render(listing(), {
-      workOnThis: async () => {
+      workOnPullRequest: async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
@@ -504,7 +511,7 @@ describe("panel", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(
-      slot.inspection.rpcCalls.filter((call) => call.method === "workOnThis"),
+      slot.inspection.rpcCalls.filter((call) => call.method === "workOnPullRequest"),
     ).toHaveLength(1);
 
     release?.();
@@ -512,17 +519,17 @@ describe("panel", () => {
 
   it("calls workOnThis when the button is clicked", async () => {
     const slot = render(listing(), {
-      workOnThis: () => ({ threadId: "thr_1", existing: false, reason: null }),
+      workOnPullRequest: () => ({ threadId: "thr_1", existing: false, reason: null }),
     });
     const button = await slot.findByRole("button", { name: /resolve conflict/i });
     button.click();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(slot.inspection.rpcCalls.some((call) => call.method === "workOnThis")).toBe(true);
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "workOnPullRequest")).toBe(true);
   });
 });
 
 describe("thread header action", () => {
-  const action = () => app.threadHeaderActions[0]!;
+  const action = () => app.threadHeaderActions.find((a) => a.id === "open-pull-request")!;
 
   function renderHeader(
     result: unknown,
@@ -541,9 +548,15 @@ describe("thread header action", () => {
     return slot;
   }
 
-  it("registers one header action", () => {
-    expect(app.threadHeaderActions).toHaveLength(1);
-    expect(action().id).toBe("open-pull-request");
+  it("registers a header action per domain, with distinct ids", () => {
+    // Distinct ids are required: bb rejects duplicate keys within one factory,
+    // and each action resolves ownership server-side so only the domain that
+    // started a thread shows its control there.
+    expect(app.threadHeaderActions.map((a) => a.id).sort()).toEqual([
+      "create-issue",
+      "open-pull-request",
+      "open-reviewed-pull-request",
+    ]);
   });
 
   it("links to the pull request on a thread this plugin started", async () => {

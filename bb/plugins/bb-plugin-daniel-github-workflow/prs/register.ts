@@ -140,7 +140,7 @@ export function registerPullRequests(
   }
 
   bb.rpc.register(rpcContract, {
-    async listRows() {
+    async listPullRequests() {
       const meta = store.readMeta();
       const rows = store.readRows();
 
@@ -169,7 +169,7 @@ export function registerPullRequests(
       };
     },
 
-    async refresh() {
+    async refreshPullRequests() {
       return sweepNow();
     },
 
@@ -198,7 +198,7 @@ export function registerPullRequests(
       };
     },
 
-    async archiveThread({ repo, number }) {
+    async archivePullRequestThread({ repo, number }) {
       const threadId = store.threadFor(repo, number);
       if (!threadId) return { ok: false, reason: "That pull request has no thread." };
 
@@ -212,7 +212,7 @@ export function registerPullRequests(
       return { ok: true, reason: null };
     },
 
-    async workOnThis({ repo, number }) {
+    async workOnPullRequest({ repo, number }) {
       const key = `${repo}#${number}`;
 
       // One thread per PR, enforced on three levels: the durable link below,

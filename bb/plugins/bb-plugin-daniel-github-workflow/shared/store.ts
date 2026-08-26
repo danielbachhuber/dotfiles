@@ -156,8 +156,13 @@ export function createStore<TRow extends StoredRow>(
     },
 
     replaceAll(result) {
+      // A domain that does not fan out per repository reports no `repos`, so
+      // derive the write set from the rows themselves. Reading `repos ?? []`
+      // directly wrote nothing at all for those domains.
+      const repos = result.repos ?? [...new Set(result.rows.map((row) => row.repo))];
+
       const byRepo = new Map<string, TRow[]>();
-      for (const repo of result.repos ?? []) {
+      for (const repo of repos) {
         if (!(result.failedRepos ?? []).includes(repo)) byRepo.set(repo, []);
       }
       for (const row of result.rows) {

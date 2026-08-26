@@ -158,3 +158,20 @@ describe("thread links", () => {
     expect(store.threadFor("acme/widgets", 42)).toBe("thr_1");
   });
 });
+
+describe("a sweep with no per-repository breakdown", () => {
+  it("still writes its rows", () => {
+    // Reviews and issues sweep in one search and report no `repos`. Building
+    // the write set from that field alone silently stored nothing.
+    const store = freshStore();
+    store.replaceAll({
+      rows: [row({ number: 1 }), row({ repo: "acme/gadgets", number: 2 })],
+      truncated: false,
+      sweptAt: 1_700_000_000_000,
+    });
+    expect(store.readRows().map((entry) => `${entry.repo}#${entry.number}`).sort()).toEqual([
+      "acme/gadgets#2",
+      "acme/widgets#1",
+    ]);
+  });
+});

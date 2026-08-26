@@ -29,7 +29,7 @@ const rowSchema = z.object({
 });
 
 export const rpcContract = defineRpcContract({
-  listRows: {
+  listPullRequests: {
     input: z.null(),
     output: z.object({
       rows: z.array(rowSchema),
@@ -39,7 +39,7 @@ export const rpcContract = defineRpcContract({
       lastError: z.string().nullable(),
     }),
   },
-  refresh: {
+  refreshPullRequests: {
     input: z.null(),
     output: z.object({ ok: z.boolean(), error: z.string().nullable() }),
   },
@@ -49,11 +49,11 @@ export const rpcContract = defineRpcContract({
       .object({ repo: z.string(), number: z.number(), url: z.string(), title: z.string() })
       .nullable(),
   },
-  archiveThread: {
+  archivePullRequestThread: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
     output: z.object({ ok: z.boolean(), reason: z.string().nullable() }),
   },
-  workOnThis: {
+  workOnPullRequest: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
     output: z.object({
       threadId: z.string().nullable(),

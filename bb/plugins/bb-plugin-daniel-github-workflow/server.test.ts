@@ -6,13 +6,26 @@ import plugin from "./server.js";
 
 describe("server", () => {
   it("registers the rpc methods, the service, and the settings", async () => {
-    const { bb, harness } = createFakePluginHost({ pluginId: "pr-sweep" });
+    const { bb, harness } = createFakePluginHost({ pluginId: "daniel-github-workflow" });
     await plugin(bb);
 
     expect(harness.registrations.rpcMethods).toEqual(
-      expect.arrayContaining(["listRows", "refresh", "workOnThis"]),
+      expect.arrayContaining([
+        "listPullRequests",
+        "refreshPullRequests",
+        "workOnPullRequest",
+        "listReviews",
+        "listIssues",
+        "issue_thread_create",
+      ]),
     );
-    expect(harness.registrations.services.map((service) => service.name)).toContain("pull-request-sweep");
+    // One service per sweeping domain; new-issue has none because it stores
+    // nothing.
+    expect(harness.registrations.services.map((service) => service.name).sort()).toEqual([
+      "issue-sweep",
+      "pull-request-sweep",
+      "review-sweep",
+    ]);
     expect(Object.keys(harness.registrations.settingsDescriptors)).toEqual(
       expect.arrayContaining(["syncIntervalMinutes", "ghPath"]),
     );
@@ -25,7 +38,7 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    const result = await harness.behavior.callRpc("listRows", null);
+    const result = await harness.behavior.callRpc("listPullRequests", null);
     expect(result).toMatchObject({ rows: [], sweptAt: null });
   });
 
@@ -36,7 +49,7 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    const result = await harness.behavior.callRpc("refresh", null);
+    const result = await harness.behavior.callRpc("refreshPullRequests", null);
     expect(result.ok).toBe(false);
     expect(harness.needsConfigurationMessages.length).toBeGreaterThan(0);
   });
@@ -63,7 +76,7 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    const result = await harness.behavior.callRpc("workOnThis", {
+    const result = await harness.behavior.callRpc("workOnPullRequest", {
       repo: "acme/widgets",
       number: 1,
     });
@@ -126,11 +139,11 @@ describe("workOnThis is one thread per pull request", () => {
   it("spawns once and reuses the thread on a second click", async () => {
     const { harness } = await seededHost();
 
-    const first = await harness.behavior.callRpc("workOnThis", {
+    const first = await harness.behavior.callRpc("workOnPullRequest", {
       repo: "acme/widgets",
       number: 42,
     });
-    const second = await harness.behavior.callRpc("workOnThis", {
+    const second = await harness.behavior.callRpc("workOnPullRequest", {
       repo: "acme/widgets",
       number: 42,
     });
@@ -145,8 +158,8 @@ describe("workOnThis is one thread per pull request", () => {
     const { harness } = await seededHost();
 
     const [first, second] = await Promise.all([
-      harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 }),
-      harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 }),
+      harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 }),
+      harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 }),
     ]);
 
     expect(second.threadId).toBe(first.threadId);
@@ -155,7 +168,7 @@ describe("workOnThis is one thread per pull request", () => {
 
   it("titles the thread with the action and number, not the repository", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
 
     // callsTo returns each call's argument list, so [0] is spawn's only arg.
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
@@ -167,7 +180,7 @@ describe("workOnThis is one thread per pull request", () => {
 
   it("spawns a conflict thread on the cheap model, and others on the default", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
 
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { model?: string; providerId?: string },
@@ -194,7 +207,7 @@ describe("workOnThis is one thread per pull request", () => {
       { ...seedRow(), flags: ["ci-failing"] },
     ] as never);
 
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { model?: string },
     ]];
@@ -220,7 +233,7 @@ describe("workOnThis is one thread per pull request", () => {
       seedRow(),
     ] as never);
 
-    const result = await harness.behavior.callRpc("workOnThis", {
+    const result = await harness.behavior.callRpc("workOnPullRequest", {
       repo: "acme/widgets",
       number: 42,
     });
@@ -230,9 +243,9 @@ describe("workOnThis is one thread per pull request", () => {
 
   it("reports the linked thread on the row", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
 
-    const listing = await harness.behavior.callRpc("listRows", null);
+    const listing = await harness.behavior.callRpc("listPullRequests", null);
     expect(listing.rows[0]).toMatchObject({ number: 42, threadId: "thr_1" });
   });
 
@@ -266,28 +279,28 @@ describe("workOnThis is one thread per pull request", () => {
       seedRow(),
     ] as never);
 
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
-    expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBe("thr_1");
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
+    expect((await harness.behavior.callRpc("listPullRequests", null)).rows[0]!.threadId).toBe("thr_1");
 
     // The thread disappears. No event fires.
     liveThreads.length = 0;
-    await harness.behavior.callRpc("refresh", null);
+    await harness.behavior.callRpc("refreshPullRequests", null);
 
-    expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBeNull();
+    expect((await harness.behavior.callRpc("listPullRequests", null)).rows[0]!.threadId).toBeNull();
   });
 
   it("frees the row again when its thread is deleted", async () => {
     const { bb, harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
 
     await harness.behavior.emitThreadEvent("thread.deleted", {
       thread: makeThreadResponse({ id: "thr_1" }),
     });
 
-    const listing = await harness.behavior.callRpc("listRows", null);
+    const listing = await harness.behavior.callRpc("listPullRequests", null);
     expect(listing.rows[0]!.threadId).toBeNull();
 
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(2);
   });
 });
@@ -316,7 +329,7 @@ describe("permission mode", () => {
 
   async function spawnedWith(settings: Record<string, string>) {
     const { harness } = await hostWithSettings(settings);
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { permissionMode?: string },
     ]];
@@ -368,7 +381,7 @@ describe("archiveThread", () => {
     ] as never);
 
     if (link) {
-      await fixture.harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+      await fixture.harness.behavior.callRpc("workOnPullRequest", { repo: "acme/widgets", number: 42 });
     }
     return { ...fixture, archived };
   }
@@ -376,7 +389,7 @@ describe("archiveThread", () => {
   it("archives the linked thread and frees the row", async () => {
     const { harness } = await hostWithThread(true);
 
-    const result = await harness.behavior.callRpc("archiveThread", {
+    const result = await harness.behavior.callRpc("archivePullRequestThread", {
       repo: "acme/widgets",
       number: 42,
     });
@@ -384,13 +397,13 @@ describe("archiveThread", () => {
     expect(result.ok).toBe(true);
     expect(harness.inspection.sdk.callsTo("threads.archive")).toHaveLength(1);
 
-    const listing = await harness.behavior.callRpc("listRows", null);
+    const listing = await harness.behavior.callRpc("listPullRequests", null);
     expect(listing.rows[0]!.threadId).toBeNull();
   });
 
   it("declines when the pull request has no thread", async () => {
     const { harness } = await hostWithThread(false);
-    const result = await harness.behavior.callRpc("archiveThread", {
+    const result = await harness.behavior.callRpc("archivePullRequestThread", {
       repo: "acme/widgets",
       number: 42,
     });
@@ -422,7 +435,7 @@ describe("pullRequestForThread", () => {
 
   it("returns the pull request for a thread this plugin started", async () => {
     const { harness } = await host();
-    const spawn = await harness.behavior.callRpc("workOnThis", {
+    const spawn = await harness.behavior.callRpc("workOnPullRequest", {
       repo: "acme/widgets",
       number: 42,
     });
@@ -448,7 +461,7 @@ describe("pullRequestForThread", () => {
 
   it("still resolves a URL after the pull request leaves the sweep", async () => {
     const { bb, harness } = await host();
-    const spawn = await harness.behavior.callRpc("workOnThis", {
+    const spawn = await harness.behavior.callRpc("workOnPullRequest", {
       repo: "acme/widgets",
       number: 42,
     });
