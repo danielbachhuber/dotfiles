@@ -73,9 +73,18 @@ throwing:
 A row with a thread leaves Needs Review whatever else is true, so the queue only
 ever holds work actually waiting on you. The sidebar count follows the same rule.
 
-The **Waiting** column reddens once a request is past the **Stale after (days)**
-setting. Colouring every age makes the column noise; colouring the overdue ones
-makes it a signal.
+The **Age** column is how long ago the review was requested of you, and it
+reddens once that is past the **Stale after (days)** setting. Colouring every age
+makes the column noise; colouring the overdue ones makes it a signal.
+
+The **Reviewers** column names everyone whose review is still outstanding, you
+first. Your own entry reads "you" rather than your login, because every row here
+is a request of you and repeating the same login down the column carries no
+information — whereas "you, platform" versus "platform" answers the question the
+column exists for: is this mine alone, or could a teammate take it? It reads
+`reviewRequests`, the set of requests still open, which is a different thing from
+the `ReviewRequestedEvent` timeline used for the age (a history, including
+requests already answered or withdrawn).
 
 A **re-review** — you reviewed it, the author pushed, and it came back — gets the
 badge that stands out. The author is blocked on you, and it is usually the

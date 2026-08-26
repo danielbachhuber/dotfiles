@@ -3,15 +3,16 @@ import {
   DEFAULT_STALE_AFTER_DAYS,
   MAX_THREAD_TITLE,
   actionLabel,
+  ageLabel,
+  ageTone,
   displaySection,
   parsePermissionMode,
   parseStaleAfterDays,
+  reviewersLabel,
   sizeLabel,
   threadTitle,
-  waitLabel,
-  waitTone,
 } from "./actions.js";
-import { daysWaiting, sizeBucket } from "./types.js";
+import { ageInDays, sizeBucket } from "./types.js";
 import { NOW } from "./fixtures.js";
 
 describe("actionLabel", () => {
@@ -75,31 +76,41 @@ describe("displaySection", () => {
   });
 });
 
-describe("daysWaiting", () => {
+describe("ageInDays", () => {
   it("floors to whole days and never goes negative", () => {
-    expect(daysWaiting(NOW, NOW)).toBe(0);
-    expect(daysWaiting(NOW - 86_400_000 * 2.9, NOW)).toBe(2);
-    expect(daysWaiting(NOW + 86_400_000, NOW)).toBe(0);
+    expect(ageInDays(NOW, NOW)).toBe(0);
+    expect(ageInDays(NOW - 86_400_000 * 2.9, NOW)).toBe(2);
+    expect(ageInDays(NOW + 86_400_000, NOW)).toBe(0);
   });
 });
 
-describe("waitTone", () => {
+describe("ageTone", () => {
   it("emphasises only a wait at or past the threshold", () => {
-    expect(waitTone(NOW - 86_400_000, NOW, 2)).toBe("quiet");
-    expect(waitTone(NOW - 86_400_000 * 2, NOW, 2)).toBe("stale");
-    expect(waitTone(NOW - 86_400_000 * 9, NOW, 2)).toBe("stale");
+    expect(ageTone(NOW - 86_400_000, NOW, 2)).toBe("quiet");
+    expect(ageTone(NOW - 86_400_000 * 2, NOW, 2)).toBe("stale");
+    expect(ageTone(NOW - 86_400_000 * 9, NOW, 2)).toBe("stale");
   });
 
   it("treats a zero threshold as everything being overdue", () => {
-    expect(waitTone(NOW, NOW, 0)).toBe("stale");
+    expect(ageTone(NOW, NOW, 0)).toBe("stale");
   });
 });
 
-describe("waitLabel", () => {
+describe("ageLabel", () => {
   it("reads naturally at the boundaries", () => {
-    expect(waitLabel(NOW, NOW)).toBe("today");
-    expect(waitLabel(NOW - 86_400_000, NOW)).toBe("1 day");
-    expect(waitLabel(NOW - 86_400_000 * 6, NOW)).toBe("6 days");
+    expect(ageLabel(NOW, NOW)).toBe("today");
+    expect(ageLabel(NOW - 86_400_000, NOW)).toBe("1 day");
+    expect(ageLabel(NOW - 86_400_000 * 6, NOW)).toBe("6 days");
+  });
+});
+
+describe("reviewersLabel", () => {
+  it("lists you first, then the rest as given", () => {
+    expect(reviewersLabel(["you", "mona", "platform"])).toBe("you, mona, platform");
+  });
+
+  it("falls back to an em dash rather than claiming nobody was asked", () => {
+    expect(reviewersLabel([])).toBe("—");
   });
 });
 

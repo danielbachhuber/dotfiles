@@ -1,5 +1,4 @@
-import { REVIEW_SKILL } from "./actions.js";
-import { daysWaiting, sizeLabel } from "./actions.js";
+import { REVIEW_SKILL, ageInDays, sizeLabel } from "./actions.js";
 import type { ClassifiedRow } from "./types.js";
 
 /**
@@ -15,7 +14,7 @@ import type { ClassifiedRow } from "./types.js";
  * what holds, not the routing.
  */
 export function buildPrompt(row: ClassifiedRow, now: number): string {
-  const waited = daysWaiting(row.requestedAt, now);
+  const waited = ageInDays(row.requestedAt, now);
   const context =
     row.state === "re-review"
       ? `You have reviewed it before; it came back to you ${waited === 0 ? "today" : `${waited} day(s) ago`}.`

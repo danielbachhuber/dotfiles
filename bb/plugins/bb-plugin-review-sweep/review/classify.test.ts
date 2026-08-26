@@ -5,9 +5,17 @@ import {
   lastReviewedAt,
   parseTime,
   requestedAt,
+  requestedReviewers,
   reviewState,
 } from "./classify.js";
-import { NOW, daysAgo, makePr, reviewRequest, submittedReview } from "./fixtures.js";
+import {
+  NOW,
+  daysAgo,
+  makePr,
+  pendingRequest,
+  reviewRequest,
+  submittedReview,
+} from "./fixtures.js";
 
 const ME = "hubot";
 
@@ -95,6 +103,51 @@ describe("lastReviewedAt", () => {
       },
     });
     expect(lastReviewedAt(pr, ME)).toBe(Date.parse(daysAgo(2)));
+  });
+});
+
+describe("requestedReviewers", () => {
+  it("renders me as \"you\" rather than repeating my login on every row", () => {
+    const pr = makePr({ reviewRequests: { nodes: [pendingRequest({ login: ME })] } });
+    expect(requestedReviewers(pr, ME)).toEqual(["you"]);
+  });
+
+  it("puts me first and sorts the rest", () => {
+    const pr = makePr({
+      reviewRequests: {
+        nodes: [
+          pendingRequest({ login: "mona" }),
+          pendingRequest({ login: ME }),
+          pendingRequest({ slug: "platform" }),
+        ],
+      },
+    });
+    expect(requestedReviewers(pr, ME)).toEqual(["you", "mona", "platform"]);
+  });
+
+  it("names a team by slug, which is what says a teammate could take it", () => {
+    const pr = makePr({ reviewRequests: { nodes: [pendingRequest({ slug: "platform" })] } });
+    expect(requestedReviewers(pr, ME)).toEqual(["platform"]);
+  });
+
+  it("omits me when the request only ever reached me through a team", () => {
+    // reviewRequests names the team, not the member, so there is no "you" to
+    // show — and the team slug is the more useful thing to display anyway.
+    const pr = makePr({ reviewRequests: { nodes: [pendingRequest({ slug: "platform" })] } });
+    expect(requestedReviewers(pr, ME)).not.toContain("you");
+  });
+
+  it("deduplicates and survives null or empty nodes", () => {
+    const pr = makePr({
+      reviewRequests: {
+        nodes: [null, {}, pendingRequest({ login: "mona" }), pendingRequest({ login: "mona" })],
+      },
+    });
+    expect(requestedReviewers(pr, ME)).toEqual(["mona"]);
+  });
+
+  it("is empty when the field is missing entirely", () => {
+    expect(requestedReviewers(makePr({ reviewRequests: null }), ME)).toEqual([]);
   });
 });
 

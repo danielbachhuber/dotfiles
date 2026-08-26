@@ -69,6 +69,34 @@ export function requestedAt(pr: RawPullRequest, viewer: string): number {
 }
 
 /**
+ * Who still owes a review, you first and the rest alphabetical.
+ *
+ * Reads `reviewRequests`, which is the set of requests still outstanding — not
+ * the `ReviewRequestedEvent` timeline above, which is a history and includes
+ * requests already answered or withdrawn.
+ *
+ * Your own entry becomes "you". A team is named by its slug, which is the
+ * useful case: it tells you a teammate could take this one instead.
+ */
+export function requestedReviewers(pr: RawPullRequest, viewer: string): string[] {
+  const others = new Set<string>();
+  let includesViewer = false;
+
+  for (const request of pr.reviewRequests?.nodes ?? []) {
+    const reviewer = request?.requestedReviewer;
+    if (!reviewer) continue;
+    if (reviewer.login === viewer) {
+      includesViewer = true;
+      continue;
+    }
+    const name = reviewer.login ?? reviewer.slug;
+    if (name) others.add(name);
+  }
+
+  return [...(includesViewer ? ["you"] : []), ...[...others].sort()];
+}
+
+/**
  * A re-review is a review you have already done that came back to you: your
  * last submitted review predates the current request. Reviewing and then being
  * re-requested is the case GitHub's own views lose most easily, and it is
@@ -102,6 +130,7 @@ export function classifyOne(pr: RawPullRequest, viewer: string): ClassifiedRow |
     state: reviewState(reviewed, requested),
     requestedAt: requested,
     lastReviewedAt: reviewed,
+    requestedReviewers: requestedReviewers(pr, viewer),
     size: {
       additions: pr.additions ?? 0,
       deletions: pr.deletions ?? 0,

@@ -11,6 +11,7 @@ const rowSchema = z.object({
   state: z.enum(["first-look", "re-review"]),
   requestedAt: z.number(),
   lastReviewedAt: z.number().nullable(),
+  requestedReviewers: z.array(z.string()),
   size: z.object({
     additions: z.number(),
     deletions: z.number(),

@@ -21,6 +21,7 @@ function row(overrides: Partial<ClassifiedRow> = {}): ClassifiedRow {
     state: "first-look",
     requestedAt: NOW - 86_400_000 * 4,
     lastReviewedAt: null,
+    requestedReviewers: ["you"],
     size: { additions: 40, deletions: 6, changedFiles: 3 },
     ...overrides,
   };
@@ -31,13 +32,22 @@ function result(rows: ClassifiedRow[], overrides: Partial<SweepResult> = {}): Sw
 }
 
 describe("store", () => {
-  it("round-trips a row with its nested size intact", () => {
+  it("round-trips a row with its reviewer list and nested size intact", () => {
     const store = freshStore();
-    store.replaceAll(result([row({ state: "re-review", lastReviewedAt: NOW - 999 })]));
+    store.replaceAll(
+      result([
+        row({
+          state: "re-review",
+          lastReviewedAt: NOW - 999,
+          requestedReviewers: ["you", "platform"],
+        }),
+      ]),
+    );
     expect(store.readRows()[0]).toMatchObject({
       repo: "acme/widgets",
       state: "re-review",
       lastReviewedAt: NOW - 999,
+      requestedReviewers: ["you", "platform"],
       size: { additions: 40, changedFiles: 3 },
     });
   });

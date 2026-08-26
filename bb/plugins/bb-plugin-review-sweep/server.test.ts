@@ -21,6 +21,7 @@ function seedRow(overrides: Partial<ClassifiedRow> = {}): ClassifiedRow {
     state: "first-look",
     requestedAt: Date.parse("2026-03-06T12:00:00Z"),
     lastReviewedAt: null,
+    requestedReviewers: ["you"],
     size: { additions: 40, deletions: 6, changedFiles: 3 },
     ...overrides,
   };

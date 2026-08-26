@@ -34,6 +34,16 @@ export interface ClassifiedRow {
   requestedAt: number;
   /** Your most recent submitted review, or null if you have never reviewed it. */
   lastReviewedAt: number | null;
+  /**
+   * Everyone whose review is still outstanding, you included and listed first.
+   *
+   * Your own entry is the literal "you" rather than your login: every row in
+   * this panel is a request of you, so repeating the same login down the whole
+   * column carries no information, while "you, platform" versus "platform"
+   * answers the question the column exists for — is this mine alone, or could a
+   * teammate take it?
+   */
+  requestedReviewers: string[];
   size: ChangeSize;
 }
 
@@ -49,6 +59,10 @@ export interface SweepResult {
 
 export interface RawReviewRequestedEvent {
   createdAt?: string;
+  requestedReviewer?: { login?: string; slug?: string } | null;
+}
+
+export interface RawReviewRequest {
   requestedReviewer?: { login?: string; slug?: string } | null;
 }
 
@@ -70,6 +84,7 @@ export interface RawPullRequest {
   repository?: { nameWithOwner?: string } | null;
   author?: { login?: string } | null;
   reviews?: { nodes?: Array<RawReview | null> | null } | null;
+  reviewRequests?: { nodes?: Array<RawReviewRequest | null> | null } | null;
   timelineItems?: { nodes?: Array<RawReviewRequestedEvent | null> | null } | null;
 }
 
@@ -93,8 +108,8 @@ export function sizeBucket(size: ChangeSize): SizeBucket {
   return "xl";
 }
 
-/** Whole days a request has been waiting, floored. Same-day reads as 0. */
-export function daysWaiting(requestedAt: number, now: number): number {
+/** Whole days since the review was requested, floored. Same-day reads as 0. */
+export function ageInDays(requestedAt: number, now: number): number {
   return Math.max(0, Math.floor((now - requestedAt) / 86_400_000));
 }
 

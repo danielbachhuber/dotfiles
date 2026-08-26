@@ -23,6 +23,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     state: "first-look",
     requestedAt: daysAgo(4),
     lastReviewedAt: null,
+    requestedReviewers: ["you"],
     size: { additions: 120, deletions: 8, changedFiles: 6 },
     canSpawn: true,
     threadId: null,
@@ -156,9 +157,12 @@ describe("panel", () => {
 
   it("renders column headers", async () => {
     const slot = render(listing());
-    for (const header of ["PR", "Title", "Status", "Waiting", "Size"]) {
+    for (const header of ["PR", "Title", "Status", "Age", "Reviewers", "Size"]) {
       await slot.findByText(header);
     }
+    // "Age" replaced "Waiting": the column measures how old the request is,
+    // which is the thing the sort is built on.
+    expect(slot.queryByText("Waiting")).toBeNull();
   });
 
   it("uses one fixed column layout so every section table lines up", async () => {
@@ -199,7 +203,7 @@ describe("panel", () => {
   });
 });
 
-describe("waiting column", () => {
+describe("age column", () => {
   it("reddens a wait at or past the threshold and leaves a fresh one quiet", async () => {
     const stale = render(listing({ rows: [rowFixture({ requestedAt: daysAgo(6) })] }));
     expect((await stale.findByText("6 days")).className).toMatch(/text-destructive/);
@@ -219,6 +223,35 @@ describe("waiting column", () => {
   it("reads today for a request that landed within the day", async () => {
     const slot = render(listing({ rows: [rowFixture({ requestedAt: Date.now() - 1000 })] }));
     await slot.findByText("today");
+  });
+});
+
+describe("reviewers column", () => {
+  it("names everyone whose review is still outstanding", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ requestedReviewers: ["you", "mona", "platform"] })] }),
+    );
+    await slot.findByText("you, mona, platform");
+  });
+
+  it("shows only the team when the ask reached me through one", async () => {
+    const slot = render(listing({ rows: [rowFixture({ requestedReviewers: ["platform"] })] }));
+    await slot.findByText("platform");
+  });
+
+  it("falls back to an em dash rather than claiming nobody was asked", async () => {
+    const slot = render(listing({ rows: [rowFixture({ requestedReviewers: [] })] }));
+    await slot.findByText("—");
+  });
+
+  it("carries the full list as a title, since the cell truncates", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ requestedReviewers: ["you", "mona", "platform"] })] }),
+    );
+    expect(await slot.findByText("you, mona, platform")).toHaveAttribute(
+      "title",
+      "you, mona, platform",
+    );
   });
 });
 

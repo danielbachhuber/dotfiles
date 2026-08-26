@@ -17,6 +17,11 @@ export function reviewRequest(reviewer: { login?: string; slug?: string }, at: s
   return { createdAt: at, requestedReviewer: reviewer };
 }
 
+/** An outstanding request, as `reviewRequests` reports it. */
+export function pendingRequest(reviewer: { login?: string; slug?: string }) {
+  return { requestedReviewer: reviewer };
+}
+
 export function submittedReview(state: string, login: string, at: string) {
   return { state, submittedAt: at, author: { login } };
 }
@@ -34,6 +39,7 @@ export function makePr(overrides: Partial<RawPullRequest> = {}): RawPullRequest 
     repository: { nameWithOwner: "acme/widgets" },
     author: { login: "octocat" },
     reviews: { nodes: [] },
+    reviewRequests: { nodes: [pendingRequest({ login: "hubot" })] },
     timelineItems: { nodes: [reviewRequest({ login: "hubot" }, daysAgo(4))] },
     ...overrides,
   };

@@ -1,4 +1,4 @@
-import { daysWaiting, sizeBucket, type ChangeSize, type ReviewState } from "./types.js";
+import { ageInDays, sizeBucket, type ChangeSize, type ReviewState } from "./types.js";
 
 /**
  * The skill that owns the work. There is one action here, so unlike pr-sweep
@@ -99,22 +99,31 @@ export function displaySection(hasThread: boolean, isDraft: boolean): DisplaySec
   return isDraft ? "draft" : "needs-review";
 }
 
-export type WaitTone = "quiet" | "stale";
+export type AgeTone = "quiet" | "stale";
 
 /**
- * A wait only earns emphasis once it is past the threshold. Colouring every
+ * An age only earns emphasis once it is past the threshold. Colouring every
  * row's age makes the column noise; colouring the overdue ones makes it a
  * signal.
  */
-export function waitTone(requestedAt: number, now: number, staleAfterDays: number): WaitTone {
-  return daysWaiting(requestedAt, now) >= staleAfterDays ? "stale" : "quiet";
+export function ageTone(requestedAt: number, now: number, staleAfterDays: number): AgeTone {
+  return ageInDays(requestedAt, now) >= staleAfterDays ? "stale" : "quiet";
 }
 
 /** "today", "1 day", "6 days". */
-export function waitLabel(requestedAt: number, now: number): string {
-  const days = daysWaiting(requestedAt, now);
+export function ageLabel(requestedAt: number, now: number): string {
+  const days = ageInDays(requestedAt, now);
   if (days === 0) return "today";
   return days === 1 ? "1 day" : `${days} days`;
+}
+
+/**
+ * The Reviewers cell. An em dash rather than "none" for the empty case, which
+ * only happens when the outstanding-request set came back empty even though the
+ * search matched — a data gap, not a meaningful "nobody".
+ */
+export function reviewersLabel(reviewers: readonly string[]): string {
+  return reviewers.length ? reviewers.join(", ") : "—";
 }
 
 /** "+120 −8, 6 files". An en dash for the deletions, not a hyphen. */
@@ -123,4 +132,4 @@ export function sizeLabel(size: ChangeSize): string {
   return `+${size.additions} −${size.deletions}, ${files}`;
 }
 
-export { sizeBucket, daysWaiting };
+export { sizeBucket, ageInDays };

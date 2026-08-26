@@ -45,6 +45,14 @@ query($q: String!, $limit: Int!) {
         reviews(last: 100) {
           nodes { state submittedAt author { login } }
         }
+        reviewRequests(first: 20) {
+          nodes {
+            requestedReviewer {
+              ... on User { login }
+              ... on Team { slug }
+            }
+          }
+        }
         timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 20) {
           nodes {
             ... on ReviewRequestedEvent {

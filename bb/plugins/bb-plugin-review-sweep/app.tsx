@@ -28,10 +28,11 @@ import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
   actionLabel,
+  ageLabel,
+  ageTone,
   displaySection,
+  reviewersLabel,
   sizeLabel,
-  waitLabel,
-  waitTone,
 } from "./review/actions.js";
 import type { rpcContract } from "./server.js";
 
@@ -45,6 +46,7 @@ type Row = {
   state: "first-look" | "re-review";
   requestedAt: number;
   lastReviewedAt: number | null;
+  requestedReviewers: string[];
   size: { additions: number; deletions: number; changedFiles: number };
   canSpawn: boolean;
   threadId: string | null;
@@ -199,14 +201,15 @@ function ReviewTable({
             <TableHead className={`w-[5rem] ${HEAD}`}>PR</TableHead>
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`w-[7rem] ${HEAD}`}>Status</TableHead>
-            <TableHead className={`w-[6rem] ${HEAD}`}>Waiting</TableHead>
-            <TableHead className={`hidden w-[11rem] lg:table-cell ${HEAD}`}>Size</TableHead>
+            <TableHead className={`w-[5.5rem] ${HEAD}`}>Age</TableHead>
+            <TableHead className={`hidden w-[10rem] xl:table-cell ${HEAD}`}>Reviewers</TableHead>
+            <TableHead className={`hidden w-[10rem] lg:table-cell ${HEAD}`}>Size</TableHead>
             <TableHead className="w-[11rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((row) => {
-            const tone = waitTone(row.requestedAt, now, staleAfterDays);
+            const tone = ageTone(row.requestedAt, now, staleAfterDays);
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
                 <TableCell className="align-top font-mono text-xs tabular-nums text-muted-foreground">
@@ -249,8 +252,14 @@ function ReviewTable({
                 </TableCell>
                 <TableCell className="align-top text-xs tabular-nums">
                   <span className={tone === "stale" ? "text-destructive" : "text-muted-foreground"}>
-                    {waitLabel(row.requestedAt, now)}
+                    {ageLabel(row.requestedAt, now)}
                   </span>
+                </TableCell>
+                <TableCell
+                  className="hidden truncate align-top text-xs text-muted-foreground xl:table-cell"
+                  title={reviewersLabel(row.requestedReviewers)}
+                >
+                  {reviewersLabel(row.requestedReviewers)}
                 </TableCell>
                 <TableCell className="hidden align-top text-xs tabular-nums text-muted-foreground lg:table-cell">
                   {sizeLabel(row.size)}
