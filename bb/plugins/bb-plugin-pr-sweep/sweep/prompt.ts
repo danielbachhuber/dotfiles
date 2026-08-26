@@ -1,4 +1,4 @@
-import { skillFor, skillOwnsWorkflow } from "./actions.js";
+import { workSteps } from "./actions.js";
 import type { ClassifiedRow, Flag } from "./types.js";
 
 /**
@@ -34,45 +34,51 @@ function describeFlag(flag: Flag, row: ClassifiedRow): string | null {
 }
 
 export function buildPrompt(row: ClassifiedRow): string {
-  const problems = row.flags
-    .map((flag) => describeFlag(flag, row))
-    .filter((text): text is string => text !== null)
-    .map((text) => `- ${text}`);
+  const steps = workSteps(row.flags);
 
-  const skill = skillFor(row.flags);
+  if (steps.length === 0) {
+    return [
+      `Look at pull request ${row.repo}#${row.number}: "${row.title}".`,
+      row.url,
+      "",
+      "A deterministic sweep flagged nothing on it. Use the `pr-sweep` skill to check whether that is right.",
+    ].join("\n");
+  }
 
-  // A dedicated skill specifies the whole flow, ending in a commit and a push.
-  // Standing user instructions forbid committing without an explicit ask, and
-  // those instructions outrank a skill — so without this paragraph the thread
-  // does the work, stops at a staged merge, and reports that it did not commit
-  // "per repository instructions". Clicking the row's action IS the ask, so
-  // the prompt says so and lets the skill run to its end.
-  const authorization = skillOwnsWorkflow(row.flags)
-    ? [
-        "",
-        "I started this from the PR Sweep panel, which is my explicit request for this work. Follow the skill all the way through, including its commit and push steps. You do not need to ask me before committing or pushing to this PR's own branch.",
-        "Still ask me first before: force-pushing, rewriting any pushed commit, merging the PR, or posting a review reply.",
-      ]
-    : [];
+  // Numbered because the steps are sequential, not a menu: resolving a conflict
+  // changes the code that review feedback refers to, and a fixed CI run changes
+  // what is left to answer. One thread walks them in this order.
+  const numbered = steps.flatMap(({ flag, skill }, index) => {
+    const finding = describeFlag(flag, row);
+    return [
+      `${index + 1}. ${finding ?? flag}`,
+      `   Use the \`${skill}\` skill.`,
+    ];
+  });
 
-  const guardrails = skillOwnsWorkflow(row.flags)
-    ? []
-    : [
-        "",
-        "In particular:",
-        "- Show me the evidence (the failing log, the thread bodies, the conflicting files) before proposing any work.",
-        "- Make code changes in a worktree, never by checking out the branch in my own checkout.",
-        "- Show the diff and stop. Commit only after I approve.",
-        "- Ask before anything leaves the machine: pushing, replying, assigning a reviewer, re-running CI, or merging.",
-      ];
+  const usesPrSweep = steps.some((step) => step.skill === "pr-sweep");
 
   return [
-    `Use the \`${skill}\` skill to work on pull request ${row.repo}#${row.number}: "${row.title}".`,
+    `Work through pull request ${row.repo}#${row.number}: "${row.title}".`,
     row.url,
     "",
-    problems.length ? "What a deterministic sweep found:" : "No problems were flagged.",
-    ...problems,
-    ...authorization,
-    ...guardrails,
+    steps.length === 1
+      ? "A deterministic sweep found one thing:"
+      : `A deterministic sweep found ${steps.length} things, worst first. Finish each before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
+    ...numbered,
+    "",
+    // Standing user instructions forbid committing without an explicit ask and
+    // outrank a skill, so without this the thread does the work and stops at a
+    // staged merge. Clicking the row's action is that ask.
+    "I started this from the PR Sweep panel, which is my explicit request for this work. Follow each skill all the way through, including its commit, push, and reply steps. You do not need to ask me before committing or pushing to this PR's own branch.",
+    "Still ask me first before: force-pushing, rewriting any pushed commit, or merging the PR.",
+    ...(usesPrSweep
+      ? [
+          "",
+          "For any step above whose skill is `pr-sweep`, that skill is triage rather than a fixed workflow, so:",
+          "- Show me the evidence (the failing log, the thread bodies) before proposing work.",
+          "- Work in a worktree, never by checking out the branch in my own checkout.",
+        ]
+      : []),
   ].join("\n");
 }

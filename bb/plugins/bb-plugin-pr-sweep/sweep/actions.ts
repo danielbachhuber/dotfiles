@@ -181,3 +181,24 @@ export function displaySection(group: string, hasThread: boolean): DisplaySectio
   if (group === "clean") return "clean";
   return "needs-action";
 }
+
+export interface WorkStep {
+  flag: Flag;
+  skill: string;
+}
+
+/**
+ * Every flag a row carries, worst first, paired with the skill that owns it.
+ *
+ * A pull request often needs more than one thing — a conflict AND live review
+ * feedback — and those are sequential, not independent: resolving the conflict
+ * changes the code the feedback refers to. One thread walks the steps in this
+ * order rather than the panel spawning one thread per flag, which would put two
+ * agents on the same branch.
+ */
+export function workSteps(flags: readonly string[]): WorkStep[] {
+  return FLAG_SEVERITY.filter((flag) => flags.includes(flag)).map((flag) => ({
+    flag,
+    skill: SKILL_FOR[flag] ?? DEFAULT_SKILL,
+  }));
+}

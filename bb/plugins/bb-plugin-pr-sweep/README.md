@@ -82,8 +82,14 @@ thread is told to use:
 
 Those first two skills specify their own flow, including worktree setup on the
 PR's own branch, so the prompt names the skill and states the findings without
-restating any method. Rows routed to `pr-sweep` carry the standing guardrails
-instead.
+restating any method.
+
+**A pull request with several flags gets one thread that works them in order**,
+worst first, finishing each before starting the next. They are sequential
+rather than independent: resolving a conflict changes the code review feedback
+refers to, and fixing CI changes what is left to answer. One thread also keeps
+two agents off the same branch. A step routed to `pr-sweep` adds that skill's
+triage guardrails, since it is a playbook rather than a fixed workflow.
 
 Two things follow from that routing:
 

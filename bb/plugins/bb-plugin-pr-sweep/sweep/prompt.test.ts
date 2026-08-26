@@ -53,14 +53,15 @@ describe("buildPrompt", () => {
     expect(conflict).not.toMatch(/commit only after/i);
   });
 
-  it("authorizes the commit and push a dedicated skill ends in", () => {
+  it("authorizes the commit, push and reply the skills end in", () => {
     // Standing instructions forbid committing without an explicit ask and
     // outrank the skill, so the prompt has to supply that ask or the thread
-    // stops at a staged merge.
-    for (const flags of [["conflict"], ["feedback"]]) {
+    // stops at a staged merge. address-code-review also ends in posting
+    // replies, so withholding those would break it halfway.
+    for (const flags of [["conflict"], ["feedback"], ["ci-failing"]]) {
       const prompt = buildPrompt(row({ flags }));
       expect(prompt).toMatch(/explicit request/i);
-      expect(prompt).toMatch(/commit and push/i);
+      expect(prompt).toMatch(/commit, push, and reply/i);
     }
   });
 
@@ -70,18 +71,46 @@ describe("buildPrompt", () => {
     expect(prompt).toMatch(/merging the PR/i);
   });
 
-  it("does not authorize a push on a row with no dedicated skill", () => {
-    // pr-sweep rows are triage with no defined end state, so they keep the
-    // ask-first guardrails instead.
+  it("keeps the triage guardrails for a pr-sweep step", () => {
     const prompt = buildPrompt(row({ flags: ["ci-failing"] }));
-    expect(prompt).not.toMatch(/explicit request/i);
-    expect(prompt).toMatch(/before anything leaves the machine/i);
+    expect(prompt).toMatch(/`pr-sweep`/);
+    expect(prompt).toMatch(/show me the evidence/i);
+    expect(prompt).toMatch(/worktree/i);
   });
 
-  it("keeps the standing guardrails when routing to pr-sweep", () => {
-    const ci = buildPrompt(row({ flags: ["ci-failing"] }));
-    expect(ci).toMatch(/worktree/i);
-    expect(ci).toMatch(/before anything leaves the machine/i);
+  it("omits the triage guardrails when no step routes to pr-sweep", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict", "feedback"] }));
+    expect(prompt).not.toMatch(/show me the evidence/i);
+  });
+
+  it("numbers several flags as ordered steps, worst first", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict", "feedback"] }));
+    expect(prompt).toMatch(/found 2 things, worst first/);
+    expect(prompt).toMatch(/1\. It conflicts with its base branch\./);
+    expect(prompt).toMatch(/ {3}Use the `resolve-merge-conflicts` skill\./);
+    expect(prompt).toMatch(/2\. There is live reviewer feedback/);
+    expect(prompt).toMatch(/ {3}Use the `address-code-review` skill\./);
+    expect(prompt.indexOf("resolve-merge-conflicts")).toBeLessThan(
+      prompt.indexOf("address-code-review"),
+    );
+  });
+
+  it("tells the agent to finish each step before the next and re-check after", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict", "feedback"] }));
+    expect(prompt).toMatch(/finish each before starting the next/i);
+    expect(prompt).toMatch(/re-check the later ones/i);
+  });
+
+  it("does not number a single finding as a list of steps", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict"] }));
+    expect(prompt).toMatch(/found one thing/i);
+    expect(prompt).not.toMatch(/finish each before starting the next/i);
+  });
+
+  it("says so when a row carries no flags at all", () => {
+    const prompt = buildPrompt(row({ flags: [] }));
+    expect(prompt).toMatch(/flagged nothing/i);
+    expect(prompt).toMatch(/`pr-sweep`/);
   });
 
   it("states the conflict as a finding, leaving the method to the skill", () => {
@@ -111,7 +140,16 @@ describe("buildPrompt", () => {
     expect(prompt).toMatch(/failing/i);
   });
 
-  it("asks for confirmation before anything leaves the machine", () => {
-    expect(buildPrompt(row({ flags: ["merge-ready"] }))).toMatch(/before push|ask|confirm/i);
+  it("gives every step a skill", () => {
+    const prompt = buildPrompt(
+      row({ flags: ["conflict", "ci-failing", "feedback", "no-reviewer"] }),
+    );
+    expect(prompt.match(/ {3}Use the `[a-z-]+` skill\./g)).toHaveLength(4);
+  });
+
+  it("still withholds the actions that cannot be undone", () => {
+    const prompt = buildPrompt(row({ flags: ["merge-ready"] }));
+    expect(prompt).toMatch(/force-pushing/i);
+    expect(prompt).toMatch(/merging the PR/i);
   });
 });
