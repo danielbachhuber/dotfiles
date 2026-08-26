@@ -110,12 +110,48 @@ export function reviewState(reviewed: number | null, requested: number): ReviewS
   return reviewed !== null && reviewed < requested ? "re-review" : "first-look";
 }
 
+/**
+ * The newest request naming the viewer directly, or null when every request
+ * reached them through a team.
+ */
+export function directlyRequestedAt(pr: RawPullRequest, viewer: string): number | null {
+  let latest: number | null = null;
+  for (const node of pr.timelineItems?.nodes ?? []) {
+    if (!node || node.requestedReviewer?.login !== viewer) continue;
+    const at = parseTime(node.createdAt);
+    if (at !== null && (latest === null || at > latest)) latest = at;
+  }
+  return latest;
+}
+
+/**
+ * True when the viewer has already answered the request that is putting this
+ * pull request in front of them.
+ *
+ * `review-requested:@me` matches a request made to a team the viewer belongs
+ * to, which is how most requests arrive in an org — so a pull request they
+ * personally approved yesterday comes back the moment anyone adds that team.
+ * Their review is the answer; a later request naming the team is not a new
+ * question for them.
+ *
+ * A direct re-request is a new question, so that still counts as outstanding.
+ */
+export function hasAnswered(pr: RawPullRequest, viewer: string): boolean {
+  const reviewed = lastReviewedAt(pr, viewer);
+  if (reviewed === null) return false;
+
+  const direct = directlyRequestedAt(pr, viewer);
+  return direct === null || reviewed > direct;
+}
+
 /** Returns null for a node too incomplete to act on, rather than a broken row. */
 export function classifyOne(pr: RawPullRequest, viewer: string): ClassifiedRow | null {
   const repo = pr.repository?.nameWithOwner;
   const number = pr.number;
   const url = pr.url;
   if (!repo || typeof number !== "number" || !url) return null;
+
+  if (hasAnswered(pr, viewer)) return null;
 
   const reviewed = lastReviewedAt(pr, viewer);
   const requested = requestedAt(pr, viewer);

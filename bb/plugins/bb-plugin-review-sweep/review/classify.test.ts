@@ -229,3 +229,91 @@ describe("classify", () => {
     expect(classify([null, { number: 1 }, makePr()], ME)).toHaveLength(1);
   });
 });
+
+describe("a request the viewer has already answered", () => {
+  const VIEWER = "octocat";
+  const T = (iso: string) => iso;
+
+  function pr(overrides: Record<string, unknown> = {}) {
+    return {
+      repository: { nameWithOwner: "acme/widgets" },
+      number: 42,
+      title: "Add the widget endpoint",
+      url: "https://github.com/acme/widgets/pull/42",
+      author: { login: "hubber" },
+      isDraft: false,
+      createdAt: T("2026-01-01T00:00:00Z"),
+      additions: 1,
+      deletions: 0,
+      changedFiles: 1,
+      reviews: { nodes: [] },
+      reviewRequests: { nodes: [] },
+      timelineItems: { nodes: [] },
+      ...overrides,
+    } as never;
+  }
+
+  const requested = (at: string, who: Record<string, string>) => ({
+    createdAt: T(at),
+    requestedReviewer: who,
+  });
+  const review = (at: string, login: string) => ({
+    author: { login },
+    state: "APPROVED",
+    submittedAt: T(at),
+  });
+
+  it("drops a pull request the viewer approved after being asked", () => {
+    // The exact shape of #5785: asked directly, approved, then a team the
+    // viewer belongs to was added, which put it back in the search.
+    const node = pr({
+      timelineItems: {
+        nodes: [
+          requested("2026-01-02T00:00:00Z", { login: VIEWER }),
+          requested("2026-01-03T00:00:00Z", { slug: "psi-committers" }),
+        ],
+      },
+      reviews: { nodes: [review("2026-01-02T12:00:00Z", VIEWER)] },
+    });
+    expect(classifyOne(node, VIEWER)).toBeNull();
+  });
+
+  it("keeps a pull request the viewer has not reviewed", () => {
+    const node = pr({
+      timelineItems: { nodes: [requested("2026-01-02T00:00:00Z", { login: VIEWER })] },
+    });
+    expect(classifyOne(node, VIEWER)).not.toBeNull();
+  });
+
+  it("keeps it when the viewer was asked again after reviewing", () => {
+    // A direct re-request is a new question, unlike a team being added.
+    const node = pr({
+      timelineItems: {
+        nodes: [
+          requested("2026-01-02T00:00:00Z", { login: VIEWER }),
+          requested("2026-01-04T00:00:00Z", { login: VIEWER }),
+        ],
+      },
+      reviews: { nodes: [review("2026-01-03T00:00:00Z", VIEWER)] },
+    });
+    const row = classifyOne(node, VIEWER);
+    expect(row).not.toBeNull();
+    expect(row!.state).toBe("re-review");
+  });
+
+  it("drops it when the viewer reviewed a team-only request", () => {
+    const node = pr({
+      timelineItems: { nodes: [requested("2026-01-02T00:00:00Z", { slug: "psi-committers" })] },
+      reviews: { nodes: [review("2026-01-03T00:00:00Z", VIEWER)] },
+    });
+    expect(classifyOne(node, VIEWER)).toBeNull();
+  });
+
+  it("ignores other people's reviews", () => {
+    const node = pr({
+      timelineItems: { nodes: [requested("2026-01-02T00:00:00Z", { login: VIEWER })] },
+      reviews: { nodes: [review("2026-01-03T00:00:00Z", "someone-else")] },
+    });
+    expect(classifyOne(node, VIEWER)).not.toBeNull();
+  });
+});
