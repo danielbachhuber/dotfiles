@@ -72,12 +72,17 @@ export function buildPrompt(row: ClassifiedRow): string {
     // staged merge. Clicking the row's action is that ask.
     "I started this from the PR Sweep panel, which is my explicit request for this work. Follow each skill all the way through, including its commit, push, and reply steps. You do not need to ask me before committing or pushing to this PR's own branch.",
     "Still ask me first before: force-pushing, rewriting any pushed commit, or merging the PR.",
+    "",
+    // The thread starts in a bb-managed worktree on a fresh branch, not the
+    // pull request's. A prompt that just said "work in a worktree" sent an
+    // agent that was already in one to build a second at an arbitrary /tmp
+    // path, where bb could not see the work and the diff panel read "no
+    // changes".
+    "You already have a git worktree: the one this thread starts in. It is on a new branch, not this pull request's, so check the branch before editing anything. Get onto the PR's head branch — the skills above tell you how — and never point `git worktree add` at the directory you are already in.",
     ...(usesPrSweep
       ? [
           "",
-          "For any step above whose skill is `pr-sweep`, that skill is triage rather than a fixed workflow, so:",
-          "- Show me the evidence (the failing log, the thread bodies) before proposing work.",
-          "- Work in a worktree, never by checking out the branch in my own checkout.",
+          "For any step above whose skill is `pr-sweep`, that skill is triage rather than a fixed workflow, so show me the evidence — the failing log, the thread bodies — before proposing work.",
         ]
       : []),
   ].join("\n");

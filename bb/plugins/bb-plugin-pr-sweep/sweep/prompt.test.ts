@@ -49,7 +49,7 @@ describe("buildPrompt", () => {
     // including that a bare EnterWorktree is wrong. Repeating a looser version
     // here would contradict it.
     const conflict = buildPrompt(row({ flags: ["conflict"] }));
-    expect(conflict).not.toMatch(/worktree/i);
+    expect(conflict).not.toMatch(/merge the base branch/i);
     expect(conflict).not.toMatch(/commit only after/i);
   });
 
@@ -75,12 +75,29 @@ describe("buildPrompt", () => {
     const prompt = buildPrompt(row({ flags: ["ci-failing"] }));
     expect(prompt).toMatch(/`pr-sweep`/);
     expect(prompt).toMatch(/show me the evidence/i);
-    expect(prompt).toMatch(/worktree/i);
+  });
+
+  it("says the thread already has a worktree, on the wrong branch", () => {
+    // Telling an agent that already has a worktree to "work in a worktree"
+    // sent it to build a second one at a /tmp path bb could not see.
+    for (const flags of [["ci-failing"], ["conflict"], ["conflict", "feedback"]]) {
+      const prompt = buildPrompt(row({ flags }));
+      expect(prompt).toMatch(/You already have a git worktree/);
+      expect(prompt).toMatch(/not this pull request's/);
+      expect(prompt).toMatch(/never point `git worktree add` at the directory you are already in/);
+    }
   });
 
   it("omits the triage guardrails when no step routes to pr-sweep", () => {
     const prompt = buildPrompt(row({ flags: ["conflict", "feedback"] }));
     expect(prompt).not.toMatch(/show me the evidence/i);
+  });
+
+  it("does not tell a skill-routed thread to create its own worktree", () => {
+    // resolve-merge-conflicts specifies worktree setup itself; the prompt only
+    // describes the starting condition.
+    const prompt = buildPrompt(row({ flags: ["conflict"] }));
+    expect(prompt).not.toMatch(/Work in a worktree/);
   });
 
   it("numbers several flags as ordered steps, worst first", () => {
