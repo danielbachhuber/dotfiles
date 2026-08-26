@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { commentsLabel, relativeTime } from "./issues/format.js";
 import type { rpcContract } from "./server.js";
+import { sectionOrder } from "./issues/board.js";
 
 type Row = {
   repo: string;
@@ -24,6 +25,7 @@ type Row = {
   title: string;
   url: string;
   labels: string[];
+  boardStatus: string | null;
   createdAt: number;
   updatedAt: number;
   commentsCount: number;
@@ -31,6 +33,7 @@ type Row = {
 
 type Listing = {
   rows: Row[];
+  statusOrder: string[];
   sweptAt: number | null;
   truncated: boolean;
   lastError: string | null;
@@ -57,6 +60,9 @@ function useListing() {
 
 const BADGE = "rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground";
 
+/** Where an issue lands when it is on no board, or on a different one. */
+const NO_BOARD = "No board status";
+
 /** Shared header cell styling, so every column is declared the same way. */
 const HEAD = "text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground";
 
@@ -71,7 +77,6 @@ function IssueTable({ rows, showRepo }: { rows: Row[]; showRepo: boolean }) {
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className={HEAD}>Title</TableHead>
-            <TableHead className={`hidden w-[14rem] lg:table-cell ${HEAD}`}>Labels</TableHead>
             <TableHead className={`w-[7rem] ${HEAD}`}>Updated</TableHead>
           </TableRow>
         </TableHeader>
@@ -99,17 +104,6 @@ function IssueTable({ rows, showRepo }: { rows: Row[]; showRepo: boolean }) {
                   >
                     {row.title} (#{row.number})
                   </UrlLink>
-                </TableCell>
-                <TableCell className="hidden align-top lg:table-cell">
-                  {row.labels.length ? (
-                    <span className="flex flex-wrap items-center gap-1">
-                      {row.labels.map((label) => (
-                        <span key={label} className={BADGE}>
-                          {label}
-                        </span>
-                      ))}
-                    </span>
-                  ) : null}
                 </TableCell>
                 <TableCell className="align-top text-xs text-muted-foreground">
                   <span
@@ -149,6 +143,20 @@ function Panel() {
   // The repository only earns a column when it actually varies.
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;
 
+  // Grouped by the board's own column, in the board's own order. An issue that
+  // is on no board, or on a different one, still has to appear somewhere.
+  const present = listing.rows
+    .map((row) => row.boardStatus)
+    .filter((status): status is string => status !== null);
+
+  const sections = [
+    ...sectionOrder(listing.statusOrder, present).map((status) => ({
+      status,
+      rows: listing.rows.filter((row) => row.boardStatus === status),
+    })),
+    { status: NO_BOARD, rows: listing.rows.filter((row) => row.boardStatus === null) },
+  ].filter((section) => section.rows.length > 0);
+
   return (
     <div className="h-full overflow-auto p-4 md:p-5">
       <div className="mx-auto w-full max-w-6xl space-y-5">
@@ -178,7 +186,14 @@ function Panel() {
         {listing.rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No issues assigned to you.</p>
         ) : (
-          <IssueTable rows={listing.rows} showRepo={showRepo} />
+          sections.map(({ status, rows }) => (
+            <section key={status} className="space-y-2">
+              <h2 className="text-sm font-medium">
+                {status} ({rows.length})
+              </h2>
+              <IssueTable rows={rows} showRepo={showRepo} />
+            </section>
+          ))
         )}
       </div>
     </div>

@@ -1,3 +1,5 @@
+import { boardStatus } from "./board.js";
+
 export const REPO_SLUG_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 /** The subset of `gh search issues --json` output this plugin reads. */
@@ -10,7 +12,15 @@ export interface RawIssue {
   createdAt?: string;
   updatedAt?: string;
   commentsCount?: number;
+  /** `gh issue list` returns the comments themselves, not a count. */
+  comments?: unknown[] | null;
   isPullRequest?: boolean;
+  /**
+   * `gh issue list` only. An issue can sit on several boards at once — most of
+   * these are on two — so the board is chosen by name before the status is
+   * read.
+   */
+  projectItems?: Array<{ title?: string; status?: { name?: string } | null }> | null;
 }
 
 export interface IssueRow {
@@ -23,11 +33,15 @@ export interface IssueRow {
   createdAt: number;
   updatedAt: number;
   commentsCount: number;
+  /** The status column on the configured board, or null when it is not on it. */
+  boardStatus: string | null;
 }
 
 export interface SweepResult {
   rows: IssueRow[];
   truncated: boolean;
+  /** Repositories whose listing failed; their previous rows are kept. */
+  failedRepos: string[];
   sweptAt: number;
 }
 
@@ -36,7 +50,7 @@ export interface SweepResult {
  * should list. GitHub models pull requests as issues, so the search returns
  * both; everything else dropped here is a hit too malformed to render.
  */
-export function toRow(raw: RawIssue): IssueRow | null {
+export function toRow(raw: RawIssue, board = ""): IssueRow | null {
   if (raw.isPullRequest) return null;
 
   const repo = raw.repository?.nameWithOwner;
@@ -57,7 +71,8 @@ export function toRow(raw: RawIssue): IssueRow | null {
     labels: (raw.labels ?? []).map((label) => label.name).filter((name): name is string => !!name),
     createdAt: Number.isNaN(createdAt) ? resolvedUpdatedAt : createdAt,
     updatedAt: resolvedUpdatedAt,
-    commentsCount: raw.commentsCount ?? 0,
+    commentsCount: raw.commentsCount ?? (raw.comments?.length ?? 0),
+    boardStatus: boardStatus(raw.projectItems, board),
   };
 }
 

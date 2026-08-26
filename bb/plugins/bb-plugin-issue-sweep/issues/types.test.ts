@@ -31,7 +31,40 @@ describe("toRow", () => {
       createdAt: Date.parse("2026-01-02T00:00:00Z"),
       updatedAt: Date.parse("2026-01-03T00:00:00Z"),
       commentsCount: 3,
+      boardStatus: null,
     });
+  });
+
+  it("reads the status from the named board, ignoring the others", () => {
+    // These issues sit on two boards at once — a team one and someone's
+    // personal project — so "the first project item" would pick whichever
+    // GitHub happened to return first.
+    const row = toRow(
+      raw({
+        projectItems: [
+          { title: "Someone's untitled project", status: { name: "Backlog" } },
+          { title: "Acme Board", status: { name: "In Review" } },
+        ],
+      }),
+      "Acme Board",
+    );
+    expect(row?.boardStatus).toBe("In Review");
+  });
+
+  it("reports no status when the issue is not on the named board", () => {
+    const row = toRow(
+      raw({ projectItems: [{ title: "Other board", status: { name: "In Progress" } }] }),
+      "Acme Board",
+    );
+    expect(row?.boardStatus).toBeNull();
+  });
+
+  it("takes the first status it finds when no board is named", () => {
+    const row = toRow(
+      raw({ projectItems: [{ title: "Anything", status: { name: "Ready for Dev" } }] }),
+      "",
+    );
+    expect(row?.boardStatus).toBe("Ready for Dev");
   });
 
   it("drops a pull request", () => {

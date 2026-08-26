@@ -13,12 +13,13 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
     createdAt: 100,
     updatedAt: 200,
     commentsCount: 3,
+    boardStatus: null,
     ...overrides,
   };
 }
 
 function result(overrides: Partial<SweepResult> = {}): SweepResult {
-  return { rows: [row()], truncated: false, sweptAt: 1_700_000_000_000, ...overrides };
+  return { rows: [row()], truncated: false, failedRepos: [], sweptAt: 1_700_000_000_000, ...overrides };
 }
 
 let store: Store;

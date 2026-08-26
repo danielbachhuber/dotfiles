@@ -7,6 +7,7 @@ const rowSchema = z.object({
   title: z.string(),
   url: z.string(),
   labels: z.array(z.string()),
+  boardStatus: z.string().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
   commentsCount: z.number(),
@@ -17,6 +18,7 @@ export const rpcContract = defineRpcContract({
     input: z.null(),
     output: z.object({
       rows: z.array(rowSchema),
+      statusOrder: z.array(z.string()),
       sweptAt: z.number().nullable(),
       truncated: z.boolean(),
       lastError: z.string().nullable(),
