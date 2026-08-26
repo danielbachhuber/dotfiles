@@ -1,4 +1,13 @@
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  buildOpenPrompt,
+  parsePullRequestInput,
+  resolvePullRequest as resolvePr,
+  worktreePath,
+} from "./sweep/open-pr.js";
+import { parseRemoteSlug } from "./sweep/spawn-target.js";
 import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
@@ -163,6 +172,41 @@ export default async function plugin(bb: BbPluginApi) {
     }));
   }
 
+  /** The repository a bare "#123" should be read against: the only one swept. */
+  async function defaultRepo(): Promise<string> {
+    const repos = new Set(store.readRows().map((row) => row.repo));
+    return repos.size === 1 ? [...repos][0]! : "";
+  }
+
+  /** The project checked out for a repository, with its local path. */
+  async function projectForRepo(repo: string): Promise<{ id: string; path: string } | null> {
+    const projects = await bb.sdk.projects.list();
+    for (const project of projects) {
+      if (!project.gitRemoteUrl) continue;
+      if (parseRemoteSlug(project.gitRemoteUrl)?.toLowerCase() !== repo.toLowerCase()) continue;
+      const source = (project.sources ?? []).find((entry) => entry.path);
+      if (source?.path) return { id: project.id, path: source.path };
+    }
+    return null;
+  }
+
+  /**
+   * Creates the worktree on the pull request's branch, or reuses one already
+   * there. Argument-array spawn, never a shell string.
+   */
+  async function addWorktree(repoPath: string, path: string, branch: string): Promise<void> {
+    const git = (args: string[]) =>
+      new Promise<void>((resolve, reject) => {
+        execFile("git", ["-C", repoPath, ...args], (error) =>
+          error ? reject(error) : resolve(),
+        );
+      });
+
+    if (existsSync(path)) return;
+    await git(["fetch", "origin", branch]);
+    await git(["worktree", "add", path, branch]);
+  }
+
   bb.rpc.register(rpcContract, {
     async listRows() {
       const meta = store.readMeta();
@@ -220,6 +264,98 @@ export default async function plugin(bb: BbPluginApi) {
         url: row?.url ?? `https://github.com/${link.repo}/pull/${link.number}`,
         title: row?.title ?? "",
       };
+    },
+
+    /**
+     * Resolves what the user typed, so the form can confirm the title and
+     * branch before anything is created. A typo fails here rather than in a
+     * spawned thread.
+     */
+    async resolvePullRequest({ input }) {
+      const { ghPath } = await settings.get();
+      const parsed = parsePullRequestInput(input, await defaultRepo());
+      if ("error" in parsed) return { pr: null, error: parsed.error };
+
+      try {
+        const pr = await resolvePr(createGhRunner(ghPath), parsed.repo, parsed.number);
+        return { pr, error: null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof GhUnavailableError) bb.status.needsConfiguration(message);
+        return { pr: null, error: `Could not read ${parsed.repo}#${parsed.number}.` };
+      }
+    },
+
+    /**
+     * Creates a worktree on the pull request's own branch and attaches a
+     * thread to it as an unmanaged environment.
+     *
+     * bb's managed worktree always cuts a fresh `bb/<thread>` branch off the
+     * base, so a thread on one is not on the pull request and a push does not
+     * update it. Attaching to a worktree we made ourselves puts the thread on
+     * the branch — and bb then reports the pull request, its checks and its
+     * review state on the thread, which it cannot do for a branch that has no
+     * pull request.
+     *
+     * The cost is bb's rule, not ours: it does not delete an unmanaged
+     * worktree when the thread is archived. It stays until removed by hand.
+     */
+    async openPullRequest({ input, instructions }) {
+      const { ghPath, providerId, permissionMode } = await settings.get();
+      const parsed = parsePullRequestInput(input, await defaultRepo());
+      if ("error" in parsed) return { threadId: null, worktree: null, error: parsed.error };
+
+      let pr;
+      try {
+        pr = await resolvePr(createGhRunner(ghPath), parsed.repo, parsed.number);
+      } catch {
+        return {
+          threadId: null,
+          worktree: null,
+          error: `Could not read ${parsed.repo}#${parsed.number}.`,
+        };
+      }
+
+      const project = await projectForRepo(pr.repo);
+      if (!project) {
+        return {
+          threadId: null,
+          worktree: null,
+          error: `No bb project is checked out for ${pr.repo}.`,
+        };
+      }
+
+      const path = worktreePath(project.path, pr.number);
+      try {
+        await addWorktree(project.path, path, pr.headRef);
+      } catch (error) {
+        return {
+          threadId: null,
+          worktree: null,
+          error: `Could not create a worktree at ${path}: ${String(error)}`,
+        };
+      }
+
+      const thread = await bb.sdk.threads.spawn({
+        projectId: project.id,
+        environment: {
+          type: "host",
+          workspace: {
+            type: "unmanaged",
+            path,
+            branch: { kind: "existing", name: pr.headRef },
+          },
+        },
+        ...(providerId ? { providerId } : {}),
+        permissionMode: parsePermissionMode(permissionMode),
+        prompt: buildOpenPrompt(pr, instructions),
+        title: `PR #${pr.number}`,
+      });
+
+      store.linkThread(pr.repo, pr.number, thread.id, Date.now());
+      bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+      bb.log.info(`opened ${pr.repo}#${pr.number} at ${path} as ${thread.id}`);
+      return { threadId: thread.id, worktree: path, error: null };
     },
 
     async archiveThread({ repo, number }) {

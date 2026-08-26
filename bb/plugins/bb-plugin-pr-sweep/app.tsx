@@ -9,6 +9,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { OpenPullRequestPage } from "./sweep/open-panel.js";
 import { Icon } from "@/components/ui/icon";
 import {
   Tooltip,
@@ -624,6 +625,14 @@ function OpenPullRequest({ threadId, isCompactViewport }: PluginThreadHeaderActi
 }
 
 export default definePluginApp((app) => {
+  app.slots.navPanel({
+    id: "open-pr",
+    title: "Open pull request",
+    icon: "FolderGit",
+    path: "open-pr",
+    component: OpenPullRequestPage,
+  });
+
   app.slots.navPanel({
     id: "prs",
     title: "Pull requests",

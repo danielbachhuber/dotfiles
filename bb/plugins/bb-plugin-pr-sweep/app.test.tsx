@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
@@ -46,7 +47,7 @@ afterEach(() => {
 
 function render(result: Record<string, unknown>, extraRpc: Record<string, unknown> = {}) {
   const slot = renderSlot(
-    app.navPanels[0]!,
+    app.navPanels.find((panel) => panel.id === "prs")!,
     { subPath: "" },
     {
       rpc: {
@@ -62,8 +63,8 @@ function render(result: Record<string, unknown>, extraRpc: Record<string, unknow
 
 describe("panel", () => {
   it("registers one nav panel", () => {
-    expect(app.navPanels).toHaveLength(1);
-    expect(app.navPanels[0]!.path).toBe("prs");
+    expect(app.navPanels.map((panel) => panel.id).sort()).toEqual(["open-pr", "prs"]);
+    expect(app.navPanels.find((panel) => panel.id === "prs")!.path).toBe("prs");
   });
 
   it("shows a flagged PR under Needs action", async () => {
@@ -645,5 +646,89 @@ describe("the draft badge", () => {
     const slot = render(listing({ rows: [rowFixture({ isDraft: false })] }));
     await slot.findByText(/Add the widget endpoint/);
     expect(slot.queryByText("draft")).toBeNull();
+  });
+});
+
+describe("the Open pull request page", () => {
+  const page = () => app.navPanels.find((panel) => panel.id === "open-pr")!;
+
+  function renderPage(rpc: Record<string, unknown>) {
+    const slot = renderSlot(page(), { subPath: "" }, { rpc });
+    mounted = slot;
+    return slot;
+  }
+
+  const resolved = {
+    pr: {
+      repo: "acme/widgets",
+      number: 42,
+      title: "Add the widget endpoint",
+      headRef: "feat/widgets",
+      url: "https://github.com/acme/widgets/pull/42",
+      isDraft: false,
+    },
+    error: null,
+  };
+
+  it("has its own sidebar entry", () => {
+    expect(page().title).toBe("Open pull request");
+    expect(page().path).toBe("open-pr");
+  });
+
+  it("will not open anything until a pull request resolves", async () => {
+    const slot = renderPage({ resolvePullRequest: () => ({ pr: null, error: null }) });
+    const button = await slot.findByRole("button", { name: /^Open pull request$/ });
+    expect(button).toBeDisabled();
+  });
+
+  it("confirms the title and branch before offering to open it", async () => {
+    // The branch is the point of the page, so it is shown before committing.
+    const slot = renderPage({ resolvePullRequest: () => resolved });
+    const field = await slot.findByLabelText(/pull request/i);
+    fireEvent.change(field, { target: { value: "42" } });
+    fireEvent.blur(field);
+    await slot.findByText(/Add the widget endpoint/);
+    await slot.findByText(/feat\/widgets/);
+    expect(await slot.findByRole("button", { name: /^Open pull request$/ })).not.toBeDisabled();
+  });
+
+  it("reports a bad reference in the form rather than opening", async () => {
+    const slot = renderPage({
+      resolvePullRequest: () => ({ pr: null, error: "Not a pull request number or URL: nope" }),
+    });
+    const field = await slot.findByLabelText(/pull request/i);
+    fireEvent.change(field, { target: { value: "42" } });
+    fireEvent.blur(field);
+    await slot.findByText(/Not a pull request number or URL/);
+    expect(await slot.findByRole("button", { name: /^Open pull request$/ })).toBeDisabled();
+  });
+
+  it("opens the thread it started", async () => {
+    const slot = renderPage({
+      resolvePullRequest: () => resolved,
+      openPullRequest: () => ({
+        threadId: "thr_1",
+        worktree: "/Users/me/projects/widgets-pr-42",
+        error: null,
+      }),
+    });
+    const field = await slot.findByLabelText(/pull request/i);
+    fireEvent.change(field, { target: { value: "42" } });
+    fireEvent.blur(field);
+    (await slot.findByRole("button", { name: /^Open pull request$/ })).click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "openPullRequest")).toBe(true);
+    expect(slot.inspection.navigateCalls.length).toBeGreaterThan(0);
+  });
+
+  it("says the worktree outlives the thread", async () => {
+    // bb does not delete an unmanaged worktree on archive, so the page says so
+    // rather than leaving it to be discovered later.
+    const slot = renderPage({ resolvePullRequest: () => resolved });
+    const field = await slot.findByLabelText(/pull request/i);
+    fireEvent.change(field, { target: { value: "42" } });
+    fireEvent.blur(field);
+    await slot.findByText(/not removed when the thread is archived/i);
   });
 });

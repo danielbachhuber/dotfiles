@@ -50,6 +50,30 @@ export const rpcContract = defineRpcContract({
       .object({ repo: z.string(), number: z.number(), url: z.string(), title: z.string() })
       .nullable(),
   },
+  resolvePullRequest: {
+    input: z.object({ input: z.string() }).strict(),
+    output: z.object({
+      pr: z
+        .object({
+          repo: z.string(),
+          number: z.number(),
+          title: z.string(),
+          headRef: z.string(),
+          url: z.string(),
+          isDraft: z.boolean(),
+        })
+        .nullable(),
+      error: z.string().nullable(),
+    }),
+  },
+  openPullRequest: {
+    input: z.object({ input: z.string(), instructions: z.string() }).strict(),
+    output: z.object({
+      threadId: z.string().nullable(),
+      worktree: z.string().nullable(),
+      error: z.string().nullable(),
+    }),
+  },
   archiveThread: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
     output: z.object({ ok: z.boolean(), reason: z.string().nullable() }),
