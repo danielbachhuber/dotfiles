@@ -2,11 +2,12 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { MIGRATIONS, createStore } from "./store.js";
 import type { ClassifiedRow } from "../prs/types.js";
+import type { ClassifiedRow } from "../prs/types.js";
 
 function freshStore() {
   const db = new Database(":memory:");
   for (const statement of MIGRATIONS) db.exec(statement);
-  return createStore(db as never);
+  return createStore<ClassifiedRow>(db as never, "pr");
 }
 
 function row(overrides: Partial<ClassifiedRow> = {}): ClassifiedRow {

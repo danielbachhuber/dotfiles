@@ -11,6 +11,7 @@ import {
 } from "./prs/actions.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./shared/spawn-target.js";
 import { MIGRATIONS, createStore } from "./shared/store.js";
+import type { ClassifiedRow } from "./prs/types.js";
 
 export { rpcContract };
 
@@ -72,7 +73,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   const db = bb.storage.database();
   bb.storage.migrate(db, MIGRATIONS);
-  const store = createStore(db as never);
+  const store = createStore<ClassifiedRow>(db as never, "pr");
 
   /**
    * Drops links whose thread no longer exists or has been archived.

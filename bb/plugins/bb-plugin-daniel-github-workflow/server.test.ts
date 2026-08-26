@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { createStore } from "./shared/store.js";
+import type { ClassifiedRow } from "./prs/types.js";
 import plugin from "./server.js";
 
 describe("server", () => {
@@ -116,7 +117,7 @@ describe("workOnThis is one thread per pull request", () => {
     await plugin(fixture.bb);
 
     // Seed a row the way a sweep would, through the plugin's own database.
-    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(fixture.bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       seedRow(),
     ] as never);
     return fixture;
@@ -189,7 +190,7 @@ describe("workOnThis is one thread per pull request", () => {
       },
     });
     await plugin(bb);
-    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       { ...seedRow(), flags: ["ci-failing"] },
     ] as never);
 
@@ -215,7 +216,7 @@ describe("workOnThis is one thread per pull request", () => {
       },
     });
     await plugin(bb);
-    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       seedRow(),
     ] as never);
 
@@ -261,7 +262,7 @@ describe("workOnThis is one thread per pull request", () => {
       },
     });
     await plugin(bb);
-    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       seedRow(),
     ] as never);
 
@@ -307,7 +308,7 @@ describe("permission mode", () => {
       },
     });
     await plugin(fixture.bb);
-    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(fixture.bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       seedRow(),
     ] as never);
     return fixture;
@@ -362,7 +363,7 @@ describe("archiveThread", () => {
       },
     });
     await plugin(fixture.bb);
-    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(fixture.bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       { ...seedRow(), flags: [], group: "clean" },
     ] as never);
 
@@ -413,7 +414,7 @@ describe("pullRequestForThread", () => {
       },
     });
     await plugin(fixture.bb);
-    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+    createStore<ClassifiedRow>(fixture.bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", [
       seedRow(),
     ] as never);
     return fixture;
@@ -453,7 +454,7 @@ describe("pullRequestForThread", () => {
     });
 
     // The PR merges, so the next sweep drops its row while the link remains.
-    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", []);
+    createStore<ClassifiedRow>(bb.storage.database() as never, "pr").replaceRepoRows("acme/widgets", []);
 
     const result = await harness.behavior.callRpc("pullRequestForThread", {
       threadId: spawn.threadId!,

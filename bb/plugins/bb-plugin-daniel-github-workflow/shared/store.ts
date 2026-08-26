@@ -1,32 +1,29 @@
-import type { ClassifiedRow, SweepResult } from "../prs/types.js";
+/**
+ * One store implementation for every domain. The three plugins this was merged
+ * from each had their own copy over an identical schema — `rows(repo, number,
+ * payload)` plus `meta` — differing only in the row type they parsed the
+ * payload into. That difference is a type parameter, not a second file.
+ */
+
+/** The shape every domain's sweep produces. */
+export interface StoredSweep<TRow> {
+  rows: TRow[];
+  repos: string[];
+  failedRepos: string[];
+  truncated: boolean;
+  sweptAt: number;
+}
+
+/** A row must know which repository and number it belongs to; nothing else. */
+export interface StoredRow {
+  repo: string;
+  number: number;
+}
 
 /**
  * APPEND-ONLY. Statement index is the migration id. Never edit or reorder a
  * shipped statement; only push new ones.
  */
-export const MIGRATIONS = [
-  `CREATE TABLE IF NOT EXISTS rows (
-     repo TEXT NOT NULL,
-     number INTEGER NOT NULL,
-     payload TEXT NOT NULL,
-     PRIMARY KEY (repo, number)
-   )`,
-  `CREATE TABLE IF NOT EXISTS meta (
-     id INTEGER PRIMARY KEY CHECK (id = 1),
-     swept_at INTEGER,
-     failed_repos TEXT NOT NULL DEFAULT '[]',
-     truncated INTEGER NOT NULL DEFAULT 0,
-     last_error TEXT
-   )`,
-  `CREATE TABLE IF NOT EXISTS pr_threads (
-     repo TEXT NOT NULL,
-     number INTEGER NOT NULL,
-     thread_id TEXT NOT NULL,
-     created_at INTEGER NOT NULL,
-     PRIMARY KEY (repo, number)
-   )`,
-];
-
 export interface SweepMeta {
   sweptAt: number | null;
   failedRepos: string[];
@@ -46,10 +43,10 @@ export interface DatabaseLike {
   transaction<T extends (...args: never[]) => unknown>(fn: T): T;
 }
 
-export interface Store {
-  replaceRepoRows(repo: string, rows: ClassifiedRow[]): void;
-  replaceAll(result: SweepResult): void;
-  readRows(): ClassifiedRow[];
+export interface Store<TRow extends StoredRow> {
+  replaceRepoRows(repo: string, rows: TRow[]): void;
+  replaceAll(result: StoredSweep<TRow>): void;
+  readRows(): TRow[];
   readMeta(): SweepMeta;
   recordFailure(message: string): void;
   /** Records the thread started for a PR. Re-linking the same PR replaces it. */
@@ -63,15 +60,54 @@ export interface Store {
   pullRequestForThread(threadId: string): { repo: string; number: number } | null;
 }
 
-export function createStore(db: DatabaseLike): Store {
-  const deleteRepo = db.prepare(`DELETE FROM rows WHERE repo = ?`);
-  const insertRow = db.prepare(`INSERT INTO rows (repo, number, payload) VALUES (?, ?, ?)`);
-  const selectRows = db.prepare(`SELECT payload FROM rows`);
+/**
+ * Table names are namespaced by domain because all three live in one database
+ * now. A bare `rows` table would have three writers.
+ */
+export function migrationsFor(prefix: string): string[] {
+  return [
+    `CREATE TABLE IF NOT EXISTS ${prefix}_rows (
+       repo TEXT NOT NULL,
+       number INTEGER NOT NULL,
+       payload TEXT NOT NULL,
+       PRIMARY KEY (repo, number)
+     )`,
+    `CREATE TABLE IF NOT EXISTS ${prefix}_meta (
+       id INTEGER PRIMARY KEY CHECK (id = 1),
+       swept_at INTEGER,
+       failed_repos TEXT NOT NULL DEFAULT '[]',
+       truncated INTEGER NOT NULL DEFAULT 0,
+       last_error TEXT
+     )`,
+    `CREATE TABLE IF NOT EXISTS ${prefix}_threads (
+       repo TEXT NOT NULL,
+       number INTEGER NOT NULL,
+       thread_id TEXT NOT NULL,
+       created_at INTEGER NOT NULL,
+       PRIMARY KEY (repo, number)
+     )`,
+  ];
+}
+
+/** APPEND-ONLY across releases, as `bb.storage.migrate` requires. */
+export const MIGRATIONS = [
+  ...migrationsFor("pr"),
+  ...migrationsFor("review"),
+  ...migrationsFor("issue"),
+];
+
+export function createStore<TRow extends StoredRow>(
+  db: DatabaseLike,
+  prefix: string,
+): Store<TRow> {
+  const deleteRepo = db.prepare(`DELETE FROM ${prefix}_rows WHERE repo = ?`);
+  const insertRow = db.prepare(`INSERT INTO ${prefix}_rows (repo, number, payload) VALUES (?, ?, ?)`);
+  const selectRows = db.prepare(`SELECT payload FROM ${prefix}_rows`);
   const selectMeta = db.prepare(
-    `SELECT swept_at, failed_repos, truncated, last_error FROM meta WHERE id = 1`,
+    `SELECT swept_at, failed_repos, truncated, last_error FROM ${prefix}_meta WHERE id = 1`,
   );
   const upsertMeta = db.prepare(
-    `INSERT INTO meta (id, swept_at, failed_repos, truncated, last_error)
+    `INSERT INTO ${prefix}_meta (id, swept_at, failed_repos, truncated, last_error)
      VALUES (1, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        swept_at = excluded.swept_at,
@@ -80,32 +116,32 @@ export function createStore(db: DatabaseLike): Store {
        last_error = NULL`,
   );
   const insertLink = db.prepare(
-    `INSERT INTO pr_threads (repo, number, thread_id, created_at)
+    `INSERT INTO ${prefix}_threads (repo, number, thread_id, created_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(repo, number) DO UPDATE SET
        thread_id = excluded.thread_id,
        created_at = excluded.created_at`,
   );
-  const selectLink = db.prepare(`SELECT thread_id FROM pr_threads WHERE repo = ? AND number = ?`);
-  const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM pr_threads`);
-  const deleteLink = db.prepare(`DELETE FROM pr_threads WHERE thread_id = ?`);
+  const selectLink = db.prepare(`SELECT thread_id FROM ${prefix}_threads WHERE repo = ? AND number = ?`);
+  const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM ${prefix}_threads`);
+  const deleteLink = db.prepare(`DELETE FROM ${prefix}_threads WHERE thread_id = ?`);
   const selectByThread = db.prepare(
-    `SELECT repo, number FROM pr_threads WHERE thread_id = ?`,
+    `SELECT repo, number FROM ${prefix}_threads WHERE thread_id = ?`,
   );
   const upsertFailure = db.prepare(
-    `INSERT INTO meta (id, swept_at, failed_repos, truncated, last_error)
+    `INSERT INTO ${prefix}_meta (id, swept_at, failed_repos, truncated, last_error)
      VALUES (1, NULL, '[]', 0, ?)
      ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error`,
   );
 
-  const writeRepo = db.transaction(((repo: string, rows: ClassifiedRow[]) => {
+  const writeRepo = db.transaction(((repo: string, rows: TRow[]) => {
     deleteRepo.run(repo);
     for (const row of rows) insertRow.run(row.repo, row.number, JSON.stringify(row));
-  }) as (repo: string, rows: ClassifiedRow[]) => void);
+  }) as (repo: string, rows: TRow[]) => void);
 
-  function readRows(): ClassifiedRow[] {
+  function readRows(): TRow[] {
     return (selectRows.all() as Array<{ payload: string }>).map(
-      (entry) => JSON.parse(entry.payload) as ClassifiedRow,
+      (entry) => JSON.parse(entry.payload) as TRow,
     );
   }
 
@@ -115,7 +151,7 @@ export function createStore(db: DatabaseLike): Store {
     },
 
     replaceAll(result) {
-      const byRepo = new Map<string, ClassifiedRow[]>();
+      const byRepo = new Map<string, TRow[]>();
       for (const repo of result.repos) {
         if (!result.failedRepos.includes(repo)) byRepo.set(repo, []);
       }
