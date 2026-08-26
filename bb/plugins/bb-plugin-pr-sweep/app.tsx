@@ -177,6 +177,9 @@ function useListing() {
  */
 const TONE_CLASSES: Record<StatusTone, string> = {
   negative: "bg-destructive/10 text-destructive",
+  // A state rather than a verdict, so it stays out of the colour vocabulary
+  // the other three use.
+  neutral: "bg-muted text-muted-foreground",
   positive: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   info: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
 };
@@ -184,12 +187,20 @@ const TONE_CLASSES: Record<StatusTone, string> = {
 const BADGE = "rounded-md px-1.5 py-0.5 text-xs font-medium";
 
 function StatusCell({ row }: { row: Row }) {
+  // Draft leads, then whatever else is true of the row.
+  const draft = row.isDraft ? (
+    <span className={`${BADGE} ${TONE_CLASSES.neutral}`}>draft</span>
+  ) : null;
+
   if (row.flags.length === 0) {
     // "clean" is true but uninformative: most unflagged rows are sitting with
     // a reviewer rather than idle.
     return (
-      <span className={`${BADGE} ${TONE_CLASSES.info}`}>
-        {unflaggedStatus({ waitingOn: row.waitingOn, awaitingReReview: row.awaitingReReview })}
+      <span className="flex flex-wrap items-center gap-1">
+        {draft}
+        <span className={`${BADGE} ${TONE_CLASSES.info}`}>
+          {unflaggedStatus({ waitingOn: row.waitingOn, awaitingReReview: row.awaitingReReview })}
+        </span>
       </span>
     );
   }
@@ -198,6 +209,7 @@ function StatusCell({ row }: { row: Row }) {
   // caption on the first rather than a second thing wrong with the PR.
   return (
     <span className="flex flex-wrap items-center gap-1">
+      {draft}
       {row.flags.map((flag) => (
         <span key={flag} className={`${BADGE} ${TONE_CLASSES[statusTone(flag)]}`}>
           {FLAG_LABELS[flag] ?? flag}
@@ -344,9 +356,6 @@ function PrTable({
                 >
                   {row.title} (#{row.number})
                 </UrlLink>
-                {row.isDraft ? (
-                  <span className="text-xs text-muted-foreground">draft</span>
-                ) : null}
               </TableCell>
               <TableCell className="align-top">
                 <StatusCell row={row} />

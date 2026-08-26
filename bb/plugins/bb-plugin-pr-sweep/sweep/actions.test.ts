@@ -251,9 +251,18 @@ describe("displaySection", () => {
     expect(displaySection("clean", false, true)).toBe("draft");
   });
 
-  it("keeps a flagged draft in needs-action", () => {
-    // Red CI matters on a draft; only the unflagged ones are filed away.
-    expect(displaySection("needs-action", false, true)).toBe("needs-action");
+  it("files a draft under Draft however many flags it carries", () => {
+    // A draft is not offered to anyone yet, so it is not waiting on you
+    // whatever else is true of it. The flags still show in the Status column.
+    expect(displaySection("needs-action", false, true)).toBe("draft");
+    expect(displaySection("clean", false, true)).toBe("draft");
+    expect(displaySection("ready-to-merge", false, true, 0)).toBe("draft");
+    expect(displaySection("needs-action", false, true, 0, ["ci-pending"])).toBe("draft");
+  });
+
+  it("still puts a draft with a thread in In Progress", () => {
+    // Work being done outranks the draft state.
+    expect(displaySection("needs-action", true, true)).toBe("in-progress");
   });
 
   it("orders the sections from most to least urgent", () => {

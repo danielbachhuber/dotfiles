@@ -219,6 +219,11 @@ export function displaySection(
   flags: readonly string[] = [],
 ): DisplaySection {
   if (hasThread) return "in-progress";
+  // A draft is not offered to anyone yet, so it is not waiting on you whatever
+  // else is true of it. Its flags still show in the Status column — a draft
+  // with failing CI reads "draft, CI failing" — they just do not pull it into
+  // the actionable queue.
+  if (isDraft) return "draft";
   if (isOnlyWaitingOnCi(flags)) return "waiting-on-ci";
   if (group === "ready-to-merge") {
     // One approval clears the technical bar, but a pull request people were
@@ -227,7 +232,7 @@ export function displaySection(
     // just housekeeping.
     return outstandingReviewers > 0 ? "partial-approval" : "ready-to-merge";
   }
-  if (group === "clean") return isDraft ? "draft" : "awaiting-review";
+  if (group === "clean") return "awaiting-review";
   return "needs-action";
 }
 
@@ -284,7 +289,7 @@ export function unflaggedStatus(review: {
   return review.awaitingReReview || review.waitingOn.length > 0 ? "awaiting review" : "clean";
 }
 
-export type StatusTone = "positive" | "negative" | "info";
+export type StatusTone = "positive" | "negative" | "info" | "neutral";
 
 /** The tone a status badge carries. Only merge-readiness is good news. */
 export function statusTone(flag: string | null): StatusTone {

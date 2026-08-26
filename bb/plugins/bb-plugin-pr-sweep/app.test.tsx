@@ -107,12 +107,15 @@ describe("panel", () => {
     ).toBeTruthy();
   });
 
-  it("keeps a flagged draft in Needs Action", async () => {
+  it("files a flagged draft under Draft, keeping its flags in Status", async () => {
     const slot = render(
       listing({ rows: [rowFixture({ flags: ["ci-failing"], isDraft: true })] }),
     );
-    await slot.findByText(/Needs Action \(1\)/);
-    expect(slot.queryByText(/^Draft \(/)).toBeNull();
+    await slot.findByText(/^Draft \(1\)$/);
+    expect(slot.queryByText(/Needs Action \(/)).toBeNull();
+    // The draft state and the fault are both true, so both are shown.
+    await slot.findByText("draft");
+    await slot.findByText("CI failing");
   });
 
   it("capitalizes every section heading", async () => {
@@ -618,5 +621,29 @@ describe("a run still in flight", () => {
     );
     await slot.findByText(/Needs Action \(1\)/);
     expect(slot.queryByText(/Waiting on CI \(/)).toBeNull();
+  });
+});
+
+describe("the draft badge", () => {
+  it("marks an unflagged draft without inventing a fault", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: [], group: "clean", isDraft: true })] }),
+    );
+    const badge = await slot.findByText("draft");
+    // A state, not a verdict: it stays out of the red/green/blue vocabulary.
+    expect(badge.className).toMatch(/bg-muted/);
+  });
+
+  it("does not repeat the marker under the title", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: [], group: "clean", isDraft: true })] }),
+    );
+    expect(await slot.findAllByText("draft")).toHaveLength(1);
+  });
+
+  it("says nothing about drafting on a pull request that is open", async () => {
+    const slot = render(listing({ rows: [rowFixture({ isDraft: false })] }));
+    await slot.findByText(/Add the widget endpoint/);
+    expect(slot.queryByText("draft")).toBeNull();
   });
 });
