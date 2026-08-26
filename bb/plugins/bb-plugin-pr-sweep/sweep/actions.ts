@@ -168,6 +168,7 @@ export const DISPLAY_SECTIONS = [
   "ready-to-merge",
   "needs-action",
   "in-progress",
+  "waiting-on-ci",
   "partial-approval",
   "awaiting-review",
   "draft",
@@ -179,6 +180,7 @@ export const SECTION_TITLES: Record<DisplaySection, string> = {
   "needs-action": "Needs Action",
   "in-progress": "In Progress",
   "ready-to-merge": "Ready to Merge",
+  "waiting-on-ci": "Waiting on CI",
   "partial-approval": "Partial Approval",
   "awaiting-review": "Awaiting Review",
   draft: "Draft",
@@ -197,13 +199,27 @@ export const SECTION_TITLES: Record<DisplaySection, string> = {
  * A draft carrying a flag still belongs in Needs Action — red CI matters on a
  * draft.
  */
+/**
+ * True when the only thing a pull request carries is a run in flight.
+ *
+ * A run decides for itself and there is nothing to do but wait, so such a row
+ * does not belong in the section that means "this is waiting for you". A row
+ * with any other flag keeps that flag's section: broken CI beside a running
+ * job is still broken.
+ */
+export function isOnlyWaitingOnCi(flags: readonly string[]): boolean {
+  return flags.length === 1 && flags[0] === "ci-pending";
+}
+
 export function displaySection(
   group: string,
   hasThread: boolean,
   isDraft: boolean,
   outstandingReviewers = 0,
+  flags: readonly string[] = [],
 ): DisplaySection {
   if (hasThread) return "in-progress";
+  if (isOnlyWaitingOnCi(flags)) return "waiting-on-ci";
   if (group === "ready-to-merge") {
     // One approval clears the technical bar, but a pull request people were
     // asked to look at and have not is not the same thing as one nobody is
@@ -273,5 +289,9 @@ export type StatusTone = "positive" | "negative" | "info";
 /** The tone a status badge carries. Only merge-readiness is good news. */
 export function statusTone(flag: string | null): StatusTone {
   if (flag === null) return "info";
-  return flag === "merge-ready" ? "positive" : "negative";
+  if (flag === "merge-ready") return "positive";
+  // A run in flight is not a fault. Colouring it like one made every pull
+  // request mid-pipeline look broken.
+  if (flag === "ci-pending") return "info";
+  return "negative";
 }

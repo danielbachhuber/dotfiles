@@ -593,3 +593,30 @@ describe("thread header action", () => {
     expect(call?.input).toEqual({ threadId: "thr_specific" });
   });
 });
+
+describe("a run still in flight", () => {
+  it("files it under Waiting on CI, not Needs Action", async () => {
+    const slot = render(listing({ rows: [rowFixture({ flags: ["ci-pending"] })] }));
+    await slot.findByText(/Waiting on CI \(1\)/);
+    expect(slot.queryByText(/Needs Action \(/)).toBeNull();
+  });
+
+  it("offers no button, because the run decides", async () => {
+    const slot = render(listing({ rows: [rowFixture({ flags: ["ci-pending"] })] }));
+    await slot.findByText(/Waiting on CI \(1\)/);
+    expect(slot.queryByRole("button", { name: /check on ci/i })).toBeNull();
+  });
+
+  it("does not colour the badge as a fault", async () => {
+    const slot = render(listing({ rows: [rowFixture({ flags: ["ci-pending"] })] }));
+    expect((await slot.findByText("CI running")).className).toMatch(/sky/);
+  });
+
+  it("keeps a row in Needs Action when something else is also wrong", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: ["ci-failing", "ci-pending"] })] }),
+    );
+    await slot.findByText(/Needs Action \(1\)/);
+    expect(slot.queryByText(/Waiting on CI \(/)).toBeNull();
+  });
+});

@@ -29,6 +29,7 @@ import {
   SECTION_TITLES,
   actionSummary,
   displaySection,
+  isOnlyWaitingOnCi,
   statusTone,
   unflaggedStatus,
   type StatusTone,
@@ -260,7 +261,9 @@ function Action({
     );
   }
 
-  if (row.group === "clean") return null;
+  // Nothing to offer on a row that is only waiting for a run to finish, the
+  // same as a clean one.
+  if (row.group === "clean" || isOnlyWaitingOnCi(row.flags)) return null;
 
   return (
     // The title sits on the wrapper, not the Button: a disabled button fires no
@@ -477,8 +480,13 @@ function Panel() {
 
   const inSection = (section: string) =>
     listing.rows.filter(
-      (row) => displaySection(row.group, Boolean(row.threadId), row.isDraft, row.waitingOn.length) ===
-        section,
+      (row) => displaySection(
+        row.group,
+        Boolean(row.threadId),
+        row.isDraft,
+        row.waitingOn.length,
+        row.flags,
+      ) === section,
     );
 
   // The repository only earns a column when it actually varies.
@@ -544,8 +552,13 @@ function NeedsActionCount() {
   const count =
     listing?.rows.filter(
       (row) =>
-        displaySection(row.group, Boolean(row.threadId), row.isDraft, row.waitingOn.length) ===
-        "needs-action",
+        displaySection(
+          row.group,
+          Boolean(row.threadId),
+          row.isDraft,
+          row.waitingOn.length,
+          row.flags,
+        ) === "needs-action",
     ).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;

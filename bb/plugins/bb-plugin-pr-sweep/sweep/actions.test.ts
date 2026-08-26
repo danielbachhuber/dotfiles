@@ -8,6 +8,7 @@ import {
   actionLabel,
   actionSummary,
   displaySection,
+  isOnlyWaitingOnCi,
   modelForFlags,
   parseModelByAction,
   parsePermissionMode,
@@ -225,6 +226,19 @@ describe("displaySection", () => {
     expect(displaySection("ready-to-merge", false, false)).toBe("ready-to-merge");
   });
 
+  it("files a row that is only waiting on CI out of the actionable queue", () => {
+    // The run decides; there is nothing for the user to do. A row with any
+    // other flag keeps that flag's section — broken CI beside a running job is
+    // still broken.
+    expect(displaySection("needs-action", false, false, 0, ["ci-pending"])).toBe("waiting-on-ci");
+    expect(displaySection("needs-action", false, false, 0, ["ci-failing", "ci-pending"])).toBe(
+      "needs-action",
+    );
+    expect(isOnlyWaitingOnCi(["ci-pending"])).toBe(true);
+    expect(isOnlyWaitingOnCi(["ci-pending", "conflict"])).toBe(false);
+    expect(isOnlyWaitingOnCi([])).toBe(false);
+  });
+
   it("separates an approval that still has reviewers outstanding", () => {
     // One approval clears the technical bar, but people who were asked and
     // have not answered make merging a judgement call rather than housekeeping.
@@ -247,6 +261,7 @@ describe("displaySection", () => {
       "ready-to-merge",
       "needs-action",
       "in-progress",
+      "waiting-on-ci",
       "partial-approval",
       "awaiting-review",
       "draft",
@@ -312,10 +327,16 @@ describe("statusTone", () => {
     expect(statusTone("merge-ready")).toBe("positive");
   });
 
-  it("treats every other flag as a problem", () => {
-    for (const flag of FLAG_SEVERITY.filter((f) => f !== "merge-ready")) {
+  it("treats every fault as a problem", () => {
+    const notFaults = new Set(["merge-ready", "ci-pending"]);
+    for (const flag of FLAG_SEVERITY.filter((f) => !notFaults.has(f))) {
       expect(statusTone(flag)).toBe("negative");
     }
+  });
+
+  it("does not colour a run in flight as a fault", () => {
+    // Nothing is wrong while CI is still deciding.
+    expect(statusTone("ci-pending")).toBe("info");
   });
 
   it("treats an unflagged row as informational", () => {
