@@ -73,6 +73,24 @@ describe("server", () => {
 
 let spawnCount = 0;
 
+/** One classified row, as a sweep would have written it. */
+function seedRow() {
+  return {
+    repo: "acme/widgets",
+    number: 42,
+    title: "Add the widget endpoint",
+    url: "https://github.com/acme/widgets/pull/42",
+    isDraft: false,
+    flags: ["conflict"],
+    group: "needs-action",
+    checks: { pass: 1, fail: 0, skip: 0, pending: 0, cancelled: 0, total: 1 },
+    approvedBy: [],
+    commentedBy: [],
+    waitingOn: [],
+    awaitingReReview: false,
+  };
+}
+
 
 describe("workOnThis is one thread per pull request", () => {
   async function seededHost() {
@@ -98,23 +116,9 @@ describe("workOnThis is one thread per pull request", () => {
     await plugin(fixture.bb);
 
     // Seed a row the way a sweep would, through the plugin's own database.
-    const rows = [
-      {
-        repo: "acme/widgets",
-        number: 42,
-        title: "Add the widget endpoint",
-        url: "https://github.com/acme/widgets/pull/42",
-        isDraft: false,
-        flags: ["conflict"],
-        group: "needs-action",
-        checks: { pass: 1, fail: 0, skip: 0, pending: 0, cancelled: 0, total: 1 },
-        approvedBy: [],
-        commentedBy: [],
-        waitingOn: [],
-        awaitingReReview: false,
-      },
-    ];
-    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", rows as never);
+    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      seedRow(),
+    ] as never);
     return fixture;
   }
 
@@ -154,6 +158,46 @@ describe("workOnThis is one thread per pull request", () => {
 
     const listing = await harness.behavior.callRpc("listRows", null);
     expect(listing.rows[0]).toMatchObject({ number: 42, threadId: "thr_1" });
+  });
+
+  it("frees the row when a thread vanished with no event to witness it", async () => {
+    // Lifecycle events only fire while the plugin is loaded, so a thread
+    // deleted across a restart is invisible to them. Only reconciliation on
+    // the next sweep can release the row.
+    spawnCount = 0;
+    const liveThreads: Array<{ id: string }> = [];
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "pr-sweep",
+      settings: { ghPath: "/nonexistent/gh-does-not-exist" },
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: {
+          spawn: async () => {
+            const thread = { id: `thr_${++spawnCount}` };
+            liveThreads.push(thread);
+            return thread;
+          },
+          list: async () => [...liveThreads],
+        },
+      },
+    });
+    await plugin(bb);
+    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      seedRow(),
+    ] as never);
+
+    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBe("thr_1");
+
+    // The thread disappears. No event fires.
+    liveThreads.length = 0;
+    await harness.behavior.callRpc("refresh", null);
+
+    expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBeNull();
   });
 
   it("frees the row again when its thread is deleted", async () => {

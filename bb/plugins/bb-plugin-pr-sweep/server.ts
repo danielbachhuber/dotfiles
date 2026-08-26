@@ -34,7 +34,61 @@ export default async function plugin(bb: BbPluginApi) {
   bb.storage.migrate(db, MIGRATIONS);
   const store = createStore(db as never);
 
+  /**
+   * Drops links whose thread no longer exists or has been archived.
+   *
+   * The thread.deleted / thread.archived handlers below cover the live case,
+   * but lifecycle events only fire while this plugin is loaded. A thread
+   * deleted while bb was stopped, or while the plugin was disabled, would
+   * otherwise stay linked forever and leave the row offering to open a thread
+   * that is gone. Reconciling on every sweep makes the link self-healing
+   * rather than dependent on having witnessed the event.
+   */
+  async function reconcileThreadLinks(): Promise<void> {
+    const links = store.threadLinks();
+    if (links.size === 0) return;
+
+    const live = new Set<string>();
+    const pageSize = 100;
+    for (let offset = 0; ; offset += pageSize) {
+      const threads = await bb.sdk.threads.list({
+        originPluginId: bb.pluginId,
+        includeHidden: true,
+        archived: false,
+        limit: pageSize,
+        offset,
+      });
+      for (const thread of threads) live.add(thread.id);
+      if (threads.length < pageSize) break;
+    }
+
+    let dropped = 0;
+    for (const threadId of links.values()) {
+      if (!live.has(threadId)) {
+        store.unlinkThread(threadId);
+        dropped += 1;
+      }
+    }
+    if (dropped > 0) bb.log.info(`released ${dropped} pull request(s) from missing threads`);
+  }
+
   async function sweepNow(): Promise<{ ok: boolean; error: string | null }> {
+    const outcome = await fetchAndStore();
+
+    // Reconciliation runs whether or not gh succeeded. The two are unrelated:
+    // a missing gh says nothing about whether a linked thread still exists,
+    // and a row stuck on "Open thread" for a deleted thread should heal even
+    // while the sweep itself is broken.
+    try {
+      await reconcileThreadLinks();
+    } catch (error) {
+      bb.log.warn(`could not reconcile thread links: ${String(error)}`);
+    }
+
+    return outcome;
+  }
+
+  async function fetchAndStore(): Promise<{ ok: boolean; error: string | null }> {
     const { ghPath } = await settings.get();
     try {
       const result = await runSweep(createGhRunner(ghPath), () => Date.now());
