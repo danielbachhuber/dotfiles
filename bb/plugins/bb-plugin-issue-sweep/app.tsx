@@ -70,7 +70,6 @@ function IssueTable({ rows, showRepo }: { rows: Row[]; showRepo: boolean }) {
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className={`w-[5rem] ${HEAD}`}>Issue</TableHead>
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`hidden w-[14rem] lg:table-cell ${HEAD}`}>Labels</TableHead>
             <TableHead className={`w-[7rem] ${HEAD}`}>Updated</TableHead>
@@ -81,9 +80,6 @@ function IssueTable({ rows, showRepo }: { rows: Row[]; showRepo: boolean }) {
             const comments = commentsLabel(row.commentsCount);
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
-                <TableCell className="align-top font-mono text-xs tabular-nums text-muted-foreground">
-                  #{row.number}
-                </TableCell>
                 <TableCell className="align-top">
                   {showRepo ? (
                     <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
@@ -100,7 +96,7 @@ function IssueTable({ rows, showRepo }: { rows: Row[]; showRepo: boolean }) {
                     rel="noreferrer"
                     className="block truncate font-medium hover:underline"
                   >
-                    {row.title}
+                    {row.title} (#{row.number})
                   </UrlLink>
                 </TableCell>
                 <TableCell className="hidden align-top lg:table-cell">

@@ -301,7 +301,6 @@ function PrTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className={`w-[5rem] ${HEAD}`}>PR</TableHead>
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`w-[9rem] ${HEAD}`}>Status</TableHead>
             <TableHead className={`hidden w-[9rem] lg:table-cell ${HEAD}`}>Checks</TableHead>
@@ -312,9 +311,6 @@ function PrTable({
         <TableBody>
           {rows.map((row) => (
             <TableRow key={`${row.repo}#${row.number}`}>
-              <TableCell className="align-top font-mono text-xs tabular-nums text-muted-foreground">
-                #{row.number}
-              </TableCell>
               <TableCell className="align-top">
                 {showRepo ? (
                   <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
@@ -332,7 +328,7 @@ function PrTable({
                   rel="noreferrer"
                   className="block truncate font-medium hover:underline"
                 >
-                  {row.title}
+                  {row.title} (#{row.number})
                 </UrlLink>
                 {row.isDraft ? (
                   <span className="text-xs text-muted-foreground">draft</span>

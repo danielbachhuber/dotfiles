@@ -198,7 +198,6 @@ function ReviewTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className={`w-[5rem] ${HEAD}`}>PR</TableHead>
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`w-[7rem] ${HEAD}`}>Status</TableHead>
             <TableHead className={`w-[5.5rem] ${HEAD}`}>Age</TableHead>
@@ -212,9 +211,6 @@ function ReviewTable({
             const tone = ageTone(row.requestedAt, now, staleAfterDays);
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
-                <TableCell className="align-top font-mono text-xs tabular-nums text-muted-foreground">
-                  #{row.number}
-                </TableCell>
                 <TableCell className="align-top">
                   {showRepo ? (
                     <span className="block truncate text-xs text-muted-foreground">
@@ -234,7 +230,7 @@ function ReviewTable({
                     rel="noreferrer"
                     className="block truncate font-medium hover:underline"
                   >
-                    {row.title}
+                    {row.title} (#{row.number})
                   </UrlLink>
                   <span className="block truncate text-xs text-muted-foreground">
                     {row.author}

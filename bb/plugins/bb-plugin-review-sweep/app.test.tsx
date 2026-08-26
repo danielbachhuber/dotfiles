@@ -157,7 +157,8 @@ describe("panel", () => {
 
   it("renders column headers", async () => {
     const slot = render(listing());
-    for (const header of ["PR", "Title", "Status", "Age", "Reviewers", "Size"]) {
+    // "PR" is gone: the number rides the title instead of its own column.
+    for (const header of ["Title", "Status", "Age", "Reviewers", "Size"]) {
       await slot.findByText(header);
     }
     // "Age" replaced "Waiting": the column measures how old the request is,

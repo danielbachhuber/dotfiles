@@ -68,7 +68,7 @@ describe("panel", () => {
     expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/issues/42");
     // An explicit target keeps the issue out of BB's in-app browser.
     expect(link).toHaveAttribute("target", "_blank");
-    expect(await slot.findByText("#42")).toBeInTheDocument();
+    expect(await slot.findByText(/\(#42\)$/)).toBeInTheDocument();
   });
 
   it("shows the labels and the comment count", async () => {
@@ -86,12 +86,13 @@ describe("panel", () => {
         ],
       }),
     );
-    await slot.findByText("Newer issue");
-    const numbers = Array.from(
+    await slot.findByText(/^Newer issue \(#/);
+    // The first cell is now the title, which carries the number.
+    const titles = Array.from(
       slot.container.querySelectorAll("tbody tr td:first-child"),
       (cell) => cell.textContent,
     );
-    expect(numbers).toEqual(["#7", "#3"]);
+    expect(titles).toEqual(["Newer issue (#7)", "Older issue (#3)"]);
   });
 
   it("names the repository only when more than one is in play", async () => {

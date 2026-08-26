@@ -277,8 +277,10 @@ describe("panel", () => {
 
   it("renders column headers", async () => {
     const slot = render(listing());
-    await slot.findByText("PR");
     await slot.findByText("Title");
+    // No number column: the number rides the title so the table has one less
+    // thing to align.
+    expect(slot.queryByText("PR")).toBeNull();
     // "Status" rather than "Needs": the same header sits above Clean and
     // Ready to merge, where "needs" would be wrong.
     await slot.findByText("Status");
