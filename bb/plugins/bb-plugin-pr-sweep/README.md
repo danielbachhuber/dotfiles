@@ -27,6 +27,20 @@ bb plugin install . --yes
 
 - **Sync interval** — how often the background sweep runs. Default 5 minutes.
 - **Path to the gh CLI** — override when `gh` is not on the server's PATH.
+- **Provider for spawned threads** — defaults to `claude-code`, which is the
+  provider the routed skills belong to. Blank uses bb's default.
+- **Model by action** — a JSON object keyed by flag, picking the model for that
+  action's thread. An unlisted flag takes the provider's default model, and a
+  malformed value is logged and ignored rather than blocking a spawn.
+
+  ```json
+  { "conflict": "claude-haiku-4-5-20251001" }
+  ```
+
+  Worth knowing before tuning this down: `resolve-merge-conflicts` is explicit
+  that the conflict markers are the easy part and the real work is the semantic
+  collisions git could not mark. Watch the first few conflict threads before
+  trusting a cheaper model with them.
 
 ## Flags
 

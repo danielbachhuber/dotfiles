@@ -164,6 +164,69 @@ describe("workOnThis is one thread per pull request", () => {
     expect(spawnArgs.title.length).toBeLessThanOrEqual(30);
   });
 
+  it("spawns a conflict thread on the cheap model, and others on the default", async () => {
+    const { harness } = await seededHost();
+    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+
+    const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
+      { model?: string; providerId?: string },
+    ]];
+    expect(spawnArgs.model).toBe("claude-haiku-4-5-20251001");
+    expect(spawnArgs.providerId).toBe("claude-code");
+  });
+
+  it("takes the provider default model for an action with none configured", async () => {
+    spawnCount = 0;
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "pr-sweep",
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: { spawn: async () => ({ id: `thr_${++spawnCount}` }), list: async () => [] },
+      },
+    });
+    await plugin(bb);
+    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      { ...seedRow(), flags: ["ci-failing"] },
+    ] as never);
+
+    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
+      { model?: string },
+    ]];
+    expect(spawnArgs.model).toBeUndefined();
+  });
+
+  it("spawns anyway when the model setting is malformed", async () => {
+    spawnCount = 0;
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "pr-sweep",
+      settings: { modelByAction: "{not json" },
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: { spawn: async () => ({ id: `thr_${++spawnCount}` }), list: async () => [] },
+      },
+    });
+    await plugin(bb);
+    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      seedRow(),
+    ] as never);
+
+    const result = await harness.behavior.callRpc("workOnThis", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+    expect(result.threadId).toBe("thr_1");
+    expect(harness.logEntries.some((entry) => /Model by action/.test(entry.message))).toBe(true);
+  });
+
   it("reports the linked thread on the row", async () => {
     const { harness } = await seededHost();
     await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });

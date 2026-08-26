@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MODEL_BY_ACTION,
   MAX_THREAD_TITLE,
   actionLabel,
+  modelForFlags,
+  parseModelByAction,
   skillFor,
   skillOwnsWorkflow,
   threadTitle,
@@ -118,5 +121,61 @@ describe("threadTitle", () => {
     for (const flag of FLAG_SEVERITY) {
       expect(threadTitle([flag], 1).startsWith(actionLabel([flag]))).toBe(true);
     }
+  });
+});
+
+describe("modelForFlags", () => {
+  it("uses the model for the row's worst flag", () => {
+    const models = { conflict: "haiku", feedback: "sonnet" };
+    expect(modelForFlags(["conflict", "feedback"], models)).toBe("haiku");
+    expect(modelForFlags(["feedback"], models)).toBe("sonnet");
+  });
+
+  it("returns undefined for a flag with no model, taking the provider default", () => {
+    expect(modelForFlags(["ci-failing"], { conflict: "haiku" })).toBeUndefined();
+    expect(modelForFlags([], { conflict: "haiku" })).toBeUndefined();
+  });
+
+  it("picks by worst flag, matching the button and the skill", () => {
+    // ci-failing outranks feedback, so a model set only for feedback is unused.
+    expect(modelForFlags(["feedback", "ci-failing"], { feedback: "sonnet" })).toBeUndefined();
+  });
+});
+
+describe("parseModelByAction", () => {
+  it("falls back to the defaults when unset or blank", () => {
+    expect(parseModelByAction(undefined).models).toBe(DEFAULT_MODEL_BY_ACTION);
+    expect(parseModelByAction("   ").models).toBe(DEFAULT_MODEL_BY_ACTION);
+  });
+
+  it("defaults to a cheap model for merge conflicts", () => {
+    expect(DEFAULT_MODEL_BY_ACTION.conflict).toBe("claude-haiku-4-5-20251001");
+  });
+
+  it("reads a flag-to-model object", () => {
+    expect(parseModelByAction('{"conflict":"haiku","no-reviewer":"sonnet"}')).toEqual({
+      models: { conflict: "haiku", "no-reviewer": "sonnet" },
+      error: null,
+    });
+  });
+
+  it("never throws on malformed input, and says what was wrong", () => {
+    for (const bad of ["{", "[]", "null", '"a string"', "42"]) {
+      const result = parseModelByAction(bad);
+      expect(result.models).toBe(DEFAULT_MODEL_BY_ACTION);
+      expect(result.error).toBeTruthy();
+    }
+  });
+
+  it("reports an unknown flag rather than silently ignoring it", () => {
+    const result = parseModelByAction('{"conflcit":"haiku"}');
+    expect(result.error).toMatch(/conflcit/);
+    expect(result.models).toEqual({});
+  });
+
+  it("skips entries whose model is not a non-empty string", () => {
+    expect(parseModelByAction('{"conflict":"","feedback":null,"ci-failing":"x"}').models).toEqual({
+      "ci-failing": "x",
+    });
   });
 });
