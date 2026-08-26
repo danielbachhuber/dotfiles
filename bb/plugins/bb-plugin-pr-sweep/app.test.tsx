@@ -199,9 +199,17 @@ describe("panel", () => {
     const slot = render(
       listing({ rows: [rowFixture({ flags: [], group: "clean", threadId: "thr_1" })] }),
     );
-    await slot.findByRole("button", { name: /archive thread/i });
-    // Open thread stays, so the work can be reviewed before it is filed away.
-    await slot.findByRole("button", { name: /open thread/i });
+    const archive = await slot.findByRole("button", { name: /archive thread/i });
+    // Secondary: an icon button carrying its label as an accessible name, not
+    // as visible text. Asserting the accessible name rather than opening the
+    // tooltip, which Radix drives from events jsdom does not synthesize.
+    expect(archive.textContent).toBe("");
+    expect(archive).toHaveAttribute("aria-label", "Archive thread");
+
+    // Open thread keeps its label, so the primary action does not change shape
+    // as the work finishes.
+    const open = await slot.findByRole("button", { name: /open thread/i });
+    expect(open.textContent).toContain("Open thread");
   });
 
   it("does not offer Archive thread while the row still has flags", async () => {

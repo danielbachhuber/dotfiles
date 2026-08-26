@@ -8,6 +8,13 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -205,30 +212,37 @@ function Action({
   onArchive: (row: Row) => void;
 }) {
   if (row.threadId) {
-    // A thread whose pull request no longer carries a flag has finished its
-    // job, so the row offers the way out. Open thread stays available: the
-    // work should be reviewable before it is filed away.
+    // Open thread stays the labelled action on every in-progress row, so it
+    // does not change shape as the work finishes. Archiving is the tidy-up
+    // that appears once the pull request has no flags left, and it sits
+    // inline as an icon rather than a second full-width button stacked below.
     const isDone = row.flags.length === 0;
     return (
-      <span className="flex flex-col items-stretch gap-1">
-        {isDone ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="whitespace-nowrap"
-            onClick={() => onArchive(row)}
-          >
-            Archive thread
-          </Button>
-        ) : null}
+      <span className="flex items-center justify-end gap-1">
         <Button
           size="sm"
-          variant={isDone ? "ghost" : "outline"}
+          variant="outline"
           className="whitespace-nowrap"
           onClick={() => onOpen(row.threadId!)}
         >
           Open thread
         </Button>
+        {isDone ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="size-8 shrink-0 p-0"
+                aria-label="Archive thread"
+                onClick={() => onArchive(row)}
+              >
+                <Icon name="Archive" className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Archive thread</TooltipContent>
+          </Tooltip>
+        ) : null}
       </span>
     );
   }
@@ -463,7 +477,8 @@ function Panel() {
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;
 
   return (
-    <div className="h-full overflow-auto p-4 md:p-5">
+    <TooltipProvider delayDuration={300}>
+      <div className="h-full overflow-auto p-4 md:p-5">
       <div className="mx-auto w-full max-w-6xl space-y-5">
         <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
           <span>
@@ -535,7 +550,8 @@ function Panel() {
           onArchive={onArchive}
         />
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 
