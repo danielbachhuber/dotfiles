@@ -21,10 +21,39 @@ const ACTION_LABELS: Record<Flag, string> = {
   "merge-ready": "Merge",
 };
 
+/**
+ * The skill that owns each kind of work. Two flags have a dedicated skill that
+ * specifies the whole flow, including worktree setup on the PR's own branch;
+ * everything else routes to pr-sweep, whose playbooks cover the rest.
+ *
+ * Routing beats restating: `resolve-merge-conflicts` knows that a bare
+ * `EnterWorktree` branches from origin/main and is therefore wrong for a PR.
+ * A prompt that hand-rolled its own worktree advice would contradict it.
+ */
+const SKILL_FOR: Partial<Record<Flag, string>> = {
+  conflict: "resolve-merge-conflicts",
+  feedback: "address-code-review",
+};
+
+const DEFAULT_SKILL = "pr-sweep";
+
 /** Falls back to a generic label if a row somehow carries no known flag. */
 export function actionLabel(flags: readonly string[]): string {
   for (const flag of FLAG_SEVERITY) {
     if (flags.includes(flag)) return ACTION_LABELS[flag];
   }
   return "Work on this";
+}
+
+/** The skill for a row's worst flag, which is the work its action starts. */
+export function skillFor(flags: readonly string[]): string {
+  for (const flag of FLAG_SEVERITY) {
+    if (flags.includes(flag)) return SKILL_FOR[flag] ?? DEFAULT_SKILL;
+  }
+  return DEFAULT_SKILL;
+}
+
+/** True when a dedicated skill specifies the whole flow, worktree included. */
+export function skillOwnsWorkflow(flags: readonly string[]): boolean {
+  return skillFor(flags) !== DEFAULT_SKILL;
 }

@@ -46,6 +46,22 @@ bb plugin install . --yes
 A PR that is answered and awaiting re-review carries no flag: the ball is in the
 reviewer's court.
 
+## Where an action sends the work
+
+The row's worst flag picks both the button label and the skill the spawned
+thread is told to use:
+
+| Worst flag | Skill |
+| --- | --- |
+| merge conflict | `resolve-merge-conflicts` |
+| reviewer feedback | `address-code-review` |
+| anything else | `pr-sweep` |
+
+Those first two skills specify their own flow, including worktree setup on the
+PR's own branch, so the prompt names the skill and states the findings without
+restating any method. Rows routed to `pr-sweep` carry the standing guardrails
+instead.
+
 ## Development
 
 ```bash

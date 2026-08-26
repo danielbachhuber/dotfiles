@@ -28,18 +28,50 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("Add the widget endpoint");
   });
 
-  it("points the agent at the pr-sweep skill", () => {
-    expect(buildPrompt(row({ flags: ["conflict"] }))).toContain("pr-sweep");
-  });
-
-  it("describes a merge conflict as a merge of the base branch", () => {
+  it("names the merge-conflict skill for a conflict", () => {
     const prompt = buildPrompt(row({ flags: ["conflict"] }));
-    expect(prompt).toMatch(/conflict/i);
-    expect(prompt).toMatch(/merge the base branch/i);
+    expect(prompt).toContain("`resolve-merge-conflicts` skill");
+    expect(prompt).not.toContain("pr-sweep");
   });
 
-  it("tells the agent to read the failing log before touching code", () => {
-    expect(buildPrompt(row({ flags: ["ci-failing"] }))).toMatch(/read the failing log/i);
+  it("names the code-review skill for reviewer feedback", () => {
+    const prompt = buildPrompt(row({ flags: ["feedback"] }));
+    expect(prompt).toContain("`address-code-review` skill");
+  });
+
+  it("falls back to pr-sweep for everything else", () => {
+    expect(buildPrompt(row({ flags: ["ci-failing"] }))).toContain("`pr-sweep` skill");
+    expect(buildPrompt(row({ flags: ["no-reviewer"] }))).toContain("`pr-sweep` skill");
+  });
+
+  it("does not restate workflow a dedicated skill already owns", () => {
+    // resolve-merge-conflicts specifies worktree setup on the PR's own branch,
+    // including that a bare EnterWorktree is wrong. Repeating a looser version
+    // here would contradict it.
+    const conflict = buildPrompt(row({ flags: ["conflict"] }));
+    expect(conflict).not.toMatch(/worktree/i);
+    expect(conflict).not.toMatch(/commit only after/i);
+  });
+
+  it("keeps the standing guardrails when routing to pr-sweep", () => {
+    const ci = buildPrompt(row({ flags: ["ci-failing"] }));
+    expect(ci).toMatch(/worktree/i);
+    expect(ci).toMatch(/before anything leaves the machine/i);
+  });
+
+  it("states the conflict as a finding, leaving the method to the skill", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict"] }));
+    expect(prompt).toContain("It conflicts with its base branch.");
+  });
+
+  it("reports how many checks are failing", () => {
+    const prompt = buildPrompt(
+      row({
+        flags: ["ci-failing"],
+        checks: { pass: 20, fail: 2, skip: 1, pending: 0, cancelled: 0, total: 23 },
+      }),
+    );
+    expect(prompt).toContain("2 failing of 23 checks");
   });
 
   it("names who left feedback", () => {
