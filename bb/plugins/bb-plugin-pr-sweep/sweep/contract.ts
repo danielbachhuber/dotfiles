@@ -43,6 +43,12 @@ export const rpcContract = defineRpcContract({
     input: z.null(),
     output: z.object({ ok: z.boolean(), error: z.string().nullable() }),
   },
+  pullRequestForThread: {
+    input: z.object({ threadId: z.string() }).strict(),
+    output: z
+      .object({ repo: z.string(), number: z.number(), url: z.string(), title: z.string() })
+      .nullable(),
+  },
   archiveThread: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
     output: z.object({ ok: z.boolean(), reason: z.string().nullable() }),

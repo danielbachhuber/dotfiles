@@ -59,6 +59,8 @@ export interface Store {
   threadLinks(): Map<string, string>;
   /** Drops the link when its thread is archived or deleted. */
   unlinkThread(threadId: string): void;
+  /** The pull request a thread was started for, or null if it is not ours. */
+  pullRequestForThread(threadId: string): { repo: string; number: number } | null;
 }
 
 export function createStore(db: DatabaseLike): Store {
@@ -87,6 +89,9 @@ export function createStore(db: DatabaseLike): Store {
   const selectLink = db.prepare(`SELECT thread_id FROM pr_threads WHERE repo = ? AND number = ?`);
   const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM pr_threads`);
   const deleteLink = db.prepare(`DELETE FROM pr_threads WHERE thread_id = ?`);
+  const selectByThread = db.prepare(
+    `SELECT repo, number FROM pr_threads WHERE thread_id = ?`,
+  );
   const upsertFailure = db.prepare(
     `INSERT INTO meta (id, swept_at, failed_repos, truncated, last_error)
      VALUES (1, NULL, '[]', 0, ?)
@@ -173,6 +178,13 @@ export function createStore(db: DatabaseLike): Store {
 
     unlinkThread(threadId) {
       deleteLink.run(threadId);
+    },
+
+    pullRequestForThread(threadId) {
+      const link = selectByThread.get(threadId) as
+        | { repo: string; number: number }
+        | undefined;
+      return link ?? null;
     },
   };
 }

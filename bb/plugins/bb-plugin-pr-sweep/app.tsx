@@ -5,6 +5,7 @@ import {
   useRealtime,
   useRpc,
   UrlLink,
+  type PluginThreadHeaderActionProps,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -541,6 +542,56 @@ function NeedsActionCount() {
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;
 }
 
+/**
+ * The thread header's action row, on threads this plugin started. A thread
+ * spends its life away from the panel that spawned it, and the pull request is
+ * the thing you want next from inside it.
+ *
+ * Renders nothing when the lookup returns null, which is every thread this
+ * plugin did not create — the server decides that, not this component.
+ */
+function OpenPullRequest({ threadId, isCompactViewport }: PluginThreadHeaderActionProps) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [pr, setPr] = useState<{ number: number; url: string; repo: string } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const result = await rpc.call("pullRequestForThread", { threadId });
+      if (live) setPr(result);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [rpc, threadId]);
+
+  if (!pr) return null;
+
+  const label = `Open ${pr.repo}#${pr.number} on GitHub`;
+
+  return (
+    // Its own provider: this slot mounts in the host header, outside the
+    // panel's provider.
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <UrlLink
+            href={pr.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={label}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-xs font-medium text-foreground hover:bg-muted"
+          >
+            <Icon name="GitPullRequest" className="size-3.5" />
+            {isCompactViewport ? null : <span>#{pr.number}</span>}
+          </UrlLink>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "prs",
@@ -549,5 +600,11 @@ export default definePluginApp((app) => {
     path: "prs",
     component: Panel,
     experimental_sidebarAccessory: NeedsActionCount,
+  });
+
+  app.slots.experimental_threadHeaderAction({
+    id: "open-pull-request",
+    title: "Open pull request",
+    component: OpenPullRequest,
   });
 });

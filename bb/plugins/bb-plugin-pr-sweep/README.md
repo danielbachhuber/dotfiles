@@ -23,6 +23,14 @@ bb plugin install . --yes
   repository against each project's `gitRemoteUrl`. PRs in repositories with no
   matching project are still listed; their button is disabled.
 
+## In a spawned thread
+
+Threads this plugin starts carry an **Open pull request** control in the thread
+header, linking to the pull request in a real browser tab. It renders only on
+threads this plugin created: the server resolves the thread id against its own
+link table and returns null for anything else, so the control never appears on
+an unrelated thread.
+
 ## Settings
 
 - **Sync interval** — how often the background sweep runs. Default 5 minutes.

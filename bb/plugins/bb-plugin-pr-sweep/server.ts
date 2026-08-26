@@ -197,6 +197,31 @@ export default async function plugin(bb: BbPluginApi) {
       return sweepNow();
     },
 
+    /**
+     * Scoped by construction: pr_threads only holds threads this plugin
+     * started, so a thread it does not know returns null and the header
+     * renders nothing. What the frontend chooses to draw is not the
+     * authorization decision — this lookup is.
+     */
+    async pullRequestForThread({ threadId }) {
+      const link = store.pullRequestForThread(threadId);
+      if (!link) return null;
+
+      const row = store
+        .readRows()
+        .find((entry) => entry.repo === link.repo && entry.number === link.number);
+
+      return {
+        repo: link.repo,
+        number: link.number,
+        // The sweep may no longer carry the row (merged, closed, or beyond the
+        // 100 ceiling), so fall back to the canonical URL shape rather than
+        // dropping the button.
+        url: row?.url ?? `https://github.com/${link.repo}/pull/${link.number}`,
+        title: row?.title ?? "",
+      };
+    },
+
     async archiveThread({ repo, number }) {
       const threadId = store.threadFor(repo, number);
       if (!threadId) return { ok: false, reason: "That pull request has no thread." };

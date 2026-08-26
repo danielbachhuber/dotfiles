@@ -520,3 +520,73 @@ describe("panel", () => {
     expect(slot.inspection.rpcCalls.some((call) => call.method === "workOnThis")).toBe(true);
   });
 });
+
+describe("thread header action", () => {
+  const action = () => app.threadHeaderActions[0]!;
+
+  function renderHeader(
+    result: unknown,
+    props: { threadId?: string; isCompactViewport?: boolean } = {},
+  ) {
+    const slot = renderSlot(
+      action(),
+      {
+        threadId: props.threadId ?? "thr_1",
+        projectId: "proj_a",
+        isCompactViewport: props.isCompactViewport ?? false,
+      },
+      { rpc: { pullRequestForThread: () => result } },
+    );
+    mounted = slot;
+    return slot;
+  }
+
+  it("registers one header action", () => {
+    expect(app.threadHeaderActions).toHaveLength(1);
+    expect(action().id).toBe("open-pull-request");
+  });
+
+  it("links to the pull request on a thread this plugin started", async () => {
+    const slot = renderHeader({
+      repo: "acme/widgets",
+      number: 42,
+      url: "https://github.com/acme/widgets/pull/42",
+      title: "Add the widget endpoint",
+    });
+
+    const link = await slot.findByRole("link", { name: /open acme\/widgets#42 on github/i });
+    expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/pull/42");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link.textContent).toContain("#42");
+  });
+
+  it("renders nothing on a thread this plugin did not start", async () => {
+    // The server decides this by returning null; the component must not draw
+    // a control on someone else's thread.
+    const slot = renderHeader(null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(slot.queryByRole("link")).toBeNull();
+  });
+
+  it("drops the number on a compact viewport, keeping the accessible name", async () => {
+    const slot = renderHeader(
+      {
+        repo: "acme/widgets",
+        number: 42,
+        url: "https://github.com/acme/widgets/pull/42",
+        title: "Add the widget endpoint",
+      },
+      { isCompactViewport: true },
+    );
+
+    const link = await slot.findByRole("link", { name: /open acme\/widgets#42 on github/i });
+    expect(link.textContent).toBe("");
+  });
+
+  it("asks the server about the thread it was mounted for", async () => {
+    const slot = renderHeader(null, { threadId: "thr_specific" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const call = slot.inspection.rpcCalls.find((c) => c.method === "pullRequestForThread");
+    expect(call?.input).toEqual({ threadId: "thr_specific" });
+  });
+});

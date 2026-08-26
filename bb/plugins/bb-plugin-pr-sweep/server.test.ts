@@ -397,3 +397,67 @@ describe("archiveThread", () => {
     expect(harness.inspection.sdk.callsTo("threads.archive")).toHaveLength(0);
   });
 });
+
+describe("pullRequestForThread", () => {
+  async function host() {
+    spawnCount = 0;
+    const fixture = createFakePluginHost({
+      pluginId: "pr-sweep",
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: { spawn: async () => ({ id: `thr_${++spawnCount}` }), list: async () => [] },
+      },
+    });
+    await plugin(fixture.bb);
+    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      seedRow(),
+    ] as never);
+    return fixture;
+  }
+
+  it("returns the pull request for a thread this plugin started", async () => {
+    const { harness } = await host();
+    const spawn = await harness.behavior.callRpc("workOnThis", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    const result = await harness.behavior.callRpc("pullRequestForThread", {
+      threadId: spawn.threadId!,
+    });
+    expect(result).toMatchObject({
+      repo: "acme/widgets",
+      number: 42,
+      url: "https://github.com/acme/widgets/pull/42",
+    });
+  });
+
+  it("returns null for a thread it did not start", async () => {
+    // This is the authorization boundary for the header action: an unknown
+    // thread gets nothing, so the control never appears elsewhere.
+    const { harness } = await host();
+    expect(
+      await harness.behavior.callRpc("pullRequestForThread", { threadId: "thr_someone_else" }),
+    ).toBeNull();
+  });
+
+  it("still resolves a URL after the pull request leaves the sweep", async () => {
+    const { bb, harness } = await host();
+    const spawn = await harness.behavior.callRpc("workOnThis", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    // The PR merges, so the next sweep drops its row while the link remains.
+    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", []);
+
+    const result = await harness.behavior.callRpc("pullRequestForThread", {
+      threadId: spawn.threadId!,
+    });
+    expect(result?.url).toBe("https://github.com/acme/widgets/pull/42");
+  });
+});
