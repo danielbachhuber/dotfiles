@@ -125,10 +125,17 @@ describe("threadTitle", () => {
     expect(title).toContain("#12345678901");
   });
 
-  it("names the same action the button does", () => {
-    for (const flag of FLAG_SEVERITY) {
-      expect(threadTitle([flag], 1).startsWith(actionLabel([flag]))).toBe(true);
+  it("names the same action the button does, for any set of flags", () => {
+    for (const first of FLAG_SEVERITY) {
+      for (const second of FLAG_SEVERITY) {
+        const pair = [first, second];
+        expect(threadTitle(pair, 1)).toBe(`${actionSummary(pair)} #1`);
+      }
     }
+  });
+
+  it("titles a multi-step thread after the summary, not the first step", () => {
+    expect(threadTitle(["conflict", "feedback"], 5780)).toBe("Address issues #5780");
   });
 });
 

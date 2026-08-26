@@ -65,12 +65,16 @@ export function skillOwnsWorkflow(flags: readonly string[]): boolean {
 export const MAX_THREAD_TITLE = 30;
 
 /**
- * "Resolve conflict #5687". The number is what identifies the pull request, so
- * if the pair somehow exceeds the budget the label gives way, never the number.
+ * "Resolve conflict #5687", or "Address issues #5780" when the row needed more
+ * than one thing. Deliberately the same string the button carried, so the
+ * sidebar entry names the work the user asked for rather than a step of it.
+ *
+ * The number is what identifies the pull request, so if the pair somehow
+ * exceeds the budget the label gives way, never the number.
  */
 export function threadTitle(flags: readonly string[], number: number): string {
   const suffix = ` #${number}`;
-  const label = actionLabel(flags);
+  const label = actionSummary(flags);
   const full = `${label}${suffix}`;
   if (full.length <= MAX_THREAD_TITLE) return full;
 
