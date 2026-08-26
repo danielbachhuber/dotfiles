@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { actionLabel, skillFor, skillOwnsWorkflow } from "./actions.js";
+import {
+  MAX_THREAD_TITLE,
+  actionLabel,
+  skillFor,
+  skillOwnsWorkflow,
+  threadTitle,
+} from "./actions.js";
 import { FLAG_SEVERITY } from "./types.js";
 
 describe("actionLabel", () => {
@@ -74,5 +80,43 @@ describe("skillFor", () => {
     expect(skillOwnsWorkflow(["conflict"])).toBe(true);
     expect(skillOwnsWorkflow(["feedback"])).toBe(true);
     expect(skillOwnsWorkflow(["ci-failing"])).toBe(false);
+  });
+});
+
+describe("threadTitle", () => {
+  it("pairs the action with the pull request number", () => {
+    expect(threadTitle(["conflict"], 5687)).toBe("Resolve conflict #5687");
+    expect(threadTitle(["feedback"], 5708)).toBe("Answer feedback #5708");
+    expect(threadTitle(["merge-ready"], 5707)).toBe("Merge #5707");
+  });
+
+  it("leaves out the repository, which the sidebar already shows", () => {
+    expect(threadTitle(["conflict"], 5687)).not.toMatch(/\//);
+  });
+
+  it("fits the sidebar for every flag at a realistic number", () => {
+    for (const flag of FLAG_SEVERITY) {
+      expect(threadTitle([flag], 5687).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    }
+  });
+
+  it("fits the sidebar even for an implausibly long number", () => {
+    for (const flag of FLAG_SEVERITY) {
+      const title = threadTitle([flag], 999_999_999);
+      expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+      expect(title).toContain("999999999");
+    }
+  });
+
+  it("sacrifices the label rather than the number when squeezed", () => {
+    const title = threadTitle(["mergeable-unknown"], 12_345_678_901);
+    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(title).toContain("#12345678901");
+  });
+
+  it("names the same action the button does", () => {
+    for (const flag of FLAG_SEVERITY) {
+      expect(threadTitle([flag], 1).startsWith(actionLabel([flag]))).toBe(true);
+    }
   });
 });

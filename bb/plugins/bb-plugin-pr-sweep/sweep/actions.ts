@@ -57,3 +57,24 @@ export function skillFor(flags: readonly string[]): string {
 export function skillOwnsWorkflow(flags: readonly string[]): boolean {
   return skillFor(flags) !== DEFAULT_SKILL;
 }
+
+/**
+ * The sidebar clips a thread title past roughly this width, and the row above
+ * it already names the project, so the repository is wasted characters here.
+ */
+export const MAX_THREAD_TITLE = 30;
+
+/**
+ * "Resolve conflict #5687". The number is what identifies the pull request, so
+ * if the pair somehow exceeds the budget the label gives way, never the number.
+ */
+export function threadTitle(flags: readonly string[], number: number): string {
+  const suffix = ` #${number}`;
+  const label = actionLabel(flags);
+  const full = `${label}${suffix}`;
+  if (full.length <= MAX_THREAD_TITLE) return full;
+
+  const room = MAX_THREAD_TITLE - suffix.length;
+  if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
+  return `${label.slice(0, room - 1).trimEnd()}…${suffix}`;
+}

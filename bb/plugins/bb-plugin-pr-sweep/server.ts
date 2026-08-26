@@ -2,6 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
+import { threadTitle } from "./sweep/actions.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./sweep/spawn-target.js";
 import { MIGRATIONS, createStore } from "./sweep/store.js";
 
@@ -198,7 +199,7 @@ export default async function plugin(bb: BbPluginApi) {
           projectId,
           environment: { type: "project-default" },
           prompt: buildPrompt(row),
-          title: `${repo}#${number}`,
+          title: threadTitle(row.flags, number),
         });
         store.linkThread(repo, number, thread.id, Date.now());
         bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
