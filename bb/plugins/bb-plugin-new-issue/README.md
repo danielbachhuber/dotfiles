@@ -24,8 +24,8 @@ text, mentions, and attachments reach the agent exactly as composed.
 
 `draft-issue-description` is a user-level Claude Code skill at
 `~/.claude/skills/draft-issue-description/`, so a thread on any other provider
-cannot resolve it by name. The composer owns the provider choice, so the page
-says so in its intro copy rather than warning after the fact.
+cannot resolve it by name. The composer owns the provider choice and the page
+deliberately does not caption it — pick a Claude Code model.
 
 ## The "Create issue" button
 

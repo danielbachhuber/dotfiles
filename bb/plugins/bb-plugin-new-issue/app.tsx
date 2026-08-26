@@ -51,17 +51,13 @@ function NewIssuePage() {
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto box-border w-full max-w-3xl px-4 pb-4 pt-3 md:px-5 md:pt-4">
-        <p className="text-sm text-muted-foreground">
-          Say what the issue should cover. BB starts a thread in the project you
-          pick and runs the <code>draft-issue-description</code> skill, which
-          gathers context, pins permalinks, and shows you a draft before
-          anything is filed. That skill is a Claude Code skill, so pick a Claude
-          Code model unless you want the issue written without it.
-        </p>
+        <h2 className="text-base font-medium text-foreground">
+          Create new issue
+        </h2>
         <div className="mt-4">
           <NewThreadComposer
             defaultProjectId={projectId ?? undefined}
-            placeholder="What exists today, why leaving it is a cost, and what done would look like."
+            placeholder="Include as much detail as you have"
             layout="document"
             onSubmit={submit}
           />

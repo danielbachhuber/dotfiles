@@ -16,15 +16,16 @@ describe("the New issue nav panel", () => {
     });
   });
 
-  it("explains that the skill needs a Claude Code model", async () => {
+  it("heads the page with Create new issue", async () => {
     const app = await loadPluginApp(() => import("./app"));
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "" },
       { context: { projectId: "proj_a", threadId: null } },
     );
-    expect(slot.getByText(/draft-issue-description/)).toBeTruthy();
-    expect(slot.getByText(/Claude Code model/)).toBeTruthy();
+    expect(
+      slot.getByRole("heading", { name: "Create new issue" }),
+    ).toBeTruthy();
   });
 });
 
