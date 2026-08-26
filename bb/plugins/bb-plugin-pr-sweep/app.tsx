@@ -264,7 +264,19 @@ function PrTable({
                 {showRepo ? (
                   <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
                 ) : null}
-                <UrlLink href={row.url} className="block truncate font-medium hover:underline">
+                {/*
+                  An explicit target opts out of BB's in-app browser: BB uses
+                  its URL preference only for ordinary activation and leaves
+                  explicit targets to the browser. A pull request belongs in a
+                  real browser tab, where the session, extensions and history
+                  are.
+                */}
+                <UrlLink
+                  href={row.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block truncate font-medium hover:underline"
+                >
                   {row.title}
                 </UrlLink>
                 {row.isDraft ? (

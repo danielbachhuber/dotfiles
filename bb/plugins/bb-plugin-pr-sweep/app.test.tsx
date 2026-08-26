@@ -141,6 +141,13 @@ describe("panel", () => {
     expect(slot.queryByRole("button", { name: /work on this/i })).toBeNull();
   });
 
+  it("opens a pull request in a real browser tab, not the in-app one", async () => {
+    const slot = render(listing());
+    const link = await slot.findByRole("link", { name: /Add the widget endpoint/ });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/pull/42");
+  });
+
   it("renders column headers", async () => {
     const slot = render(listing());
     await slot.findByText("PR");
