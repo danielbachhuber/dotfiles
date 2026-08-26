@@ -232,32 +232,18 @@ describe("actionSummary", () => {
     expect(actionSummary(["feedback"])).toBe("Address feedback");
   });
 
-  it("names both steps in order for two flags", () => {
-    expect(actionSummary(["conflict", "feedback"])).toBe(
-      "Resolve conflict, then address feedback",
-    );
-    // Order comes from severity, not from the caller's array.
-    expect(actionSummary(["feedback", "conflict"])).toBe(
-      "Resolve conflict, then address feedback",
-    );
-  });
-
-  it("counts the tail once there are more than two", () => {
-    expect(actionSummary(["conflict", "feedback", "no-reviewer"])).toBe(
-      "Resolve conflict, then 2 more",
-    );
+  it("says Address issues whenever there is more than one step", () => {
+    expect(actionSummary(["conflict", "feedback"])).toBe("Address issues");
+    expect(actionSummary(["conflict", "feedback", "no-reviewer"])).toBe("Address issues");
     expect(actionSummary(["conflict", "ci-failing", "feedback", "no-reviewer"])).toBe(
-      "Resolve conflict, then 3 more",
+      "Address issues",
     );
   });
 
-  it("always leads with the label the same flags would produce alone", () => {
-    // Pairing changes which flag is worst, so the invariant is against the
-    // pair's own label, not the first flag's.
+  it("stays short enough not to wrap the button", () => {
     for (const first of FLAG_SEVERITY) {
       for (const second of FLAG_SEVERITY) {
-        const pair = [first, second];
-        expect(actionSummary(pair).startsWith(actionLabel(pair))).toBe(true);
+        expect(actionSummary([first, second]).length).toBeLessThanOrEqual(20);
       }
     }
   });

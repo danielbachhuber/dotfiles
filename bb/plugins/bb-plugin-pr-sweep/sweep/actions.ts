@@ -213,17 +213,14 @@ export function workSteps(flags: readonly string[]): WorkStep[] {
  * all.
  */
 export function actionSummary(flags: readonly string[]): string {
-  const steps = workSteps(flags).map((step) => ACTION_LABELS[step.flag]);
+  const steps = workSteps(flags);
   if (steps.length === 0) return "Work on this";
-  if (steps.length === 1) return steps[0]!;
+  if (steps.length === 1) return ACTION_LABELS[steps[0]!.flag];
 
-  const [first, second] = steps;
-  if (steps.length === 2) return `${first}, then ${lowerFirst(second!)}`;
-  return `${first}, then ${steps.length - 1} more`;
-}
-
-function lowerFirst(text: string): string {
-  return text.charAt(0).toLowerCase() + text.slice(1);
+  // Naming each step spelled out the sequence but wrapped to two lines and
+  // grew with every extra flag. The Status column already lists them, so the
+  // button only has to say that one click covers all of them.
+  return "Address issues";
 }
 
 /**

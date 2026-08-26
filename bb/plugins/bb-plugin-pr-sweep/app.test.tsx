@@ -125,16 +125,21 @@ describe("panel", () => {
     expect(button).toBeDisabled();
   });
 
-  it("names both steps on a row that needs two things", async () => {
+  it("says Address issues on a row that needs more than one thing", async () => {
     const slot = render(listing({ rows: [rowFixture({ flags: ["conflict", "feedback"] })] }));
-    await slot.findByRole("button", { name: /Resolve conflict, then address feedback/i });
+    await slot.findByRole("button", { name: /^Address issues$/i });
   });
 
-  it("counts the tail when a row needs more than two things", async () => {
-    const slot = render(
-      listing({ rows: [rowFixture({ flags: ["conflict", "feedback", "no-reviewer"] })] }),
-    );
-    await slot.findByRole("button", { name: /Resolve conflict, then 2 more/i });
+  it("gives every flag its own badge, not just the worst one", async () => {
+    const slot = render(listing({ rows: [rowFixture({ flags: ["conflict", "feedback"] })] }));
+    const conflict = await slot.findByText("merge conflict");
+    const feedback = await slot.findByText("reviewer feedback");
+    // Both carry the badge chrome, so the second reads as a second problem
+    // rather than as a caption on the first.
+    for (const badge of [conflict, feedback]) {
+      expect(badge.className).toMatch(/rounded-md/);
+      expect(badge.className).toMatch(/bg-destructive/);
+    }
   });
 
   it("names the action after the row's worst flag", async () => {
@@ -142,7 +147,7 @@ describe("panel", () => {
       listing({
         rows: [
           rowFixture({ number: 1, flags: ["ci-failing"] }),
-          rowFixture({ number: 2, flags: ["conflict", "feedback"] }),
+          rowFixture({ number: 2, flags: ["conflict"] }),
           rowFixture({ number: 3, flags: ["no-reviewer"] }),
         ],
       }),
@@ -350,7 +355,7 @@ describe("panel", () => {
     const primary = await slot.findByText("merge conflict");
     const secondary = await slot.findByText("reviewer feedback");
     expect(primary.className).toMatch(/text-destructive/);
-    expect(secondary.className).toMatch(/text-muted-foreground/);
+    expect(secondary.className).toMatch(/text-destructive/);
   });
 
   it("moves a row with a thread out of Needs action and into In progress", async () => {

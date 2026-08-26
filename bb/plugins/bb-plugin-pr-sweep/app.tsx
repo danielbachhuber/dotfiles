@@ -173,15 +173,12 @@ function StatusCell({ row }: { row: Row }) {
     );
   }
 
-  const [primary, ...rest] = row.flags;
-
+  // Every flag gets a badge. A second one rendered as plain text read as a
+  // caption on the first rather than a second thing wrong with the PR.
   return (
-    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className={`${BADGE} ${TONE_CLASSES[statusTone(primary!)]}`}>
-        {FLAG_LABELS[primary!] ?? primary}
-      </span>
-      {rest.map((flag) => (
-        <span key={flag} className="text-xs text-muted-foreground">
+    <span className="flex flex-wrap items-center gap-1">
+      {row.flags.map((flag) => (
+        <span key={flag} className={`${BADGE} ${TONE_CLASSES[statusTone(flag)]}`}>
           {FLAG_LABELS[flag] ?? flag}
         </span>
       ))}
@@ -250,7 +247,7 @@ function Action({
         variant="outline"
         disabled={!row.canSpawn || isStarting}
         onClick={() => onWork(row)}
-        className="h-auto min-h-8 whitespace-normal py-1 text-left leading-snug"
+        className="whitespace-nowrap"
       >
         {isStarting ? "Starting…" : actionSummary(row.flags)}
       </Button>
@@ -292,7 +289,7 @@ function PrTable({
             <TableHead className={`w-[9rem] ${HEAD}`}>Status</TableHead>
             <TableHead className={`hidden w-[9rem] lg:table-cell ${HEAD}`}>Checks</TableHead>
             <TableHead className={`hidden w-[15rem] xl:table-cell ${HEAD}`}>Review</TableHead>
-            <TableHead className="w-[13rem]" />
+            <TableHead className="w-[11rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
