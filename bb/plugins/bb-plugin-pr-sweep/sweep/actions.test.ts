@@ -5,6 +5,7 @@ import {
   PERMISSION_MODES,
   MAX_THREAD_TITLE,
   actionLabel,
+  actionSummary,
   displaySection,
   modelForFlags,
   parseModelByAction,
@@ -19,7 +20,7 @@ describe("actionLabel", () => {
   it("names the action for a single flag", () => {
     expect(actionLabel(["conflict"])).toBe("Resolve conflict");
     expect(actionLabel(["ci-failing"])).toBe("Fix failing CI");
-    expect(actionLabel(["feedback"])).toBe("Answer feedback");
+    expect(actionLabel(["feedback"])).toBe("Address feedback");
     expect(actionLabel(["no-reviewer"])).toBe("Add a reviewer");
     expect(actionLabel(["merge-ready"])).toBe("Merge");
   });
@@ -93,7 +94,7 @@ describe("skillFor", () => {
 describe("threadTitle", () => {
   it("pairs the action with the pull request number", () => {
     expect(threadTitle(["conflict"], 5687)).toBe("Resolve conflict #5687");
-    expect(threadTitle(["feedback"], 5708)).toBe("Answer feedback #5708");
+    expect(threadTitle(["feedback"], 5708)).toBe("Address feedback #5708");
     expect(threadTitle(["merge-ready"], 5707)).toBe("Merge #5707");
   });
 
@@ -220,5 +221,46 @@ describe("displaySection", () => {
       "ready-to-merge",
       "clean",
     ]);
+  });
+});
+
+describe("actionSummary", () => {
+  it("reads as a single action for one flag", () => {
+    expect(actionSummary(["conflict"])).toBe("Resolve conflict");
+    expect(actionSummary(["feedback"])).toBe("Address feedback");
+  });
+
+  it("names both steps in order for two flags", () => {
+    expect(actionSummary(["conflict", "feedback"])).toBe(
+      "Resolve conflict, then address feedback",
+    );
+    // Order comes from severity, not from the caller's array.
+    expect(actionSummary(["feedback", "conflict"])).toBe(
+      "Resolve conflict, then address feedback",
+    );
+  });
+
+  it("counts the tail once there are more than two", () => {
+    expect(actionSummary(["conflict", "feedback", "no-reviewer"])).toBe(
+      "Resolve conflict, then 2 more",
+    );
+    expect(actionSummary(["conflict", "ci-failing", "feedback", "no-reviewer"])).toBe(
+      "Resolve conflict, then 3 more",
+    );
+  });
+
+  it("always leads with the label the same flags would produce alone", () => {
+    // Pairing changes which flag is worst, so the invariant is against the
+    // pair's own label, not the first flag's.
+    for (const first of FLAG_SEVERITY) {
+      for (const second of FLAG_SEVERITY) {
+        const pair = [first, second];
+        expect(actionSummary(pair).startsWith(actionLabel(pair))).toBe(true);
+      }
+    }
+  });
+
+  it("falls back for a row with no known flag", () => {
+    expect(actionSummary([])).toBe("Work on this");
   });
 });

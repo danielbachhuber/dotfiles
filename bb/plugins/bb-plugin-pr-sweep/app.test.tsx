@@ -125,6 +125,18 @@ describe("panel", () => {
     expect(button).toBeDisabled();
   });
 
+  it("names both steps on a row that needs two things", async () => {
+    const slot = render(listing({ rows: [rowFixture({ flags: ["conflict", "feedback"] })] }));
+    await slot.findByRole("button", { name: /Resolve conflict, then address feedback/i });
+  });
+
+  it("counts the tail when a row needs more than two things", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: ["conflict", "feedback", "no-reviewer"] })] }),
+    );
+    await slot.findByRole("button", { name: /Resolve conflict, then 2 more/i });
+  });
+
   it("names the action after the row's worst flag", async () => {
     const slot = render(
       listing({

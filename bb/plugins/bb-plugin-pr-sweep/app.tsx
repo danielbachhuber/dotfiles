@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { actionLabel, displaySection } from "./sweep/actions.js";
+import { actionSummary, displaySection } from "./sweep/actions.js";
 import type { rpcContract } from "./server.js";
 
 type Row = {
@@ -204,15 +204,16 @@ function Action({
     // pointer events, so a tooltip on it would never show.
     <span
       title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
-      className="inline-block whitespace-nowrap"
+      className="inline-block"
     >
       <Button
         size="sm"
         variant="outline"
         disabled={!row.canSpawn || isStarting}
         onClick={() => onWork(row)}
+        className="h-auto min-h-8 whitespace-normal py-1 text-left leading-snug"
       >
-        {isStarting ? "Starting…" : actionLabel(row.flags)}
+        {isStarting ? "Starting…" : actionSummary(row.flags)}
       </Button>
     </span>
   );
@@ -250,7 +251,7 @@ function PrTable({
             <TableHead className={`w-[9rem] ${HEAD}`}>Status</TableHead>
             <TableHead className={`hidden w-[9rem] lg:table-cell ${HEAD}`}>Checks</TableHead>
             <TableHead className={`hidden w-[15rem] xl:table-cell ${HEAD}`}>Review</TableHead>
-            <TableHead className="w-[10rem]" />
+            <TableHead className="w-[13rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>

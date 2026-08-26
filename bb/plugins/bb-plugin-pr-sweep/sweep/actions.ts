@@ -11,7 +11,7 @@ import { FLAG_SEVERITY, type Flag } from "./types.js";
 const ACTION_LABELS: Record<Flag, string> = {
   conflict: "Resolve conflict",
   "ci-failing": "Fix failing CI",
-  feedback: "Answer feedback",
+  feedback: "Address feedback",
   "merge-blocked": "Unblock merge",
   "mergeable-unknown": "Re-check merge state",
   "ci-cancelled": "Re-run CI",
@@ -201,4 +201,27 @@ export function workSteps(flags: readonly string[]): WorkStep[] {
     flag,
     skill: SKILL_FOR[flag] ?? DEFAULT_SKILL,
   }));
+}
+
+/**
+ * The button's label. One flag reads as the action; several read as the
+ * sequence the thread will work, because a single click now starts all of
+ * them and "Resolve conflict" alone understates that.
+ *
+ * Capped at two named steps: a third would not fit the column, and the exact
+ * tail matters less than knowing more is queued. The Status column lists them
+ * all.
+ */
+export function actionSummary(flags: readonly string[]): string {
+  const steps = workSteps(flags).map((step) => ACTION_LABELS[step.flag]);
+  if (steps.length === 0) return "Work on this";
+  if (steps.length === 1) return steps[0]!;
+
+  const [first, second] = steps;
+  if (steps.length === 2) return `${first}, then ${lowerFirst(second!)}`;
+  return `${first}, then ${steps.length - 1} more`;
+}
+
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
 }
