@@ -11,8 +11,10 @@ import {
   parseModelByAction,
   parsePermissionMode,
   skillFor,
+  statusTone,
   skillOwnsWorkflow,
   threadTitle,
+  unflaggedStatus,
 } from "./actions.js";
 import { FLAG_SEVERITY } from "./types.js";
 
@@ -262,5 +264,37 @@ describe("actionSummary", () => {
 
   it("falls back for a row with no known flag", () => {
     expect(actionSummary([])).toBe("Work on this");
+  });
+});
+
+describe("unflaggedStatus", () => {
+  it("reads as awaiting review when a reviewer is outstanding", () => {
+    expect(unflaggedStatus({ waitingOn: ["hubber"], awaitingReReview: false })).toBe(
+      "awaiting review",
+    );
+  });
+
+  it("reads as awaiting review when a re-review is pending", () => {
+    expect(unflaggedStatus({ waitingOn: [], awaitingReReview: true })).toBe("awaiting review");
+  });
+
+  it("reads as clean only when nobody is outstanding", () => {
+    expect(unflaggedStatus({ waitingOn: [], awaitingReReview: false })).toBe("clean");
+  });
+});
+
+describe("statusTone", () => {
+  it("treats merge-readiness as the only good news", () => {
+    expect(statusTone("merge-ready")).toBe("positive");
+  });
+
+  it("treats every other flag as a problem", () => {
+    for (const flag of FLAG_SEVERITY.filter((f) => f !== "merge-ready")) {
+      expect(statusTone(flag)).toBe("negative");
+    }
+  });
+
+  it("treats an unflagged row as informational", () => {
+    expect(statusTone(null)).toBe("info");
   });
 });

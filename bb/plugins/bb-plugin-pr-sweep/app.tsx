@@ -16,7 +16,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { actionSummary, displaySection } from "./sweep/actions.js";
+import {
+  actionSummary,
+  displaySection,
+  statusTone,
+  unflaggedStatus,
+  type StatusTone,
+} from "./sweep/actions.js";
 import type { rpcContract } from "./server.js";
 
 type Row = {
@@ -142,21 +148,36 @@ function useListing() {
  * the one that decides the row's action; the rest are context, so they stay
  * quiet. This is the one place in the table that raises its voice.
  */
-function Needs({ flags }: { flags: string[] }) {
-  if (flags.length === 0) return <span className="text-muted-foreground">clean</span>;
+/**
+ * Badge colours per tone. The palette is deliberately shallow — a problem, a
+ * good outcome, and a neutral state — so the eye can sort a long table at a
+ * glance. Each tone carries its own dark variant, because a single mid tone
+ * that reads well on white washes out on a dark background.
+ */
+const TONE_CLASSES: Record<StatusTone, string> = {
+  negative: "bg-destructive/10 text-destructive",
+  positive: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  info: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+};
 
-  const [primary, ...rest] = flags;
-  const isReady = primary === "merge-ready";
+const BADGE = "rounded-md px-1.5 py-0.5 text-xs font-medium";
+
+function StatusCell({ row }: { row: Row }) {
+  if (row.flags.length === 0) {
+    // "clean" is true but uninformative: most unflagged rows are sitting with
+    // a reviewer rather than idle.
+    return (
+      <span className={`${BADGE} ${TONE_CLASSES.info}`}>
+        {unflaggedStatus({ waitingOn: row.waitingOn, awaitingReReview: row.awaitingReReview })}
+      </span>
+    );
+  }
+
+  const [primary, ...rest] = row.flags;
 
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span
-        className={
-          isReady
-            ? "rounded-md bg-foreground/10 px-1.5 py-0.5 text-xs font-medium text-foreground"
-            : "rounded-md bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
-        }
-      >
+      <span className={`${BADGE} ${TONE_CLASSES[statusTone(primary!)]}`}>
         {FLAG_LABELS[primary!] ?? primary}
       </span>
       {rest.map((flag) => (
@@ -178,22 +199,40 @@ function Action({
   isStarting,
   onWork,
   onOpen,
+  onArchive,
 }: {
   row: Row;
   isStarting: boolean;
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
+  onArchive: (row: Row) => void;
 }) {
   if (row.threadId) {
+    // A thread whose pull request no longer carries a flag has finished its
+    // job, so the row offers the way out. Open thread stays available: the
+    // work should be reviewable before it is filed away.
+    const isDone = row.flags.length === 0;
     return (
-      <Button
-        size="sm"
-        variant="outline"
-        className="whitespace-nowrap"
-        onClick={() => onOpen(row.threadId!)}
-      >
-        Open thread
-      </Button>
+      <span className="flex flex-col items-stretch gap-1">
+        {isDone ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="whitespace-nowrap"
+            onClick={() => onArchive(row)}
+          >
+            Archive thread
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          variant={isDone ? "ghost" : "outline"}
+          className="whitespace-nowrap"
+          onClick={() => onOpen(row.threadId!)}
+        >
+          Open thread
+        </Button>
+      </span>
     );
   }
 
@@ -228,12 +267,14 @@ function PrTable({
   starting,
   onWork,
   onOpen,
+  onArchive,
 }: {
   rows: Row[];
   showRepo: boolean;
   starting: Set<string>;
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
+  onArchive: (row: Row) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border">
@@ -284,7 +325,7 @@ function PrTable({
                 ) : null}
               </TableCell>
               <TableCell className="align-top">
-                <Needs flags={row.flags} />
+                <StatusCell row={row} />
               </TableCell>
               <TableCell className="hidden align-top text-xs tabular-nums text-muted-foreground lg:table-cell">
                 {checksLabel(row.checks)}
@@ -298,6 +339,7 @@ function PrTable({
                   isStarting={starting.has(`${row.repo}#${row.number}`)}
                   onWork={onWork}
                   onOpen={onOpen}
+                  onArchive={onArchive}
                 />
               </TableCell>
             </TableRow>
@@ -315,6 +357,7 @@ function Section({
   starting,
   onWork,
   onOpen,
+  onArchive,
 }: {
   title: string;
   rows: Row[];
@@ -322,6 +365,7 @@ function Section({
   starting: Set<string>;
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
+  onArchive: (row: Row) => void;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -335,6 +379,7 @@ function Section({
         starting={starting}
         onWork={onWork}
         onOpen={onOpen}
+        onArchive={onArchive}
       />
     </section>
   );
@@ -376,6 +421,21 @@ function Panel() {
             return next;
           });
         }
+      })();
+    },
+    [reload, rpc],
+  );
+
+  const onArchive = useCallback(
+    (row: Row) => {
+      void (async () => {
+        const result = await rpc.call("archiveThread", {
+          repo: row.repo,
+          number: row.number,
+        });
+        if (result.ok) toast.success(`Archived the thread for ${row.repo}#${row.number}`);
+        else toast.error(result.reason ?? "Could not archive the thread.");
+        await reload();
       })();
     },
     [reload, rpc],
@@ -448,6 +508,7 @@ function Panel() {
           starting={starting}
           onWork={onWork}
           onOpen={onOpen}
+          onArchive={onArchive}
         />
         <Section
           title="In progress"
@@ -456,6 +517,7 @@ function Panel() {
           starting={starting}
           onWork={onWork}
           onOpen={onOpen}
+          onArchive={onArchive}
         />
         <Section
           title="Ready to merge"
@@ -464,6 +526,7 @@ function Panel() {
           starting={starting}
           onWork={onWork}
           onOpen={onOpen}
+          onArchive={onArchive}
         />
         <Section
           title="Clean"
@@ -472,6 +535,7 @@ function Panel() {
           starting={starting}
           onWork={onWork}
           onOpen={onOpen}
+          onArchive={onArchive}
         />
       </div>
     </div>

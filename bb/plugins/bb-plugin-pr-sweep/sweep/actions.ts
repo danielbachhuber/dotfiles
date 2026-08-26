@@ -225,3 +225,23 @@ export function actionSummary(flags: readonly string[]): string {
 function lowerFirst(text: string): string {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
+
+/**
+ * What an unflagged pull request is actually doing. "clean" is true but
+ * uninformative: most unflagged rows are not idle, they are sitting with a
+ * reviewer. Only a row with nobody outstanding is merely clean.
+ */
+export function unflaggedStatus(review: {
+  waitingOn: readonly string[];
+  awaitingReReview: boolean;
+}): "awaiting review" | "clean" {
+  return review.awaitingReReview || review.waitingOn.length > 0 ? "awaiting review" : "clean";
+}
+
+export type StatusTone = "positive" | "negative" | "info";
+
+/** The tone a status badge carries. Only merge-readiness is good news. */
+export function statusTone(flag: string | null): StatusTone {
+  if (flag === null) return "info";
+  return flag === "merge-ready" ? "positive" : "negative";
+}

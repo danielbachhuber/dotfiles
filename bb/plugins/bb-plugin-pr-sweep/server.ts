@@ -197,6 +197,20 @@ export default async function plugin(bb: BbPluginApi) {
       return sweepNow();
     },
 
+    async archiveThread({ repo, number }) {
+      const threadId = store.threadFor(repo, number);
+      if (!threadId) return { ok: false, reason: "That pull request has no thread." };
+
+      await bb.sdk.threads.archive({ threadId });
+      // The thread.archived handler unlinks too, but doing it here means the
+      // row updates even if the event is lost, and makes the rpc's effect
+      // complete on its own.
+      store.unlinkThread(threadId);
+      bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+      bb.log.info(`archived ${threadId} for ${repo}#${number}`);
+      return { ok: true, reason: null };
+    },
+
     async workOnThis({ repo, number }) {
       const key = `${repo}#${number}`;
 

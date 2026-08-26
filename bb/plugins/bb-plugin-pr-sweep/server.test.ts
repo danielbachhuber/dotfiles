@@ -338,3 +338,62 @@ describe("permission mode", () => {
     expect(await spawnedWith({ permissionMode: "bypass-everything" })).toBe("full");
   });
 });
+
+describe("archiveThread", () => {
+  async function hostWithThread(link: boolean) {
+    spawnCount = 0;
+    const archived: string[] = [];
+    const fixture = createFakePluginHost({
+      pluginId: "pr-sweep",
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: {
+          spawn: async () => ({ id: `thr_${++spawnCount}` }),
+          list: async () => [],
+          archive: async ({ threadId }: { threadId: string }) => {
+            archived.push(threadId);
+            return {};
+          },
+        },
+      },
+    });
+    await plugin(fixture.bb);
+    createStore(fixture.bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      { ...seedRow(), flags: [], group: "clean" },
+    ] as never);
+
+    if (link) {
+      await fixture.harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    }
+    return { ...fixture, archived };
+  }
+
+  it("archives the linked thread and frees the row", async () => {
+    const { harness } = await hostWithThread(true);
+
+    const result = await harness.behavior.callRpc("archiveThread", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(harness.inspection.sdk.callsTo("threads.archive")).toHaveLength(1);
+
+    const listing = await harness.behavior.callRpc("listRows", null);
+    expect(listing.rows[0]!.threadId).toBeNull();
+  });
+
+  it("declines when the pull request has no thread", async () => {
+    const { harness } = await hostWithThread(false);
+    const result = await harness.behavior.callRpc("archiveThread", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+    expect(result.ok).toBe(false);
+    expect(harness.inspection.sdk.callsTo("threads.archive")).toHaveLength(0);
+  });
+});

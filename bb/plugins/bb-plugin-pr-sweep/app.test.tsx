@@ -160,6 +160,61 @@ describe("panel", () => {
     expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/pull/42");
   });
 
+  it("colours a merge-ready status green and an unflagged one blue", async () => {
+    const ready = render(
+      listing({ rows: [rowFixture({ flags: ["merge-ready"], group: "ready-to-merge" })] }),
+    );
+    expect((await ready.findByText("ready to merge")).className).toMatch(/emerald/);
+    ready.lifecycle.unmount();
+
+    const clean = render(listing({ rows: [rowFixture({ flags: [], group: "clean" })] }));
+    expect((await clean.findByText("clean")).className).toMatch(/sky/);
+  });
+
+  it("says awaiting review when an unflagged row still has a reviewer out", async () => {
+    const slot = render(
+      listing({
+        rows: [rowFixture({ flags: [], group: "clean", waitingOn: ["hubber"] })],
+      }),
+    );
+    await slot.findByText("awaiting review");
+    expect(slot.queryByText("clean")).toBeNull();
+  });
+
+  it("says awaiting review when a re-review is pending", async () => {
+    const slot = render(
+      listing({
+        rows: [rowFixture({ flags: [], group: "clean", awaitingReReview: true })],
+      }),
+    );
+    await slot.findByText("awaiting review");
+  });
+
+  it("offers Archive thread once an in-progress row has no flags left", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: [], group: "clean", threadId: "thr_1" })] }),
+    );
+    await slot.findByRole("button", { name: /archive thread/i });
+    // Open thread stays, so the work can be reviewed before it is filed away.
+    await slot.findByRole("button", { name: /open thread/i });
+  });
+
+  it("does not offer Archive thread while the row still has flags", async () => {
+    const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
+    await slot.findByRole("button", { name: /open thread/i });
+    expect(slot.queryByRole("button", { name: /archive thread/i })).toBeNull();
+  });
+
+  it("calls archiveThread when Archive thread is clicked", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: [], group: "clean", threadId: "thr_1" })] }),
+      { archiveThread: () => ({ ok: true, reason: null }) },
+    );
+    (await slot.findByRole("button", { name: /archive thread/i })).click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "archiveThread")).toBe(true);
+  });
+
   it("renders column headers", async () => {
     const slot = render(listing());
     await slot.findByText("PR");
