@@ -16,6 +16,9 @@ import type { ClassifiedRow, RawPullRequest, SweepResult } from "./types.js";
 export const PR_LIST_FIELDS = [
   "number", "title", "url", "author", "isDraft", "mergeable", "mergeStateStatus",
   "reviewRequests", "latestReviews", "reviews", "reviewDecision", "statusCheckRollup",
+  // Who spoke last: an approved PR whose newest comment is not the author's is
+  // usually waiting on a reply, and that is invisible in the review states.
+  "comments",
 ].join(",");
 
 const SEARCH_LIMIT = 100;

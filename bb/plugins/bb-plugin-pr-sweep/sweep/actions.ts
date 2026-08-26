@@ -163,9 +163,12 @@ export function parsePermissionMode(raw: string | undefined): PermissionModeSett
 }
 
 export const DISPLAY_SECTIONS = [
+  // Ready to Merge leads: it is the only section whose rows are finished, and
+  // the cheapest thing on the page to clear.
+  "ready-to-merge",
   "needs-action",
   "in-progress",
-  "ready-to-merge",
+  "partial-approval",
   "awaiting-review",
   "draft",
 ] as const;
@@ -176,6 +179,7 @@ export const SECTION_TITLES: Record<DisplaySection, string> = {
   "needs-action": "Needs Action",
   "in-progress": "In Progress",
   "ready-to-merge": "Ready to Merge",
+  "partial-approval": "Partial Approval",
   "awaiting-review": "Awaiting Review",
   draft: "Draft",
 };
@@ -197,9 +201,16 @@ export function displaySection(
   group: string,
   hasThread: boolean,
   isDraft: boolean,
+  outstandingReviewers = 0,
 ): DisplaySection {
   if (hasThread) return "in-progress";
-  if (group === "ready-to-merge") return "ready-to-merge";
+  if (group === "ready-to-merge") {
+    // One approval clears the technical bar, but a pull request people were
+    // asked to look at and have not is not the same thing as one nobody is
+    // waiting on. Merging the first is a judgement call; merging the second is
+    // just housekeeping.
+    return outstandingReviewers > 0 ? "partial-approval" : "ready-to-merge";
+  }
   if (group === "clean") return isDraft ? "draft" : "awaiting-review";
   return "needs-action";
 }

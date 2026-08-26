@@ -45,6 +45,13 @@ export interface ClassifiedRow {
   commentedBy: string[];
   /** Requested reviewers still outstanding: user logins and team slugs. */
   waitingOn: string[];
+  /**
+   * The last person to comment, when that is not the pull request's author.
+   * A general comment is invisible to reviewDecision and to latestReviews, so
+   * an approved pull request can carry an unanswered question and still read
+   * as ready to merge.
+   */
+  lastCommentBy: string | null;
   /** Answered and re-requested: the ball is in the reviewer's court. */
   awaitingReReview: boolean;
 }
@@ -62,6 +69,7 @@ export interface RawPullRequest {
   latestReviews: Array<{ state: string; author?: { login: string } | null }>;
   reviews: Array<{ state: string; author?: { login: string } | null }>;
   reviewDecision: string | null;
+  comments?: Array<{ author?: { login: string } | null; createdAt?: string }> | null;
   statusCheckRollup: Array<{
     __typename?: string;
     name?: string;

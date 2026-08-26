@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classify, classifyOne, summarizeChecks } from "./classify.js";
+import { classify, classifyOne, isBotLogin, summarizeChecks } from "./classify.js";
 import { checkRun, makePr, review, statusContext, teamRequest, userRequest } from "./fixtures.js";
 
 describe("summarizeChecks", () => {
@@ -230,5 +230,96 @@ describe("classify", () => {
 
   it("stamps the repo on every row", () => {
     expect(classify([makePr()], "acme/widgets")[0]!.repo).toBe("acme/widgets");
+  });
+});
+
+describe("lastCommentBy", () => {
+  const comment = (login: string, createdAt: string) => ({
+    author: { login },
+    createdAt,
+  });
+
+  it("names whoever spoke last when it was not the author", () => {
+    // #5783's shape: approved, no review threads, and a general comment from
+    // the reviewer pointing at work still to do.
+    const row = classifyOne(
+      makePr({
+        author: { login: "octocat" },
+        comments: [
+          comment("octocat", "2026-01-01T00:00:00Z"),
+          comment("hubber", "2026-01-02T00:00:00Z"),
+        ],
+      }),
+      "acme/widgets",
+    );
+    expect(row.lastCommentBy).toBe("hubber");
+  });
+
+  it("says nothing when the author had the last word", () => {
+    const row = classifyOne(
+      makePr({
+        author: { login: "octocat" },
+        comments: [
+          comment("hubber", "2026-01-01T00:00:00Z"),
+          comment("octocat", "2026-01-02T00:00:00Z"),
+        ],
+      }),
+      "acme/widgets",
+    );
+    expect(row.lastCommentBy).toBeNull();
+  });
+
+  it("reads order from the timestamp, not the array", () => {
+    const row = classifyOne(
+      makePr({
+        author: { login: "octocat" },
+        comments: [
+          comment("hubber", "2026-01-05T00:00:00Z"),
+          comment("octocat", "2026-01-02T00:00:00Z"),
+        ],
+      }),
+      "acme/widgets",
+    );
+    expect(row.lastCommentBy).toBe("hubber");
+  });
+
+  it("says nothing for a pull request with no comments", () => {
+    expect(classifyOne(makePr(), "acme/widgets").lastCommentBy).toBeNull();
+  });
+});
+
+describe("bot comments", () => {
+  const comment = (login: string, createdAt: string) => ({ author: { login }, createdAt });
+
+  it("ignores CI chatter, which is not a question awaiting a reply", () => {
+    const row = classifyOne(
+      makePr({
+        author: { login: "octocat" },
+        comments: [
+          comment("hubber", "2026-01-01T00:00:00Z"),
+          comment("github-actions", "2026-01-05T00:00:00Z"),
+        ],
+      }),
+      "acme/widgets",
+    );
+    expect(row.lastCommentBy).toBe("hubber");
+  });
+
+  it("recognises a GitHub App by its [bot] suffix", () => {
+    expect(isBotLogin("some-app[bot]")).toBe(true);
+    expect(isBotLogin("dependabot")).toBe(true);
+    expect(isBotLogin("Github-Actions")).toBe(true);
+    expect(isBotLogin("robennals")).toBe(false);
+  });
+
+  it("says nothing when only bots have commented", () => {
+    const row = classifyOne(
+      makePr({
+        author: { login: "octocat" },
+        comments: [comment("github-actions", "2026-01-05T00:00:00Z")],
+      }),
+      "acme/widgets",
+    );
+    expect(row.lastCommentBy).toBeNull();
   });
 });

@@ -23,6 +23,7 @@ const rowSchema = z.object({
   commentedBy: z.array(z.string()),
   waitingOn: z.array(z.string()),
   awaitingReReview: z.boolean(),
+  lastCommentBy: z.string().nullable(),
   canSpawn: z.boolean(),
   /** The thread already started for this PR, if any. */
   threadId: z.string().nullable(),

@@ -55,6 +55,7 @@ type Row = {
   commentedBy: string[];
   waitingOn: string[];
   awaitingReReview: boolean;
+  lastCommentBy: string | null;
   canSpawn: boolean;
   threadId: string | null;
 };
@@ -116,6 +117,15 @@ function Review({ row }: { row: Row }) {
   }
   if (row.awaitingReReview) {
     lines.push({ key: "re-review", text: "awaiting re-review" });
+  }
+  if (row.lastCommentBy) {
+    // Last word belongs to someone else, so the pull request is probably
+    // waiting on a reply even when every review has approved.
+    lines.push({
+      key: "last-comment",
+      text: `${row.lastCommentBy} commented last`,
+      strong: true,
+    });
   }
 
   if (lines.length === 0) return <span className="text-muted-foreground">no reviews yet</span>;
@@ -326,6 +336,7 @@ function PrTable({
                   href={row.url}
                   target="_blank"
                   rel="noreferrer"
+                  title={`${row.title} (#${row.number})`}
                   className="block truncate font-medium hover:underline"
                 >
                   {row.title} (#{row.number})
@@ -466,7 +477,8 @@ function Panel() {
 
   const inSection = (section: string) =>
     listing.rows.filter(
-      (row) => displaySection(row.group, Boolean(row.threadId), row.isDraft) === section,
+      (row) => displaySection(row.group, Boolean(row.threadId), row.isDraft, row.waitingOn.length) ===
+        section,
     );
 
   // The repository only earns a column when it actually varies.
@@ -532,7 +544,8 @@ function NeedsActionCount() {
   const count =
     listing?.rows.filter(
       (row) =>
-        displaySection(row.group, Boolean(row.threadId), row.isDraft) === "needs-action",
+        displaySection(row.group, Boolean(row.threadId), row.isDraft, row.waitingOn.length) ===
+        "needs-action",
     ).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;

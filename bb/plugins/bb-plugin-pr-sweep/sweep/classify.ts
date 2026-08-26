@@ -82,6 +82,52 @@ function commenters(pr: RawPullRequest): string[] {
   return [...seen];
 }
 
+/**
+ * The newest comment's author, when it is not the pull request's own author.
+ *
+ * GitHub's review states say nothing about general comments, so an approved
+ * pull request can sit with an unanswered question and still look ready. If
+ * the author spoke last, the ball is with the reviewer and there is nothing to
+ * report.
+ */
+/**
+ * Accounts whose comments are not a question waiting on anyone.
+ *
+ * `gh pr list --json comments` exposes only `login` on the author, with no bot
+ * flag, so this matches on the name: the `[bot]` suffix GitHub Apps carry, plus
+ * the bare logins the common CI integrations post under. Left as a list rather
+ * than a setting because a wrong entry here only costs one row's hint.
+ */
+const BOT_LOGINS = new Set([
+  "github-actions",
+  "dependabot",
+  "codecov",
+  "renovate",
+  "vercel",
+  "netlify",
+  "sonarcloud",
+]);
+
+export function isBotLogin(login: string): boolean {
+  return login.endsWith("[bot]") || BOT_LOGINS.has(login.toLowerCase());
+}
+
+export function lastCommentBy(pr: RawPullRequest): string | null {
+  const authorLogin = pr.author?.login ?? null;
+  let newest: { at: number; login: string } | null = null;
+
+  for (const comment of pr.comments ?? []) {
+    const login = comment.author?.login;
+    if (!login || isBotLogin(login)) continue;
+    const at = Date.parse(comment.createdAt ?? "");
+    if (Number.isNaN(at)) continue;
+    if (newest === null || at > newest.at) newest = { at, login };
+  }
+
+  if (newest === null || newest.login === authorLogin) return null;
+  return newest.login;
+}
+
 function hasLiveFeedback(pr: RawPullRequest): boolean {
   return pr.latestReviews.some((entry) => LIVE_FEEDBACK_STATES.has(entry.state));
 }
@@ -143,6 +189,7 @@ export function classifyOne(pr: RawPullRequest, repo: string): ClassifiedRow {
     approvedBy,
     commentedBy: commenters(pr),
     waitingOn: requestedReviewers(pr),
+    lastCommentBy: lastCommentBy(pr),
     awaitingReReview: isAwaitingReReview(pr),
   };
 }

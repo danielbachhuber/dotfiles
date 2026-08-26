@@ -88,6 +88,7 @@ function seedRow() {
     commentedBy: [],
     waitingOn: [],
     awaitingReReview: false,
+    lastCommentBy: null,
   };
 }
 

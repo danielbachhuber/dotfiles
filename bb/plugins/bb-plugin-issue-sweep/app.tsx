@@ -94,6 +94,7 @@ function IssueTable({ rows, showRepo }: { rows: Row[]; showRepo: boolean }) {
                     href={row.url}
                     target="_blank"
                     rel="noreferrer"
+                    title={`${row.title} (#${row.number})`}
                     className="block truncate font-medium hover:underline"
                   >
                     {row.title} (#{row.number})

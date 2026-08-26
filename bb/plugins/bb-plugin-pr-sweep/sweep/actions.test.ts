@@ -225,6 +225,13 @@ describe("displaySection", () => {
     expect(displaySection("ready-to-merge", false, false)).toBe("ready-to-merge");
   });
 
+  it("separates an approval that still has reviewers outstanding", () => {
+    // One approval clears the technical bar, but people who were asked and
+    // have not answered make merging a judgement call rather than housekeeping.
+    expect(displaySection("ready-to-merge", false, false, 0)).toBe("ready-to-merge");
+    expect(displaySection("ready-to-merge", false, false, 2)).toBe("partial-approval");
+  });
+
   it("splits an unflagged row on whether it is a draft", () => {
     expect(displaySection("clean", false, false)).toBe("awaiting-review");
     expect(displaySection("clean", false, true)).toBe("draft");
@@ -237,9 +244,10 @@ describe("displaySection", () => {
 
   it("orders the sections from most to least urgent", () => {
     expect(DISPLAY_SECTIONS).toEqual([
+      "ready-to-merge",
       "needs-action",
       "in-progress",
-      "ready-to-merge",
+      "partial-approval",
       "awaiting-review",
       "draft",
     ]);

@@ -19,6 +19,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     commentedBy: [],
     waitingOn: [],
     awaitingReReview: false,
+    lastCommentBy: null,
     canSpawn: true,
     threadId: null,
     ...overrides,
