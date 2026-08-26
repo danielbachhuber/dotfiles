@@ -8,8 +8,13 @@
 /** The shape every domain's sweep produces. */
 export interface StoredSweep<TRow> {
   rows: TRow[];
-  repos: string[];
-  failedRepos: string[];
+  /**
+   * Optional because not every domain fans out per repository. The pull
+   * request sweep does and reports which repositories failed; the review and
+   * issue sweeps are a single search, so there is no breakdown to give.
+   */
+  repos?: string[];
+  failedRepos?: string[];
   truncated: boolean;
   sweptAt: number;
 }
@@ -152,8 +157,8 @@ export function createStore<TRow extends StoredRow>(
 
     replaceAll(result) {
       const byRepo = new Map<string, TRow[]>();
-      for (const repo of result.repos) {
-        if (!result.failedRepos.includes(repo)) byRepo.set(repo, []);
+      for (const repo of result.repos ?? []) {
+        if (!(result.failedRepos ?? []).includes(repo)) byRepo.set(repo, []);
       }
       for (const row of result.rows) {
         byRepo.get(row.repo)?.push(row);
@@ -161,7 +166,7 @@ export function createStore<TRow extends StoredRow>(
 
       // Drop repositories that no longer appear at all, but keep the ones whose
       // detail call failed so a partial sweep never blanks their rows.
-      const keep = new Set([...byRepo.keys(), ...result.failedRepos]);
+      const keep = new Set([...byRepo.keys(), ...(result.failedRepos ?? [])]);
       for (const repo of new Set(readRows().map((row) => row.repo))) {
         if (!keep.has(repo)) deleteRepo.run(repo);
       }
@@ -169,7 +174,7 @@ export function createStore<TRow extends StoredRow>(
 
       upsertMeta.run(
         result.sweptAt,
-        JSON.stringify(result.failedRepos),
+        JSON.stringify(result.failedRepos ?? []),
         result.truncated ? 1 : 0,
       );
     },

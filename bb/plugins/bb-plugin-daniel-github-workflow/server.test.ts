@@ -12,7 +12,7 @@ describe("server", () => {
     expect(harness.registrations.rpcMethods).toEqual(
       expect.arrayContaining(["listRows", "refresh", "workOnThis"]),
     );
-    expect(harness.registrations.services.map((service) => service.name)).toContain("sweep");
+    expect(harness.registrations.services.map((service) => service.name)).toContain("pull-request-sweep");
     expect(Object.keys(harness.registrations.settingsDescriptors)).toEqual(
       expect.arrayContaining(["syncIntervalMinutes", "ghPath"]),
     );
@@ -48,7 +48,7 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    const service = harness.behavior.runService("sweep");
+    const service = harness.behavior.runService("pull-request-sweep");
     await new Promise((resolve) => setTimeout(resolve, 50));
     service.controller.abort();
     await service.done;

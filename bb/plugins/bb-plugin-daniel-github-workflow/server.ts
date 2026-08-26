@@ -1,6 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { MIGRATIONS } from "./shared/store.js";
 import { registerPullRequests } from "./prs/register.js";
+import { registerReviews } from "./reviews/register.js";
 
 export { rpcContract } from "./prs/contract.js";
 
@@ -15,6 +16,21 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Sync interval (minutes)",
       options: ["2", "5", "15"],
       default: "5",
+    },
+    model: {
+      type: "string",
+      label: "Model for review threads",
+      // Reviews take one model for every thread; pull requests choose per
+      // action via "Model by action", because their work varies more.
+      default: "claude-sonnet-5",
+    },
+    staleAfterDays: {
+      type: "string",
+      label: "Stale after (days)",
+      // Reviews only: how long a request may sit before its age is
+      // emphasised. A personal number rather than a universal one, which is
+      // why it is a setting.
+      default: "2",
     },
     ghPath: {
       type: "string",
@@ -60,4 +76,5 @@ export default async function plugin(bb: BbPluginApi) {
   bb.storage.migrate(db, MIGRATIONS);
 
   registerPullRequests(bb, settings, db as never);
+  registerReviews(bb, settings as never, db as never);
 }

@@ -3,40 +3,33 @@ import { rpcContract } from "./contract.js";
 import { GhUnavailableError, createGhRunner } from "../shared/gh.js";
 import { runSweep } from "./sweep.js";
 import { buildPrompt } from "./prompt.js";
-import {
-  modelForFlags,
-  parseModelByAction,
-  parsePermissionMode,
-  threadTitle,
-} from "./actions.js";
+import { parsePermissionMode, parseStaleAfterDays, threadTitle } from "./actions.js";
 import { matchProjectForRepo, type ProjectCandidate } from "../shared/spawn-target.js";
 import { createStore } from "../shared/store.js";
-import type { ClassifiedRow } from "./types.js";
+import type { ClassifiedRow as ReviewRow } from "./types.js";
 
-/** The subset of the settings accessor this domain reads. */
+
+/** The subset of the shared settings this domain reads. */
 type PluginSettings = {
   get(): Promise<{
     ghPath: string;
     syncIntervalMinutes: string;
-    modelByAction: string;
+    staleAfterDays: string;
+    model: string;
     permissionMode: string;
     providerId: string;
   }>;
 };
-/** better-sqlite3 handle, typed opaquely so only the store knows its shape. */
 type DatabaseHandle = Parameters<typeof createStore>[0];
 
-
-export { rpcContract };
-
-const REALTIME_CHANNEL = "prs-updated";
+const REALTIME_CHANNEL = "reviews-updated";
 
 /**
- * Everything the pull-request domain contributes: its sweep, its rpc methods,
- * and the thread links it owns. server.ts calls one of these per domain and
- * holds no domain logic itself.
+ * Reviews Daniel owes other people, as opposed to prs/, which is his own pull
+ * requests. The two look alike and are deliberately not merged: the rules
+ * differ and would drift.
  */
-export function registerPullRequests(
+export function registerReviews(
   bb: BbPluginApi,
   settings: PluginSettings,
   db: DatabaseHandle,
@@ -47,17 +40,16 @@ export function registerPullRequests(
     string,
     Promise<{ threadId: string | null; existing: boolean; reason: string | null }>
   >();
-  const store = createStore<ClassifiedRow>(db as never, "pr");
+  const store = createStore<ReviewRow>(db as never, "review");
 
   /**
    * Drops links whose thread no longer exists or has been archived.
    *
-   * The thread.deleted / thread.archived handlers below cover the live case,
-   * but lifecycle events only fire while this plugin is loaded. A thread
-   * deleted while bb was stopped, or while the plugin was disabled, would
-   * otherwise stay linked forever and leave the row offering to open a thread
-   * that is gone. Reconciling on every sweep makes the link self-healing
-   * rather than dependent on having witnessed the event.
+   * The thread.deleted / thread.archived handlers below cover the live case, but
+   * lifecycle events only fire while this plugin is loaded. A thread deleted
+   * while bb was stopped would otherwise stay linked forever, leaving the row
+   * offering to open a thread that is gone. Reconciling on every sweep makes the
+   * link self-healing rather than dependent on having witnessed the event.
    */
   async function reconcileThreadLinks(): Promise<void> {
     const links = store.threadLinks();
@@ -84,16 +76,16 @@ export function registerPullRequests(
         dropped += 1;
       }
     }
-    if (dropped > 0) bb.log.info(`released ${dropped} pull request(s) from missing threads`);
+    if (dropped > 0) bb.log.info(`released ${dropped} review(s) from missing threads`);
   }
 
   async function sweepNow(): Promise<{ ok: boolean; error: string | null }> {
     const outcome = await fetchAndStore();
 
-    // Reconciliation runs whether or not gh succeeded. The two are unrelated:
-    // a missing gh says nothing about whether a linked thread still exists,
-    // and a row stuck on "Open thread" for a deleted thread should heal even
-    // while the sweep itself is broken.
+    // Reconciliation runs whether or not gh succeeded: a missing gh says
+    // nothing about whether a linked thread still exists, and a row stuck on
+    // "Open thread" for a deleted thread should heal even while the sweep
+    // itself is broken.
     try {
       await reconcileThreadLinks();
     } catch (error) {
@@ -109,10 +101,7 @@ export function registerPullRequests(
       const result = await runSweep(createGhRunner(ghPath), () => Date.now());
       store.replaceAll(result);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
-      bb.log.info(
-        `swept ${result.repos.length} repo(s), ${result.rows.length} open PR(s)` +
-          (result.failedRepos.length ? `, ${result.failedRepos.length} failed` : ""),
-      );
+      bb.log.info(`swept ${result.rows.length} review request(s)`);
       return { ok: true, error: null };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -140,9 +129,10 @@ export function registerPullRequests(
   }
 
   bb.rpc.register(rpcContract, {
-    async listRows() {
+    async listReviews() {
       const meta = store.readMeta();
       const rows = store.readRows();
+      const { staleAfterDays } = await settings.get();
 
       let candidates: ProjectCandidate[] = [];
       try {
@@ -163,23 +153,23 @@ export function registerPullRequests(
           threadId: links.get(`${row.repo}#${row.number}`) ?? null,
         })),
         sweptAt: meta.sweptAt,
-        failedRepos: meta.failedRepos,
         truncated: meta.truncated,
         lastError: meta.lastError,
+        staleAfterDays: parseStaleAfterDays(staleAfterDays),
       };
     },
 
-    async refresh() {
+    async refreshReviews() {
       return sweepNow();
     },
 
     /**
-     * Scoped by construction: pr_threads only holds threads this plugin
-     * started, so a thread it does not know returns null and the header
-     * renders nothing. What the frontend chooses to draw is not the
-     * authorization decision — this lookup is.
+     * Scoped by construction: review_threads only holds threads this plugin
+     * started, so a thread it does not know returns null and the header renders
+     * nothing. What the frontend chooses to draw is not the authorization
+     * decision — this lookup is.
      */
-    async pullRequestForThread({ threadId }) {
+    async reviewForThread({ threadId }) {
       const link = store.pullRequestForThread(threadId);
       if (!link) return null;
 
@@ -190,33 +180,33 @@ export function registerPullRequests(
       return {
         repo: link.repo,
         number: link.number,
-        // The sweep may no longer carry the row (merged, closed, or beyond the
-        // 100 ceiling), so fall back to the canonical URL shape rather than
-        // dropping the button.
+        // The sweep may no longer carry the row — once you submit the review,
+        // the request leaves your queue — so fall back to the canonical URL
+        // shape rather than dropping the button on exactly the threads most
+        // likely to still be open.
         url: row?.url ?? `https://github.com/${link.repo}/pull/${link.number}`,
         title: row?.title ?? "",
       };
     },
 
-    async archiveThread({ repo, number }) {
+    async archiveReviewThread({ repo, number }) {
       const threadId = store.threadFor(repo, number);
-      if (!threadId) return { ok: false, reason: "That pull request has no thread." };
+      if (!threadId) return { ok: false, reason: "That review has no thread." };
 
       await bb.sdk.threads.archive({ threadId });
-      // The thread.archived handler unlinks too, but doing it here means the
-      // row updates even if the event is lost, and makes the rpc's effect
-      // complete on its own.
+      // The thread.archived handler unlinks too, but doing it here means the row
+      // updates even if the event is lost.
       store.unlinkThread(threadId);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
       bb.log.info(`archived ${threadId} for ${repo}#${number}`);
       return { ok: true, reason: null };
     },
 
-    async workOnThis({ repo, number }) {
+    async reviewThis({ repo, number }) {
       const key = `${repo}#${number}`;
 
-      // One thread per PR, enforced on three levels: the durable link below,
-      // this in-flight map for clicks that race before the first spawn
+      // One thread per review, enforced on three levels: the durable link
+      // below, this in-flight map for clicks that race before the first spawn
       // returns, and a disabled button in the panel. The link alone is not
       // enough — two clicks a few hundred ms apart both read "no link yet".
       const inFlight = spawning.get(key);
@@ -235,7 +225,7 @@ export function registerPullRequests(
           return {
             threadId: null,
             existing: false,
-            reason: "That pull request is no longer in the sweep.",
+            reason: "That review request is no longer in the sweep.",
           };
         }
 
@@ -248,25 +238,23 @@ export function registerPullRequests(
           };
         }
 
-        const { providerId, modelByAction, permissionMode } = await settings.get();
+        const { providerId, model, permissionMode } = await settings.get();
         const mode = parsePermissionMode(permissionMode);
-        const { models, error } = parseModelByAction(modelByAction);
-        if (error) bb.log.warn(`"Model by action" setting: ${error}`);
-        const model = modelForFlags(row.flags, models);
+        const chosenModel = model.trim();
 
         const thread = await bb.sdk.threads.spawn({
           projectId,
           environment: { type: "project-default" },
           ...(providerId ? { providerId } : {}),
-          ...(model ? { model } : {}),
+          ...(chosenModel ? { model: chosenModel } : {}),
           permissionMode: mode,
-          prompt: buildPrompt(row),
-          title: threadTitle(row.flags, number),
+          prompt: buildPrompt(row, Date.now()),
+          title: threadTitle(row.state, number),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +
             ` on ${providerId || "the default provider"}` +
-            (model ? ` with ${model}` : "") +
+            (chosenModel ? ` with ${chosenModel}` : "") +
             `, permission mode ${mode}`,
         );
         store.linkThread(repo, number, thread.id, Date.now());
@@ -283,8 +271,8 @@ export function registerPullRequests(
     },
   });
 
-  // A thread the user archived or deleted should not keep its PR pinned to it,
-  // otherwise the row offers to open a thread that is gone.
+  // A thread the user archived or deleted should not keep its review pinned to
+  // it, otherwise the row offers to open a thread that is gone.
   for (const event of ["thread.archived", "thread.deleted"] as const) {
     bb.events.on(event, ({ thread }) => {
       store.unlinkThread(thread.id);
@@ -292,7 +280,7 @@ export function registerPullRequests(
     });
   }
 
-  bb.background.service("pull-request-sweep", {
+  bb.background.service("review-sweep", {
     async start(signal) {
       while (!signal.aborted) {
         await sweepNow();
