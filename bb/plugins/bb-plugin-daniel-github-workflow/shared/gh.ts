@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { classify } from "../prs/classify.js";
-import type { ClassifiedRow, RawPullRequest, SweepResult } from "../prs/types.js";
+import type { RawPullRequest } from "../prs/types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -108,21 +107,4 @@ export async function fetchRepoPullRequests(
   }
 
   return prs;
-}
-
-export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepResult> {
-  const { repos, truncated } = await discoverRepos(gh);
-  const rows: ClassifiedRow[] = [];
-  const failedRepos: string[] = [];
-
-  for (const repo of repos) {
-    try {
-      rows.push(...classify(await fetchRepoPullRequests(gh, repo), repo));
-    } catch (error) {
-      if (error instanceof GhUnavailableError) throw error;
-      failedRepos.push(repo);
-    }
-  }
-
-  return { rows, repos, failedRepos, truncated, sweptAt: now() };
 }

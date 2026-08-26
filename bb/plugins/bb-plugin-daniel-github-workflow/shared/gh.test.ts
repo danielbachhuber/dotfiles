@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { REPO_SLUG_PATTERN, discoverRepos, fetchRepoPullRequests, runSweep } from "./gh.js";
+import { REPO_SLUG_PATTERN, discoverRepos, fetchRepoPullRequests } from "./gh.js";
+import { runSweep } from "../prs/sweep.js";
 import type { GhRunner } from "./gh.js";
 import { makePr } from "../prs/fixtures.js";
 

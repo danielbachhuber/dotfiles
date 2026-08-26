@@ -1,6 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { rpcContract } from "./prs/contract.js";
-import { GhUnavailableError, createGhRunner, runSweep } from "./shared/gh.js";
+import { GhUnavailableError, createGhRunner } from "./shared/gh.js";
+import { runSweep } from "./prs/sweep.js";
 import { buildPrompt } from "./prs/prompt.js";
 import {
   modelForFlags,
