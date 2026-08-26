@@ -25,8 +25,8 @@ function createHost(options: HostOptions = {}) {
     sdk: {
       projects: {
         list: async () => [
-          { id: "proj_a", name: "psi-product" },
-          { id: "proj_b", name: "bugsink" },
+          { id: "proj_a", name: "acme-widgets" },
+          { id: "proj_b", name: "acme-gadgets" },
         ],
         defaultExecutionOptions: async () => options.remembered ?? null,
       },
@@ -77,8 +77,8 @@ describe("projects_list", () => {
 
     expect(result).toEqual({
       projects: [
-        { id: "proj_a", name: "psi-product" },
-        { id: "proj_b", name: "bugsink" },
+        { id: "proj_a", name: "acme-widgets" },
+        { id: "proj_b", name: "acme-gadgets" },
       ],
     });
   });

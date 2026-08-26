@@ -4,8 +4,8 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const PROJECTS = [
-  { id: "proj_a", name: "psi-product" },
-  { id: "proj_b", name: "bugsink" },
+  { id: "proj_a", name: "acme-widgets" },
+  { id: "proj_b", name: "acme-gadgets" },
 ];
 const NOTES = "Pin state is lost on reload.";
 const EXECUTION = {
@@ -54,16 +54,16 @@ describe("the New issue nav panel", () => {
 
   it("seeds the project picker from the project in view", async () => {
     const slot = await renderPage({ projectId: "proj_b" });
-    await slot.findAllByText("bugsink");
+    await slot.findAllByText("acme-gadgets");
     // The trigger shows the project in view, not merely the first one listed.
     expect(
       slot.getByRole("combobox", { name: "Project" }).textContent,
-    ).toContain("bugsink");
+    ).toContain("acme-gadgets");
   });
 
   it("keeps Submit disabled until the notes have content", async () => {
     const slot = await renderPage();
-    await slot.findAllByText("bugsink");
+    await slot.findAllByText("acme-gadgets");
 
     expect(slot.getByRole("button", { name: /submit/i })).toHaveProperty(
       "disabled",
@@ -81,7 +81,7 @@ describe("the New issue nav panel", () => {
 
   it("spawns the thread for the picked project and navigates to it", async () => {
     const slot = await renderPage();
-    await slot.findAllByText("bugsink");
+    await slot.findAllByText("acme-gadgets");
 
     fireEvent.change(slot.getByLabelText("What the issue should cover"), {
       target: { value: `  ${NOTES}  ` },
@@ -131,7 +131,7 @@ describe("the New issue nav panel", () => {
 
   it("does not warn on Claude Code", async () => {
     const slot = await renderPage();
-    await slot.findAllByText("bugsink");
+    await slot.findAllByText("acme-gadgets");
     expect(slot.queryByText(/cannot load/i)).toBeNull();
   });
 
@@ -143,7 +143,7 @@ describe("the New issue nav panel", () => {
         },
       },
     });
-    await slot.findAllByText("bugsink");
+    await slot.findAllByText("acme-gadgets");
 
     const notes = slot.getByLabelText("What the issue should cover");
     fireEvent.change(notes, { target: { value: NOTES } });
