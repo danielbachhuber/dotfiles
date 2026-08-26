@@ -77,8 +77,15 @@ rediscovering, and they are invisible in the diff.
 ## 3. Run codex
 
 ```bash
-~/.claude/skills/draft-pr-description/build-prompt.sh ~/projects/drafts/brief-<slug>.md
+~/.claude/skills/draft-pr-description/build-prompt.sh \
+  ~/projects/drafts/brief-<slug>.md \
+  ~/projects/drafts/pr-<slug>.md \
+  /tmp/pr-description-prompt.md
 ```
+
+The second argument is where `codex` writes the description. It is baked into the prompt,
+and `codex` reports the path back as `draft_path`, so it must be the path you intend to
+read in step 4.
 
 It prints the prompt path and, on stderr, a manifest naming the style guide, the repo's
 format document, and the template it found. **Read the manifest.** If `format doc` says
@@ -86,11 +93,19 @@ format document, and the template it found. **Read the manifest.** If `format do
 the new location, and `codex` is about to invent a format instead.
 
 ```bash
-codex exec - --sandbox read-only --skip-git-repo-check \
+codex exec - --sandbox workspace-write \
+  -c 'sandbox_workspace_write.writable_roots=["/Users/danielb/projects/drafts"]' \
+  --skip-git-repo-check \
   --output-schema ~/.claude/skills/draft-pr-description/schema.json \
   --output-last-message /tmp/pr-description-result.json \
   < /tmp/pr-description-prompt.md > /tmp/pr-description-run.log 2>&1
 ```
+
+**`codex` writes the draft file itself, so the sandbox has to let it.** `--sandbox
+read-only` fails in a way that looks like success: exit 0, a well-formed result JSON, a
+sensible `outline`, and a `gaps` entry saying the write was blocked. No file is created.
+`workspace-write` alone is not enough either, because `~/projects/drafts` sits outside the
+repo and only `writable_roots` reaches it.
 
 Two plain commands, not a pipeline: a worktree-isolated session refuses compound commands
 it cannot verify. Expect up to a couple of minutes. `codex` echoes the prompt to stdout,
@@ -99,12 +114,20 @@ it, read `/tmp/pr-description-run.log`.
 
 ## 4. Fact-check before showing it
 
+The description is already on disk: `codex` wrote it at the path you passed as
+`<draft-out.md>`. The result JSON carries only metadata — `title`, `draft_path`,
+`outline`, `unused`, `gaps` — and **no `body` field**. Never pipe `jq -r .body` into the
+draft path: it truncates the file `codex` just wrote to the single word `null`.
+
 ```bash
-jq -r .body /tmp/pr-description-result.json > ~/projects/drafts/pr-<slug>.md
-jq -r .title /tmp/pr-description-result.json
+jq -r '.title, .draft_path' /tmp/pr-description-result.json
 jq -r 'if (.gaps | length) == 0 then "(no gaps)" else .gaps[] | "- \(.)" end' /tmp/pr-description-result.json
 jq -r 'if (.unused | length) == 0 then "(all used)" else .unused[] | "- \(.)" end' /tmp/pr-description-result.json
 ```
+
+Confirm `draft_path` matches the path you asked for and the file is non-trivial
+(`wc -l`) before reading it. A one-line draft means the write was blocked, not that
+`codex` was terse.
 
 Check the body against the code, not only against the brief. The brief can be wrong, and
 `codex` can read the repo and still land a claim slightly off.
@@ -175,6 +198,8 @@ result in with Edit.
 | Brief describes the diff and nothing else | The diff is the one thing a reviewer can already read. The brief earns its place through `Prior state`, `Decisions`, and `Verified`. |
 | Session decisions left out | The repo is readable; the conversation is not. An alternative you priced and rejected is invisible unless you write it down. |
 | Numbers without provenance | A figure with no method and no caveat comes back as a confident claim the reviewer cannot check. |
+| `codex` exits 0 and the draft is missing or one line | The sandbox blocked the write. `--sandbox workspace-write` plus `writable_roots` covering `~/projects/drafts`; read `gaps`, which says so. |
+| `jq -r .body` into the draft path | The schema has no `body`. `codex` already wrote the file; that pipe overwrites it with `null`. |
 | Skipping the manifest on stderr | Without the repo's format document, `codex` invents a structure and the body arrives in the wrong shape. |
 | Regenerating a whole body to fix one section | Splice one section. Wholesale regeneration rewrites prose the author already signed off. |
 | Fact-checked only against the brief | The brief can be wrong. Re-run the greps behind the load-bearing claims; a confident sentence built on a stale fact is the expensive failure. |
