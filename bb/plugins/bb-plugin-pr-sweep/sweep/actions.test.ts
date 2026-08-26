@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MODEL_BY_ACTION,
   DISPLAY_SECTIONS,
+  SECTION_TITLES,
   PERMISSION_MODES,
   MAX_THREAD_TITLE,
   actionLabel,
@@ -206,23 +207,45 @@ describe("parsePermissionMode", () => {
 describe("displaySection", () => {
   it("moves any row with a thread into in-progress", () => {
     for (const group of ["needs-action", "ready-to-merge", "clean"]) {
-      expect(displaySection(group, true)).toBe("in-progress");
+      for (const isDraft of [true, false]) {
+        expect(displaySection(group, true, isDraft)).toBe("in-progress");
+      }
     }
   });
 
   it("keeps the flag-derived group when there is no thread", () => {
-    expect(displaySection("needs-action", false)).toBe("needs-action");
-    expect(displaySection("ready-to-merge", false)).toBe("ready-to-merge");
-    expect(displaySection("clean", false)).toBe("clean");
+    expect(displaySection("needs-action", false, false)).toBe("needs-action");
+    expect(displaySection("ready-to-merge", false, false)).toBe("ready-to-merge");
   });
 
-  it("orders in-progress directly below needs-action", () => {
+  it("splits an unflagged row on whether it is a draft", () => {
+    expect(displaySection("clean", false, false)).toBe("awaiting-review");
+    expect(displaySection("clean", false, true)).toBe("draft");
+  });
+
+  it("keeps a flagged draft in needs-action", () => {
+    // Red CI matters on a draft; only the unflagged ones are filed away.
+    expect(displaySection("needs-action", false, true)).toBe("needs-action");
+  });
+
+  it("orders the sections from most to least urgent", () => {
     expect(DISPLAY_SECTIONS).toEqual([
       "needs-action",
       "in-progress",
       "ready-to-merge",
-      "clean",
+      "awaiting-review",
+      "draft",
     ]);
+  });
+
+  it("gives every section a capitalized title", () => {
+    for (const section of DISPLAY_SECTIONS) {
+      const title = SECTION_TITLES[section];
+      expect(title).toBeTruthy();
+      expect(title[0]).toBe(title[0]!.toUpperCase());
+    }
+    expect(SECTION_TITLES["needs-action"]).toBe("Needs Action");
+    expect(SECTION_TITLES["ready-to-merge"]).toBe("Ready to Merge");
   });
 });
 

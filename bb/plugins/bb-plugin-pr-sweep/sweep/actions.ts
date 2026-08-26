@@ -162,23 +162,41 @@ export const DISPLAY_SECTIONS = [
   "needs-action",
   "in-progress",
   "ready-to-merge",
-  "clean",
+  "awaiting-review",
+  "draft",
 ] as const;
 
 export type DisplaySection = (typeof DISPLAY_SECTIONS)[number];
+
+export const SECTION_TITLES: Record<DisplaySection, string> = {
+  "needs-action": "Needs Action",
+  "in-progress": "In Progress",
+  "ready-to-merge": "Ready to Merge",
+  "awaiting-review": "Awaiting Review",
+  draft: "Draft",
+};
 
 /**
  * Where a row belongs in the panel, as distinct from its flag-derived group.
  *
  * A pull request with a thread is being worked on, whatever its flags say, so
  * it leaves the section that means "this is waiting for you". Leaving it in
- * Needs action overstates the queue and invites a second click on work already
+ * Needs Action overstates the queue and invites a second click on work already
  * running.
+ *
+ * An unflagged row splits on draft: a draft is not waiting on anyone even when
+ * a reviewer is nominally assigned, because it is not offered for review yet.
+ * A draft carrying a flag still belongs in Needs Action — red CI matters on a
+ * draft.
  */
-export function displaySection(group: string, hasThread: boolean): DisplaySection {
+export function displaySection(
+  group: string,
+  hasThread: boolean,
+  isDraft: boolean,
+): DisplaySection {
   if (hasThread) return "in-progress";
   if (group === "ready-to-merge") return "ready-to-merge";
-  if (group === "clean") return "clean";
+  if (group === "clean") return isDraft ? "draft" : "awaiting-review";
   return "needs-action";
 }
 

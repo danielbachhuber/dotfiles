@@ -24,6 +24,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  DISPLAY_SECTIONS,
+  SECTION_TITLES,
   actionSummary,
   displaySection,
   statusTone,
@@ -466,12 +468,9 @@ function Panel() {
   if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
 
   const inSection = (section: string) =>
-    listing.rows.filter((row) => displaySection(row.group, Boolean(row.threadId)) === section);
-
-  const needsAction = inSection("needs-action");
-  const inProgress = inSection("in-progress");
-  const ready = inSection("ready-to-merge");
-  const clean = inSection("clean");
+    listing.rows.filter(
+      (row) => displaySection(row.group, Boolean(row.threadId), row.isDraft) === section,
+    );
 
   // The repository only earns a column when it actually varies.
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;
@@ -513,42 +512,18 @@ function Panel() {
           <p className="text-sm text-muted-foreground">No open pull requests.</p>
         ) : null}
 
-        <Section
-          title="Needs action"
-          rows={needsAction}
-          showRepo={showRepo}
-          starting={starting}
-          onWork={onWork}
-          onOpen={onOpen}
-          onArchive={onArchive}
-        />
-        <Section
-          title="In progress"
-          rows={inProgress}
-          showRepo={showRepo}
-          starting={starting}
-          onWork={onWork}
-          onOpen={onOpen}
-          onArchive={onArchive}
-        />
-        <Section
-          title="Ready to merge"
-          rows={ready}
-          showRepo={showRepo}
-          starting={starting}
-          onWork={onWork}
-          onOpen={onOpen}
-          onArchive={onArchive}
-        />
-        <Section
-          title="Clean"
-          rows={clean}
-          showRepo={showRepo}
-          starting={starting}
-          onWork={onWork}
-          onOpen={onOpen}
-          onArchive={onArchive}
-        />
+        {DISPLAY_SECTIONS.map((section) => (
+          <Section
+            key={section}
+            title={SECTION_TITLES[section]}
+            rows={inSection(section)}
+            showRepo={showRepo}
+            starting={starting}
+            onWork={onWork}
+            onOpen={onOpen}
+            onArchive={onArchive}
+          />
+        ))}
       </div>
       </div>
     </TooltipProvider>
@@ -559,7 +534,8 @@ function NeedsActionCount() {
   const { listing } = useListing();
   const count =
     listing?.rows.filter(
-      (row) => displaySection(row.group, Boolean(row.threadId)) === "needs-action",
+      (row) =>
+        displaySection(row.group, Boolean(row.threadId), row.isDraft) === "needs-action",
     ).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;

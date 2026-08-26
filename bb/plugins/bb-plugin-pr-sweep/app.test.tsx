@@ -80,14 +80,61 @@ describe("panel", () => {
         ],
       }),
     );
-    await slot.findByText(/Ready to merge \(1\)/i);
+    await slot.findByText(/Ready to Merge \(1\)/);
     await slot.findByText(/approved by hubber/i);
   });
 
-  it("shows the Clean group's rows with its count", async () => {
+  it("files an unflagged non-draft under Awaiting Review", async () => {
     const slot = render(listing({ rows: [rowFixture({ flags: [], group: "clean" })] }));
-    await slot.findByText(/Clean \(1\)/i);
+    await slot.findByText(/Awaiting Review \(1\)/);
     await slot.findByText(/Add the widget endpoint/);
+  });
+
+  it("files an unflagged draft under Draft, below Awaiting Review", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ number: 1, flags: [], group: "clean" }),
+          rowFixture({ number: 2, flags: [], group: "clean", isDraft: true }),
+        ],
+      }),
+    );
+    const awaiting = await slot.findByText(/Awaiting Review \(1\)/);
+    const draft = await slot.findByText(/^Draft \(1\)$/);
+    expect(
+      awaiting.compareDocumentPosition(draft) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps a flagged draft in Needs Action", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ flags: ["ci-failing"], isDraft: true })] }),
+    );
+    await slot.findByText(/Needs Action \(1\)/);
+    expect(slot.queryByText(/^Draft \(/)).toBeNull();
+  });
+
+  it("capitalizes every section heading", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ number: 1, flags: ["conflict"] }),
+          rowFixture({ number: 2, flags: ["merge-ready"], group: "ready-to-merge" }),
+          rowFixture({ number: 3, flags: [], group: "clean", threadId: "thr_1" }),
+          rowFixture({ number: 4, flags: [], group: "clean" }),
+          rowFixture({ number: 5, flags: [], group: "clean", isDraft: true }),
+        ],
+      }),
+    );
+    for (const title of [
+      "Needs Action",
+      "In Progress",
+      "Ready to Merge",
+      "Awaiting Review",
+      "Draft",
+    ]) {
+      await slot.findByText(new RegExp(`^${title} \\(`));
+    }
   });
 
   it("gives a clean row no action button", async () => {
@@ -247,7 +294,7 @@ describe("panel", () => {
         ],
       }),
     );
-    await slot.findByText(/Needs action \(1\)/i);
+    await slot.findByText(/Needs Action \(1\)/);
     const tables = slot.container.querySelectorAll("table");
     expect(tables.length).toBe(2);
     for (const table of tables) {
@@ -375,8 +422,8 @@ describe("panel", () => {
         ],
       }),
     );
-    await slot.findByText(/Needs action \(1\)/i);
-    await slot.findByText(/In progress \(1\)/i);
+    await slot.findByText(/Needs Action \(1\)/);
+    await slot.findByText(/In Progress \(1\)/);
   });
 
   it("puts a merge-ready row with a thread in In progress too", async () => {
@@ -387,16 +434,16 @@ describe("panel", () => {
         ],
       }),
     );
-    await slot.findByText(/In progress \(1\)/i);
+    await slot.findByText(/In Progress \(1\)/);
     // The row's own flag badge also reads "ready to merge", so assert on the
     // section heading, which carries a count.
-    expect(slot.queryByText(/Ready to merge \(/i)).toBeNull();
+    expect(slot.queryByText(/Ready to Merge \(/)).toBeNull();
   });
 
   it("shows no In progress section when nothing is being worked on", async () => {
     const slot = render(listing());
-    await slot.findByText(/Needs action \(1\)/i);
-    expect(slot.queryByText(/In progress/i)).toBeNull();
+    await slot.findByText(/Needs Action \(1\)/);
+    expect(slot.queryByText(/In Progress/)).toBeNull();
   });
 
   it("shows Open thread once a thread exists, in place of the action", async () => {
