@@ -9,20 +9,23 @@ The plugin only writes the brief. The skill owns the rest: gathering the
 triggering comment, pinning code references to permalinks, drafting to
 `~/projects/drafts/`, and waiting for you to verify before anything is filed.
 
-## Agent selection
+## The form
 
-The form embeds BB's own `experimental_ProviderModelPicker`, so the catalog,
-defaults, and capability reconciliation match every other composer in the app.
-It opens on the selected project's remembered execution options
-(`projects.defaultExecutionOptions`), and re-seeds when you switch projects.
-When a project has none saved, it falls back to Claude Code's default model,
-or the first available provider's if Claude Code is not installed.
+The page renders BB's own `experimental_NewThreadComposer` — the same compose
+surface as the New thread screen — rather than a hand-rolled textarea. That
+brings @-mentions, attachments, voice, the provider/model/reasoning picker, the
+environment and branch-from pickers, permission mode, and draft persistence,
+and it resolves the project's remembered execution defaults natively.
+
+On submit the composer hands back a `NewThreadRequest`, which the backend
+forwards to `threads.spawn` verbatim after prepending the
+`draft-issue-description` instruction as a leading prompt item. The user's own
+text, mentions, and attachments reach the agent exactly as composed.
 
 `draft-issue-description` is a user-level Claude Code skill at
 `~/.claude/skills/draft-issue-description/`, so a thread on any other provider
-cannot resolve it by name. The picker still lets you choose one — the form
-warns instead of blocking, and the selection is forwarded to `threads.spawn`
-unchanged.
+cannot resolve it by name. The composer owns the provider choice, so the page
+says so in its intro copy rather than warning after the fact.
 
 ## The "Create issue" button
 
@@ -49,12 +52,13 @@ bb plugin dev         # rebuild + reload on save
 
 ## Layout
 
-- `server.ts` — five RPC methods: `projects_list`, `execution_defaults`, and
-  `issue_thread_create` (which calls `bb.sdk.threads.spawn` with the project's
-  default environment and the picker's selection), plus `thread_is_ours` and
-  `issue_create_send` behind the Create issue button. `deriveTitle` and
-  `buildPrompt` are exported so they can be tested directly.
-- `app.tsx` — the `navPanel` registration and the form, plus the composer
-  customization and thread-header action sharing one `useCreateIssue` hook.
+- `server.ts` — three RPC methods: `issue_thread_create` (forwards the
+  composer's request to `bb.sdk.threads.spawn`), plus `thread_is_ours` and
+  `issue_create_send` behind the Create issue button. `ISSUE_INSTRUCTION`,
+  `extractNotes`, and `deriveTitle` are exported so they can be tested
+  directly.
+- `app.tsx` — the `navPanel` registration wrapping `NewThreadComposer`, plus
+  the composer customization and thread-header action sharing one
+  `useCreateIssue` hook.
 - `components/ui/` — vendored shadcn source. Yours to edit; add more with
   `npx shadcn add @bb/<name>`.

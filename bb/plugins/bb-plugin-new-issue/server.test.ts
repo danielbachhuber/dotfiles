@@ -3,58 +3,34 @@ import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import plugin, { buildPrompt, deriveTitle } from "./server";
+import plugin, {
+  ISSUE_INSTRUCTION,
+  deriveTitle,
+  extractNotes,
+} from "./server";
 
-const NOTES = "Sidebar rows lose their pin state on reload.\n\nSeen twice today.";
-const EXECUTION = {
-  providerId: "claude-code",
-  model: "claude-opus-5",
-  reasoningLevel: "high" as const,
-  serviceTier: "default" as const,
-};
+const NOTES = "Sidebar rows lose their pin state on reload.";
 
-interface HostOptions {
-  remembered?: unknown;
-  providers?: unknown[];
-  models?: unknown[];
+/** A NewThreadRequest as BB's composer submits one. */
+function makeRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    projectId: "proj_a",
+    providerId: "claude-code",
+    model: "claude-opus-5",
+    reasoningLevel: "high",
+    permissionMode: "auto",
+    serviceTier: "default",
+    executionInputSources: { model: "explicit" },
+    environment: { type: "host", workspace: { type: "managed-worktree" } },
+    input: [{ type: "text", text: NOTES, mentions: [] }],
+    ...overrides,
+  };
 }
 
-function createHost(options: HostOptions = {}) {
+function createHost() {
   return createFakePluginHost({
     pluginId: "new-issue",
     sdk: {
-      projects: {
-        list: async () => [
-          { id: "proj_a", name: "acme-widgets" },
-          { id: "proj_b", name: "acme-gadgets" },
-        ],
-        defaultExecutionOptions: async () => options.remembered ?? null,
-      },
-      providers: {
-        list: async () =>
-          options.providers ?? [
-            {
-              id: "codex",
-              available: true,
-              capabilities: { supportsServiceTier: true },
-            },
-            {
-              id: "claude-code",
-              available: true,
-              capabilities: { supportsServiceTier: false },
-            },
-          ],
-        models: async () => ({
-          models: options.models ?? [
-            { model: "claude-sonnet-5", isDefault: false },
-            {
-              model: "claude-opus-5",
-              isDefault: true,
-              defaultReasoningEffort: "high",
-            },
-          ],
-        }),
-      },
       threads: {
         spawn: async () => makeThreadResponse({ id: "thr_new" }),
         get: async ({ threadId }: { threadId: string }) =>
@@ -68,209 +44,99 @@ function createHost(options: HostOptions = {}) {
   });
 }
 
-describe("projects_list", () => {
-  it("returns just the id and name of each project", async () => {
-    const { bb, harness } = createHost();
-    await plugin(bb);
-
-    const result = await harness.behavior.callRpc("projects_list", null);
-
-    expect(result).toEqual({
-      projects: [
-        { id: "proj_a", name: "acme-widgets" },
-        { id: "proj_b", name: "acme-gadgets" },
-      ],
-    });
-  });
-});
-
-describe("execution_defaults", () => {
-  it("prefers BB's remembered defaults for the project", async () => {
-    const { bb, harness } = createHost({
-      remembered: {
-        providerId: "codex",
-        model: "gpt-5.6-sol",
-        reasoningLevel: "medium",
-        serviceTier: "fast",
-        permissionMode: "auto",
-      },
-    });
-    await plugin(bb);
-
-    const result = await harness.behavior.callRpc("execution_defaults", {
-      projectId: "proj_a",
-    });
-
-    // permissionMode is deliberately dropped — the picker does not own it.
-    expect(result).toEqual({
-      execution: {
-        providerId: "codex",
-        model: "gpt-5.6-sol",
-        reasoningLevel: "medium",
-        serviceTier: "fast",
-      },
-    });
-  });
-
-  it("falls back to Claude Code's default model when the project has none", async () => {
-    const { bb, harness } = createHost();
-    await plugin(bb);
-
-    const result = await harness.behavior.callRpc("execution_defaults", {
-      projectId: "proj_a",
-    });
-
-    // claude-code is preferred over the listed-first codex, and declares no
-    // service tier support, so none is seeded.
-    expect(result).toEqual({
-      execution: {
-        providerId: "claude-code",
-        model: "claude-opus-5",
-        reasoningLevel: "high",
-      },
-    });
-  });
-
-  it("falls back to the first available provider when Claude Code is absent", async () => {
-    const { bb, harness } = createHost({
-      providers: [
-        {
-          id: "codex",
-          available: true,
-          capabilities: { supportsServiceTier: true },
-        },
-      ],
-      models: [{ model: "gpt-5.6-sol", isDefault: true }],
-    });
-    await plugin(bb);
-
-    const result = await harness.behavior.callRpc("execution_defaults", {
-      projectId: "proj_a",
-    });
-
-    expect(result).toEqual({
-      execution: {
-        providerId: "codex",
-        model: "gpt-5.6-sol",
-        // No defaultReasoningEffort on the model, so medium.
-        reasoningLevel: "medium",
-        serviceTier: "default",
-      },
-    });
-  });
-
-  it("returns null rather than a model that does not exist", async () => {
-    const { bb, harness } = createHost({ providers: [], models: [] });
-    await plugin(bb);
-
-    expect(
-      await harness.behavior.callRpc("execution_defaults", {
-        projectId: "proj_a",
-      }),
-    ).toEqual({ execution: null });
-  });
-});
-
 describe("issue_thread_create", () => {
-  it("spawns a thread with the picked project and execution selection", async () => {
+  it("forwards every selection the composer resolved, untouched", async () => {
     const { bb, harness } = createHost();
     await plugin(bb);
 
     const result = await harness.behavior.callRpc("issue_thread_create", {
-      projectId: "proj_a",
-      notes: NOTES,
-      execution: EXECUTION,
+      request: makeRequest(),
     });
 
     expect(result).toEqual({ threadId: "thr_new" });
     const [spawnArgs] = harness.inspection.sdk.callsTo("threads.spawn");
     expect(spawnArgs?.[0]).toMatchObject({
       projectId: "proj_a",
-      environment: { type: "project-default" },
       providerId: "claude-code",
       model: "claude-opus-5",
       reasoningLevel: "high",
+      permissionMode: "auto",
       serviceTier: "default",
+      executionInputSources: { model: "explicit" },
+      environment: { type: "host", workspace: { type: "managed-worktree" } },
       title: "New issue: Sidebar rows lose their pin state on reload.",
     });
   });
 
-  it("forwards a provider the skill cannot run on rather than overriding it", async () => {
+  it("prepends the skill instruction and keeps the composed prompt intact", async () => {
     const { bb, harness } = createHost();
     await plugin(bb);
+    const mention = {
+      type: "text",
+      text: "See @src/sidebar.ts",
+      mentions: [{ start: 4, end: 19, resource: { kind: "project" } }],
+    };
 
     await harness.behavior.callRpc("issue_thread_create", {
-      projectId: "proj_a",
-      notes: NOTES,
-      execution: { ...EXECUTION, providerId: "codex", model: "gpt-5.6-sol" },
+      request: makeRequest({
+        input: [{ type: "text", text: NOTES, mentions: [] }, mention],
+      }),
     });
 
     const [spawnArgs] = harness.inspection.sdk.callsTo("threads.spawn");
-    expect(spawnArgs?.[0]).toMatchObject({ providerId: "codex" });
+    const { input } = spawnArgs?.[0] as { input: unknown[] };
+    expect(input[0]).toEqual({
+      type: "text",
+      text: ISSUE_INSTRUCTION,
+      mentions: [],
+    });
+    // The user's own items follow verbatim, mentions and all.
+    expect(input.slice(1)).toEqual([
+      { type: "text", text: NOTES, mentions: [] },
+      mention,
+    ]);
   });
 
-  it("names the skill and delimits the notes in the prompt", async () => {
+  it("passes non-text prompt items through", async () => {
     const { bb, harness } = createHost();
     await plugin(bb);
+    const image = { type: "localImage", path: "shot.png" };
 
     await harness.behavior.callRpc("issue_thread_create", {
-      projectId: "proj_a",
-      notes: NOTES,
-      execution: EXECUTION,
+      request: makeRequest({
+        input: [{ type: "text", text: NOTES, mentions: [] }, image],
+      }),
     });
 
     const [spawnArgs] = harness.inspection.sdk.callsTo("threads.spawn");
-    const { prompt } = spawnArgs?.[0] as { prompt: string };
-    expect(prompt).toContain("draft-issue-description");
-    expect(prompt).toContain(`<notes>\n${NOTES}\n</notes>`);
+    const { input } = spawnArgs?.[0] as { input: unknown[] };
+    expect(input).toContainEqual(image);
   });
 
-  it("rejects empty notes at the wire boundary", async () => {
+  it("refuses a prompt with no typed text", async () => {
     const { bb, harness } = createHost();
     await plugin(bb);
 
     await expect(
       harness.behavior.callRpc("issue_thread_create", {
-        projectId: "proj_a",
-        notes: "   ",
-        execution: EXECUTION,
+        request: makeRequest({
+          input: [{ type: "localImage", path: "shot.png" }],
+        }),
       }),
     ).rejects.toThrow();
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
 
-  it("rejects an incomplete execution selection", async () => {
+  it("rejects an empty prompt at the wire boundary", async () => {
     const { bb, harness } = createHost();
     await plugin(bb);
 
     await expect(
       harness.behavior.callRpc("issue_thread_create", {
-        projectId: "proj_a",
-        notes: NOTES,
-        execution: { providerId: "claude-code", model: "claude-opus-5" },
+        request: makeRequest({ input: [] }),
       }),
     ).rejects.toThrow();
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
-  });
-});
-
-describe("deriveTitle", () => {
-  it("skips leading blank lines", () => {
-    expect(deriveTitle("\n\n  Fix the flake  \nmore")).toBe(
-      "New issue: Fix the flake",
-    );
-  });
-
-  it("elides a long first line", () => {
-    const title = deriveTitle("x".repeat(200));
-    expect(title.length).toBeLessThanOrEqual("New issue: ".length + 72);
-    expect(title.endsWith("…")).toBe(true);
-  });
-});
-
-describe("buildPrompt", () => {
-  it("trims the notes it embeds", () => {
-    expect(buildPrompt("  hello  \n")).toContain("<notes>\nhello\n</notes>");
   });
 });
 
@@ -326,5 +192,35 @@ describe("issue_create_send", () => {
 
     expect(result).toEqual({ sent: false });
     expect(harness.inspection.sdk.callsTo("threads.send")).toHaveLength(0);
+  });
+});
+
+describe("extractNotes", () => {
+  it("joins every text item and ignores the rest", () => {
+    expect(
+      extractNotes([
+        { type: "text", text: " one " },
+        { type: "localImage" },
+        { type: "text", text: "two" },
+      ] as { type: string }[]),
+    ).toBe("one \ntwo");
+  });
+
+  it("is empty when nothing was typed", () => {
+    expect(extractNotes([{ type: "localImage" }])).toBe("");
+  });
+});
+
+describe("deriveTitle", () => {
+  it("skips leading blank lines", () => {
+    expect(deriveTitle("\n\n  Fix the flake  \nmore")).toBe(
+      "New issue: Fix the flake",
+    );
+  });
+
+  it("elides a long first line", () => {
+    const title = deriveTitle("x".repeat(200));
+    expect(title.length).toBeLessThanOrEqual("New issue: ".length + 72);
+    expect(title.endsWith("…")).toBe(true);
   });
 });

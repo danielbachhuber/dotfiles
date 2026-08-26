@@ -1,53 +1,28 @@
 // bb-plugin-new-issue — backend entry.
 //
-// One job: take a few lines about what an issue should cover, plus the project
-// and execution selection it should run under, and spawn a thread that runs
-// the draft-issue-description skill against that project's repo. The skill
-// itself owns the drafting workflow — this plugin only writes the brief and
-// hands it over.
+// One job: take what BB's new-thread composer resolved — project, environment,
+// execution selection, and the prompt the user typed — and spawn a thread that
+// runs the draft-issue-description skill against that project's repo. The
+// skill itself owns the drafting workflow; this plugin only prepends the
+// instruction and hands the rest over untouched.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-const projectSchema = z.object({ id: z.string(), name: z.string() });
-
-/** Mirrors the SDK's ReasoningLevel and ServiceTier enums at the wire boundary. */
-const reasoningLevelSchema = z.enum([
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultra",
-  "ultracode",
-]);
-const serviceTierSchema = z.enum(["default", "fast"]);
-
 /**
- * The shape BB's own provider/model picker resolves, forwarded verbatim from
- * the form to threads.spawn.
+ * BB's composer resolves a complete NewThreadRequest and guarantees it is
+ * JSON-serializable, so this validates only the two fields the plugin reads
+ * and forwards the rest verbatim. threads.spawn validates the remainder
+ * server-side, which is where that check belongs.
  */
-const executionSchema = z
-  .object({
-    providerId: z.string().min(1),
-    model: z.string().min(1),
-    reasoningLevel: reasoningLevelSchema,
-    serviceTier: serviceTierSchema.optional(),
-  })
-  .strict();
-export type Execution = z.infer<typeof executionSchema>;
+const promptInputSchema = z.looseObject({ type: z.string() });
+const newThreadRequestSchema = z.looseObject({
+  projectId: z.string().min(1),
+  input: z.array(promptInputSchema).min(1),
+});
 
 // Both schemas run at the wire boundary. Handler input/output are inferred
 // from the shared contract; app.tsx imports only its type.
 export const rpcContract = defineRpcContract({
-  projects_list: {
-    input: z.null(),
-    output: z.object({ projects: z.array(projectSchema) }),
-  },
-  execution_defaults: {
-    input: z.object({ projectId: z.string().min(1) }).strict(),
-    output: z.object({ execution: executionSchema.nullable() }),
-  },
   thread_is_ours: {
     input: z.object({ threadId: z.string().min(1) }).strict(),
     output: z.object({ isOurs: z.boolean() }),
@@ -57,23 +32,10 @@ export const rpcContract = defineRpcContract({
     output: z.object({ sent: z.boolean() }),
   },
   issue_thread_create: {
-    input: z
-      .object({
-        projectId: z.string().min(1),
-        notes: z.string().trim().min(1).max(20_000),
-        execution: executionSchema,
-      })
-      .strict(),
+    input: z.object({ request: newThreadRequestSchema }),
     output: z.object({ threadId: z.string() }),
   },
 });
-
-/**
- * draft-issue-description is a user-level Claude Code skill, so a thread on
- * another provider cannot resolve it by name. It is only a seed — the picker
- * lets you choose anything — but it is the one worth landing on by default.
- */
-const PREFERRED_PROVIDER_ID = "claude-code";
 
 /**
  * What the "Create issue" button sends. The draft-issue-description skill ends
@@ -103,64 +65,28 @@ export function deriveTitle(notes: string): string {
 }
 
 /**
- * The brief handed to the agent. The notes go in a delimited block so the
- * agent can tell them from the instruction around them.
+ * Prepended as its own prompt item so the user's own text, @-mentions, and
+ * attachments reach the agent exactly as they were composed.
  */
-export function buildPrompt(notes: string): string {
-  return [
-    "Use the draft-issue-description skill to draft a GitHub issue for this repository.",
-    "",
-    "Here is what the issue should cover, in my own words:",
-    "",
-    "<notes>",
-    notes.trim(),
-    "</notes>",
-  ].join("\n");
+export const ISSUE_INSTRUCTION =
+  "Use the draft-issue-description skill to draft a GitHub issue for this " +
+  "repository. What follows is what the issue should cover, in my own words.";
+
+/** The plain text the user typed, across every text item in the prompt. */
+export function extractNotes(input: readonly { type: string }[]): string {
+  return input
+    .filter(
+      (item): item is { type: "text"; text: string } =>
+        item.type === "text" &&
+        typeof (item as { text?: unknown }).text === "string",
+    )
+    .map((item) => item.text)
+    .join("\n")
+    .trim();
 }
 
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
-
-  /**
-   * What the picker opens on for a project: BB's own remembered defaults when
-   * it has them, otherwise the preferred provider's default model. Null when
-   * no provider has a usable catalog, which leaves the picker unmounted rather
-   * than seeded with a model that does not exist.
-   */
-  async function resolveDefaults(projectId: string): Promise<Execution | null> {
-    const remembered = await bb.sdk.projects.defaultExecutionOptions({
-      projectId,
-    });
-    if (remembered !== null) {
-      return {
-        providerId: remembered.providerId,
-        model: remembered.model,
-        reasoningLevel: remembered.reasoningLevel,
-        serviceTier: remembered.serviceTier,
-      };
-    }
-
-    const providers = await bb.sdk.providers.list();
-    const available = providers.filter((provider) => provider.available);
-    const provider =
-      available.find(({ id }) => id === PREFERRED_PROVIDER_ID) ?? available[0];
-    if (provider === undefined) return null;
-
-    const { models } = await bb.sdk.providers.models({
-      providerId: provider.id,
-    });
-    const model = models.find((candidate) => candidate.isDefault) ?? models[0];
-    if (model === undefined) return null;
-
-    return {
-      providerId: provider.id,
-      model: model.model,
-      reasoningLevel: model.defaultReasoningEffort ?? "medium",
-      ...(provider.capabilities.supportsServiceTier
-        ? { serviceTier: "default" as const }
-        : {}),
-    };
-  }
 
   /**
    * Whether this plugin spawned the thread. threads.spawn stamps
@@ -173,18 +99,6 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   bb.rpc.register(rpcContract, {
-    projects_list: async () => {
-      const projects = await bb.sdk.projects.list();
-      return {
-        projects: projects.map((project) => ({
-          id: project.id,
-          name: project.name,
-        })),
-      };
-    },
-    execution_defaults: async ({ projectId }) => ({
-      execution: await resolveDefaults(projectId),
-    }),
     thread_is_ours: async ({ threadId }) => ({
       isOurs: await isOurThread(threadId),
     }),
@@ -200,17 +114,23 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.info(`sent the create-issue confirmation to ${threadId}`);
       return { sent: true };
     },
-    issue_thread_create: async ({ projectId, notes, execution }) => {
+    issue_thread_create: async ({ request }) => {
+      const notes = extractNotes(request.input);
+      if (notes === "") {
+        throw new Error("Say what the issue should cover before submitting.");
+      }
+      // Everything the composer resolved — project, environment, provider,
+      // model, reasoning, permission mode, execution provenance — is forwarded
+      // untouched. Only the prompt and the title are the plugin's business.
       const thread = await bb.sdk.threads.spawn({
-        projectId,
-        environment: { type: "project-default" },
-        ...execution,
+        ...request,
+        input: [
+          { type: "text", text: ISSUE_INSTRUCTION, mentions: [] },
+          ...request.input,
+        ],
         title: deriveTitle(notes),
-        prompt: buildPrompt(notes),
-      });
-      bb.log.info(
-        `spawned issue thread ${thread.id} in ${projectId} on ${execution.providerId}/${execution.model}`,
-      );
+      } as Parameters<typeof bb.sdk.threads.spawn>[0]);
+      bb.log.info(`spawned issue thread ${thread.id} in ${request.projectId}`);
       return { threadId: thread.id };
     },
   });

@@ -3,43 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
-const PROJECTS = [
-  { id: "proj_a", name: "acme-widgets" },
-  { id: "proj_b", name: "acme-gadgets" },
-];
-const NOTES = "Pin state is lost on reload.";
-const EXECUTION = {
-  providerId: "claude-code",
-  model: "claude-opus-5",
-  reasoningLevel: "high",
-  serviceTier: "default",
-};
-
 afterEach(cleanup);
-
-// app.tsx binds the plugin runtime at module load, so the thunk matters:
-// loadPluginApp installs the test runtime before importing it.
-async function renderPage(
-  overrides: { rpc?: Record<string, unknown>; projectId?: string | null } = {},
-) {
-  const app = await loadPluginApp(() => import("./app"));
-  return renderSlot(
-    app.navPanels[0]!,
-    { subPath: "" },
-    {
-      context: {
-        projectId: overrides.projectId === undefined ? "proj_b" : overrides.projectId,
-        threadId: null,
-      },
-      rpc: {
-        projects_list: () => ({ projects: PROJECTS }),
-        execution_defaults: () => ({ execution: EXECUTION }),
-        issue_thread_create: () => ({ threadId: "thr_new" }),
-        ...overrides.rpc,
-      },
-    },
-  );
-}
 
 describe("the New issue nav panel", () => {
   it("registers a sidebar row at its own route", async () => {
@@ -52,110 +16,15 @@ describe("the New issue nav panel", () => {
     });
   });
 
-  it("seeds the project picker from the project in view", async () => {
-    const slot = await renderPage({ projectId: "proj_b" });
-    await slot.findAllByText("acme-gadgets");
-    // The trigger shows the project in view, not merely the first one listed.
-    expect(
-      slot.getByRole("combobox", { name: "Project" }).textContent,
-    ).toContain("acme-gadgets");
-  });
-
-  it("keeps Submit disabled until the notes have content", async () => {
-    const slot = await renderPage();
-    await slot.findAllByText("acme-gadgets");
-
-    expect(slot.getByRole("button", { name: /submit/i })).toHaveProperty(
-      "disabled",
-      true,
+  it("explains that the skill needs a Claude Code model", async () => {
+    const app = await loadPluginApp(() => import("./app"));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "" },
+      { context: { projectId: "proj_a", threadId: null } },
     );
-
-    fireEvent.change(slot.getByLabelText("What the issue should cover"), {
-      target: { value: NOTES },
-    });
-    expect(slot.getByRole("button", { name: /submit/i })).toHaveProperty(
-      "disabled",
-      false,
-    );
-  });
-
-  it("spawns the thread for the picked project and navigates to it", async () => {
-    const slot = await renderPage();
-    await slot.findAllByText("acme-gadgets");
-
-    fireEvent.change(slot.getByLabelText("What the issue should cover"), {
-      target: { value: `  ${NOTES}  ` },
-    });
-    fireEvent.click(slot.getByRole("button", { name: /submit/i }));
-
-    await waitFor(() => {
-      expect(slot.inspection.navigateCalls).toContainEqual({
-        method: "toThread",
-        threadId: "thr_new",
-      });
-    });
-    // The notes are trimmed before they reach the backend.
-    expect(slot.inspection.rpcCalls).toContainEqual({
-      method: "issue_thread_create",
-      input: { projectId: "proj_b", notes: NOTES, execution: EXECUTION },
-    });
-  });
-
-  it("seeds the picker from the project the form is scoped to", async () => {
-    const slot = await renderPage({ projectId: "proj_a" });
-    await waitFor(() => {
-      expect(slot.inspection.rpcCalls).toContainEqual({
-        method: "execution_defaults",
-        input: { projectId: "proj_a" },
-      });
-    });
-    // Only the selected project is asked about.
-    expect(slot.inspection.rpcCalls).not.toContainEqual({
-      method: "execution_defaults",
-      input: { projectId: "proj_b" },
-    });
-  });
-
-  it("warns when the selection cannot load the skill", async () => {
-    const slot = await renderPage({
-      rpc: {
-        execution_defaults: () => ({
-          execution: { ...EXECUTION, providerId: "codex" },
-        }),
-      },
-    });
-    expect(
-      await slot.findByText(/cannot load/i),
-    ).toBeTruthy();
-  });
-
-  it("does not warn on Claude Code", async () => {
-    const slot = await renderPage();
-    await slot.findAllByText("acme-gadgets");
-    expect(slot.queryByText(/cannot load/i)).toBeNull();
-  });
-
-  it("keeps the notes when the spawn fails", async () => {
-    const slot = await renderPage({
-      rpc: {
-        issue_thread_create: () => {
-          throw new Error("no environment");
-        },
-      },
-    });
-    await slot.findAllByText("acme-gadgets");
-
-    const notes = slot.getByLabelText("What the issue should cover");
-    fireEvent.change(notes, { target: { value: NOTES } });
-    fireEvent.click(slot.getByRole("button", { name: /submit/i }));
-
-    await waitFor(() => {
-      expect(slot.inspection.rpcCalls).toContainEqual(
-        expect.objectContaining({ method: "issue_thread_create" }),
-      );
-    });
-    expect(slot.inspection.navigateCalls).toHaveLength(0);
-    expect(notes).toHaveProperty("value", NOTES);
+    expect(slot.getByText(/draft-issue-description/)).toBeTruthy();
+    expect(slot.getByText(/Claude Code model/)).toBeTruthy();
   });
 });
 
