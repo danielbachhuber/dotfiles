@@ -157,3 +157,27 @@ export function parsePermissionMode(raw: string | undefined): PermissionModeSett
     ? (raw as PermissionModeSetting)
     : "full";
 }
+
+export const DISPLAY_SECTIONS = [
+  "needs-action",
+  "in-progress",
+  "ready-to-merge",
+  "clean",
+] as const;
+
+export type DisplaySection = (typeof DISPLAY_SECTIONS)[number];
+
+/**
+ * Where a row belongs in the panel, as distinct from its flag-derived group.
+ *
+ * A pull request with a thread is being worked on, whatever its flags say, so
+ * it leaves the section that means "this is waiting for you". Leaving it in
+ * Needs action overstates the queue and invites a second click on work already
+ * running.
+ */
+export function displaySection(group: string, hasThread: boolean): DisplaySection {
+  if (hasThread) return "in-progress";
+  if (group === "ready-to-merge") return "ready-to-merge";
+  if (group === "clean") return "clean";
+  return "needs-action";
+}

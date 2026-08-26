@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MODEL_BY_ACTION,
+  DISPLAY_SECTIONS,
   PERMISSION_MODES,
   MAX_THREAD_TITLE,
   actionLabel,
+  displaySection,
   modelForFlags,
   parseModelByAction,
   parsePermissionMode,
@@ -195,5 +197,28 @@ describe("parsePermissionMode", () => {
     for (const bad of [undefined, "", "bypass", "ACCEPT-EDITS", "plan"]) {
       expect(parsePermissionMode(bad)).toBe("full");
     }
+  });
+});
+
+describe("displaySection", () => {
+  it("moves any row with a thread into in-progress", () => {
+    for (const group of ["needs-action", "ready-to-merge", "clean"]) {
+      expect(displaySection(group, true)).toBe("in-progress");
+    }
+  });
+
+  it("keeps the flag-derived group when there is no thread", () => {
+    expect(displaySection("needs-action", false)).toBe("needs-action");
+    expect(displaySection("ready-to-merge", false)).toBe("ready-to-merge");
+    expect(displaySection("clean", false)).toBe("clean");
+  });
+
+  it("orders in-progress directly below needs-action", () => {
+    expect(DISPLAY_SECTIONS).toEqual([
+      "needs-action",
+      "in-progress",
+      "ready-to-merge",
+      "clean",
+    ]);
   });
 });

@@ -251,6 +251,39 @@ describe("panel", () => {
     expect(secondary.className).toMatch(/text-muted-foreground/);
   });
 
+  it("moves a row with a thread out of Needs action and into In progress", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ number: 1 }),
+          rowFixture({ number: 2, threadId: "thr_1" }),
+        ],
+      }),
+    );
+    await slot.findByText(/Needs action \(1\)/i);
+    await slot.findByText(/In progress \(1\)/i);
+  });
+
+  it("puts a merge-ready row with a thread in In progress too", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ flags: ["merge-ready"], group: "ready-to-merge", threadId: "thr_1" }),
+        ],
+      }),
+    );
+    await slot.findByText(/In progress \(1\)/i);
+    // The row's own flag badge also reads "ready to merge", so assert on the
+    // section heading, which carries a count.
+    expect(slot.queryByText(/Ready to merge \(/i)).toBeNull();
+  });
+
+  it("shows no In progress section when nothing is being worked on", async () => {
+    const slot = render(listing());
+    await slot.findByText(/Needs action \(1\)/i);
+    expect(slot.queryByText(/In progress/i)).toBeNull();
+  });
+
   it("shows Open thread once a thread exists, in place of the action", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
     await slot.findByRole("button", { name: /open thread/i });

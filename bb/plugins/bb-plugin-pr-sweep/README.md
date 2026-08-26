@@ -62,6 +62,10 @@ bb plugin install . --yes
 | CI running | Still in flight. |
 | ready to merge | Approved, green, no conflict, not a draft. |
 
+A pull request with a thread attached moves to **In progress**, whatever its
+flags say, so Needs action only ever holds work that is actually waiting on
+you. The sidebar count follows the same rule.
+
 A PR that is answered and awaiting re-review carries no flag: the ball is in the
 reviewer's court.
 

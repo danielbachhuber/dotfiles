@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { actionLabel } from "./sweep/actions.js";
+import { actionLabel, displaySection } from "./sweep/actions.js";
 import type { rpcContract } from "./server.js";
 
 type Row = {
@@ -382,9 +382,13 @@ function Panel() {
 
   if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
 
-  const needsAction = listing.rows.filter((row) => row.group === "needs-action");
-  const ready = listing.rows.filter((row) => row.group === "ready-to-merge");
-  const clean = listing.rows.filter((row) => row.group === "clean");
+  const inSection = (section: string) =>
+    listing.rows.filter((row) => displaySection(row.group, Boolean(row.threadId)) === section);
+
+  const needsAction = inSection("needs-action");
+  const inProgress = inSection("in-progress");
+  const ready = inSection("ready-to-merge");
+  const clean = inSection("clean");
 
   // The repository only earns a column when it actually varies.
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;
@@ -434,6 +438,14 @@ function Panel() {
           onOpen={onOpen}
         />
         <Section
+          title="In progress"
+          rows={inProgress}
+          showRepo={showRepo}
+          starting={starting}
+          onWork={onWork}
+          onOpen={onOpen}
+        />
+        <Section
           title="Ready to merge"
           rows={ready}
           showRepo={showRepo}
@@ -456,7 +468,10 @@ function Panel() {
 
 function NeedsActionCount() {
   const { listing } = useListing();
-  const count = listing?.rows.filter((row) => row.group !== "clean").length ?? 0;
+  const count =
+    listing?.rows.filter(
+      (row) => displaySection(row.group, Boolean(row.threadId)) === "needs-action",
+    ).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;
 }
