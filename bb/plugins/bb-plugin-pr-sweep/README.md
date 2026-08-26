@@ -62,6 +62,21 @@ PR's own branch, so the prompt names the skill and states the findings without
 restating any method. Rows routed to `pr-sweep` carry the standing guardrails
 instead.
 
+Two things follow from that routing:
+
+**Threads spawn on Claude Code.** All three skills are `provider-user` skills
+scoped to `claude-code`, so a thread on any other provider cannot see them and
+will improvise the workflow instead. The **Provider for spawned threads**
+setting pins this; blank falls back to bb's default provider. If you point it
+at a provider without these skills, the prompts will name skills that provider
+does not have.
+
+**A skill-routed prompt authorizes its own commit and push.** Standing user
+instructions forbid committing without an explicit ask and outrank a skill, so
+without that paragraph the thread does the work and stops at a staged merge.
+Clicking the row's action is the ask. Force-pushing, rewriting a pushed commit,
+merging the PR, and posting review replies still require confirmation.
+
 ## Development
 
 ```bash

@@ -23,6 +23,17 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Path to the gh CLI",
       default: "gh",
     },
+    providerId: {
+      type: "string",
+      label: "Provider for spawned threads",
+      // The skills these prompts route to (resolve-merge-conflicts,
+      // address-code-review, pr-sweep) are Claude Code user skills, so they
+      // are invisible to a thread running on any other provider. Spawning on
+      // bb's default provider produced threads that reported the skill "was
+      // not installed" and improvised the workflow instead. Blank falls back
+      // to bb's default.
+      default: "claude-code",
+    },
   });
 
   /** In-flight spawns, keyed repo#number, so racing clicks share one result. */
@@ -195,9 +206,11 @@ export default async function plugin(bb: BbPluginApi) {
           };
         }
 
+        const { providerId } = await settings.get();
         const thread = await bb.sdk.threads.spawn({
           projectId,
           environment: { type: "project-default" },
+          ...(providerId ? { providerId: providerId as never } : {}),
           prompt: buildPrompt(row),
           title: threadTitle(row.flags, number),
         });

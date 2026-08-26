@@ -53,6 +53,31 @@ describe("buildPrompt", () => {
     expect(conflict).not.toMatch(/commit only after/i);
   });
 
+  it("authorizes the commit and push a dedicated skill ends in", () => {
+    // Standing instructions forbid committing without an explicit ask and
+    // outrank the skill, so the prompt has to supply that ask or the thread
+    // stops at a staged merge.
+    for (const flags of [["conflict"], ["feedback"]]) {
+      const prompt = buildPrompt(row({ flags }));
+      expect(prompt).toMatch(/explicit request/i);
+      expect(prompt).toMatch(/commit and push/i);
+    }
+  });
+
+  it("still withholds the irreversible actions", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict"] }));
+    expect(prompt).toMatch(/force-push/i);
+    expect(prompt).toMatch(/merging the PR/i);
+  });
+
+  it("does not authorize a push on a row with no dedicated skill", () => {
+    // pr-sweep rows are triage with no defined end state, so they keep the
+    // ask-first guardrails instead.
+    const prompt = buildPrompt(row({ flags: ["ci-failing"] }));
+    expect(prompt).not.toMatch(/explicit request/i);
+    expect(prompt).toMatch(/before anything leaves the machine/i);
+  });
+
   it("keeps the standing guardrails when routing to pr-sweep", () => {
     const ci = buildPrompt(row({ flags: ["ci-failing"] }));
     expect(ci).toMatch(/worktree/i);

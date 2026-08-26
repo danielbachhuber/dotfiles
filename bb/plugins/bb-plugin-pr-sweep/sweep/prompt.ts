@@ -41,11 +41,20 @@ export function buildPrompt(row: ClassifiedRow): string {
 
   const skill = skillFor(row.flags);
 
-  // When a dedicated skill owns the flow it already specifies worktree setup,
-  // per-change approval, and when to push — more precisely than this prompt
-  // could. Restating any of it risks contradicting the skill, so the prompt
-  // names the skill and stops. pr-sweep is broader triage, so those rows keep
-  // the standing guardrails.
+  // A dedicated skill specifies the whole flow, ending in a commit and a push.
+  // Standing user instructions forbid committing without an explicit ask, and
+  // those instructions outrank a skill — so without this paragraph the thread
+  // does the work, stops at a staged merge, and reports that it did not commit
+  // "per repository instructions". Clicking the row's action IS the ask, so
+  // the prompt says so and lets the skill run to its end.
+  const authorization = skillOwnsWorkflow(row.flags)
+    ? [
+        "",
+        "I started this from the PR Sweep panel, which is my explicit request for this work. Follow the skill all the way through, including its commit and push steps. You do not need to ask me before committing or pushing to this PR's own branch.",
+        "Still ask me first before: force-pushing, rewriting any pushed commit, merging the PR, or posting a review reply.",
+      ]
+    : [];
+
   const guardrails = skillOwnsWorkflow(row.flags)
     ? []
     : [
@@ -63,6 +72,7 @@ export function buildPrompt(row: ClassifiedRow): string {
     "",
     problems.length ? "What a deterministic sweep found:" : "No problems were flagged.",
     ...problems,
+    ...authorization,
     ...guardrails,
   ].join("\n");
 }
