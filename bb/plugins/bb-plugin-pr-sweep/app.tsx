@@ -218,6 +218,9 @@ function Action({
   );
 }
 
+/** Shared header cell styling, so every column is declared the same way. */
+const HEAD = "text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground";
+
 function PrTable({
   rows,
   showRepo,
@@ -233,25 +236,21 @@ function PrTable({
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border">
-      <Table>
+      {/*
+        table-fixed with an explicit width per column, so the four section
+        tables line up with each other. Auto layout sizes each table to its own
+        contents, which made Clean's narrow "clean" status column pull every
+        other column out of step with Needs action's stacked badges.
+      */}
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className="w-[5.5rem] text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground">
-              PR
-            </TableHead>
-            <TableHead className="text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground">
-              Title
-            </TableHead>
-            <TableHead className="text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground">
-              Needs
-            </TableHead>
-            <TableHead className="hidden text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground lg:table-cell">
-              Checks
-            </TableHead>
-            <TableHead className="hidden text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground xl:table-cell">
-              Review
-            </TableHead>
-            <TableHead className="w-[1%] text-right" />
+            <TableHead className={`w-[5rem] ${HEAD}`}>PR</TableHead>
+            <TableHead className={HEAD}>Title</TableHead>
+            <TableHead className={`w-[9rem] ${HEAD}`}>Status</TableHead>
+            <TableHead className={`hidden w-[9rem] lg:table-cell ${HEAD}`}>Checks</TableHead>
+            <TableHead className={`hidden w-[15rem] xl:table-cell ${HEAD}`}>Review</TableHead>
+            <TableHead className="w-[10rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -260,7 +259,7 @@ function PrTable({
               <TableCell className="align-top font-mono text-xs tabular-nums text-muted-foreground">
                 #{row.number}
               </TableCell>
-              <TableCell className="max-w-[28rem] align-top">
+              <TableCell className="align-top">
                 {showRepo ? (
                   <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
                 ) : null}
@@ -289,7 +288,7 @@ function PrTable({
               <TableCell className="hidden align-top text-xs tabular-nums text-muted-foreground lg:table-cell">
                 {checksLabel(row.checks)}
               </TableCell>
-              <TableCell className="hidden max-w-[18rem] align-top text-xs xl:table-cell">
+              <TableCell className="hidden align-top text-xs xl:table-cell">
                 <Review row={row} />
               </TableCell>
               <TableCell className="align-top text-right">

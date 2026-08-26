@@ -152,7 +152,35 @@ describe("panel", () => {
     const slot = render(listing());
     await slot.findByText("PR");
     await slot.findByText("Title");
-    await slot.findByText("Needs");
+    // "Status" rather than "Needs": the same header sits above Clean and
+    // Ready to merge, where "needs" would be wrong.
+    await slot.findByText("Status");
+    expect(slot.queryByText("Needs")).toBeNull();
+  });
+
+  it("uses one fixed column layout so every section table lines up", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ number: 1 }),
+          rowFixture({ number: 2, flags: [], group: "clean" }),
+        ],
+      }),
+    );
+    await slot.findByText(/Needs action \(1\)/i);
+    const tables = slot.container.querySelectorAll("table");
+    expect(tables.length).toBe(2);
+    for (const table of tables) {
+      expect(table.className).toMatch(/table-fixed/);
+    }
+
+    // Same widths declared in the same order in both tables.
+    const widths = [...tables].map((table) =>
+      [...table.querySelectorAll("thead th")].map(
+        (cell) => (cell.className.match(/w-\[[^\]]+\]/) ?? ["auto"])[0],
+      ),
+    );
+    expect(widths[0]).toEqual(widths[1]);
   });
 
   it("omits the repository when every row shares one", async () => {
