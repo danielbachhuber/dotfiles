@@ -140,7 +140,23 @@ function isAwaitingReReview(pr: RawPullRequest): boolean {
   );
 }
 
-export function classifyOne(pr: RawPullRequest, repo: string): ClassifiedRow {
+/**
+ * True when some open pull request in this repository has checks.
+ *
+ * An empty rollup usually means CI failed to run and is worth flagging. It
+ * means nothing, though, in a repository where CI does not run on pull
+ * requests at all — psi-deploy has workflows, but none of them trigger here,
+ * so every pull request reads "no CI" forever with nothing to fix.
+ */
+export function repoRunsChecks(prs: readonly RawPullRequest[]): boolean {
+  return prs.some((pr) => (pr.statusCheckRollup ?? []).length > 0);
+}
+
+export function classifyOne(
+  pr: RawPullRequest,
+  repo: string,
+  repoHasChecks = true,
+): ClassifiedRow {
   const checks = summarizeChecks(pr.statusCheckRollup);
   const approvedBy = approvers(pr);
   const flags = new Set<Flag>();
@@ -151,7 +167,8 @@ export function classifyOne(pr: RawPullRequest, repo: string): ClassifiedRow {
   if (checks.fail > 0) flags.add("ci-failing");
   if (checks.cancelled > 0) flags.add("ci-cancelled");
   if (checks.pending > 0) flags.add("ci-pending");
-  if (checks.total === 0) flags.add("ci-absent");
+  // Only a fault where CI otherwise runs; see repoRunsChecks.
+  if (checks.total === 0 && repoHasChecks) flags.add("ci-absent");
 
   if (hasLiveFeedback(pr)) flags.add("feedback");
 
@@ -195,8 +212,9 @@ export function classifyOne(pr: RawPullRequest, repo: string): ClassifiedRow {
 }
 
 export function classify(prs: RawPullRequest[], repo: string): ClassifiedRow[] {
+  const repoHasChecks = repoRunsChecks(prs);
   return prs
-    .map((pr) => classifyOne(pr, repo))
+    .map((pr) => classifyOne(pr, repo, repoHasChecks))
     .sort((a, b) => {
       const rank = (row: ClassifiedRow) =>
         row.flags.length === 0 ? FLAG_SEVERITY.length : FLAG_SEVERITY.indexOf(row.flags[0]!);

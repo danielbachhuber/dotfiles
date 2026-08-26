@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classify, classifyOne, isBotLogin, summarizeChecks } from "./classify.js";
+import { classify, classifyOne, isBotLogin, repoRunsChecks, summarizeChecks } from "./classify.js";
 import { checkRun, makePr, review, statusContext, teamRequest, userRequest } from "./fixtures.js";
 
 describe("summarizeChecks", () => {
@@ -321,5 +321,45 @@ describe("bot comments", () => {
       "acme/widgets",
     );
     expect(row.lastCommentBy).toBeNull();
+  });
+});
+
+describe("a repository where CI does not run on pull requests", () => {
+  it("does not flag a missing rollup as a fault", () => {
+    // psi-deploy's shape: workflows exist but none trigger on pull requests,
+    // so every row read "no CI" forever with nothing to fix.
+    const reviewed = { reviewRequests: [userRequest("hubber")] };
+    const rows = classify(
+      [makePr({ number: 1, statusCheckRollup: [], ...reviewed })],
+      "acme/deploy",
+    );
+    expect(rows[0]!.flags).not.toContain("ci-absent");
+    expect(rows[0]!.flags).toEqual([]);
+  });
+
+  it("still flags a pull request that skipped CI where others ran it", () => {
+    const rows = classify(
+      [
+        makePr({ number: 1, statusCheckRollup: [], reviewRequests: [userRequest("hubber")] }),
+        makePr({
+          number: 2,
+          statusCheckRollup: [checkRun("build", "COMPLETED", "SUCCESS")],
+          reviewRequests: [userRequest("hubber")],
+        }),
+      ],
+      "acme/widgets",
+    );
+    expect(rows.find((row) => row.number === 1)!.flags).toContain("ci-absent");
+    expect(rows.find((row) => row.number === 2)!.flags).toEqual([]);
+  });
+
+  it("reads the repository from every pull request, not just the first", () => {
+    expect(repoRunsChecks([makePr({ statusCheckRollup: [] })])).toBe(false);
+    expect(
+      repoRunsChecks([
+        makePr({ statusCheckRollup: [] }),
+        makePr({ statusCheckRollup: [checkRun("a", "COMPLETED", "SUCCESS")] }),
+      ]),
+    ).toBe(true);
   });
 });
