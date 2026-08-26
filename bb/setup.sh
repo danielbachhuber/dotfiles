@@ -29,6 +29,9 @@ installed="$(bb plugin list --json 2>/dev/null || echo '[]')"
 
 for plugin in "$DIR"/plugins/*/; do
   [ -f "$plugin/package.json" ] || continue
+  # plugins/ also holds shared libraries the plugins depend on. A bb plugin is
+  # the thing with a "bb" manifest block; anything else is not installable.
+  jq -e '.bb | type == "object"' "$plugin/package.json" >/dev/null 2>&1 || continue
   id="$(basename "$plugin")"
   id="${id#bb-plugin-}"
 
