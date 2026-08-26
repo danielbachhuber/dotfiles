@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.0",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@danielb/gh-shared": "file:../gh-shared"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.4.21",
