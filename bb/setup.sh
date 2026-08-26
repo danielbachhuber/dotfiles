@@ -15,21 +15,12 @@ if ! command -v bb >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- User-level skills -------------------------------------------------------
-# ~/.bb/skills is bb's own skills tier. Link it here, but never delete real
-# skills: only an existing symlink or an empty directory is replaced.
-mkdir -p "$HOME/.bb"
-skills_target="$HOME/.bb/skills"
-if [ -L "$skills_target" ] || [ ! -e "$skills_target" ]; then
-  ln -sfn "$DIR/skills" "$skills_target"
-  echo "linked $skills_target -> $DIR/skills"
-elif [ -d "$skills_target" ] && [ -z "$(ls -A "$skills_target")" ]; then
-  rmdir "$skills_target"
-  ln -s "$DIR/skills" "$skills_target"
-  echo "linked $skills_target -> $DIR/skills"
-else
-  echo "warning: $skills_target exists and is not empty; leaving it alone." >&2
-fi
+# --- Skills -----------------------------------------------------------------
+# Nothing to do here. BB reads user skills from each provider's own directory
+# (~/.claude/skills for claude-code, ~/.codex/skills/.system for codex,
+# ~/.hermes/skills for acp-hermes-agent), not from ~/.bb/skills. The
+# building-bb-plugins skill therefore lives in ../claude/skills/ and is
+# symlinked into ~/.claude/skills like every other skill in this repository.
 
 # --- Plugins -----------------------------------------------------------------
 # A path install builds against dependencies that are already on disk, so each
