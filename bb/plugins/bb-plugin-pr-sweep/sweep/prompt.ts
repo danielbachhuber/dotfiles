@@ -64,7 +64,7 @@ export function buildPrompt(row: ClassifiedRow): string {
     "",
     steps.length === 1
       ? "A deterministic sweep found one thing:"
-      : `A deterministic sweep found ${steps.length} things, worst first. Finish each before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
+      : `A deterministic sweep found ${steps.length} things, worst first. Finish each step, including its commit and push, before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
     ...numbered,
     "",
     // Standing user instructions forbid committing without an explicit ask and

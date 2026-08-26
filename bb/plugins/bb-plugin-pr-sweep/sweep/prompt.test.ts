@@ -95,16 +95,19 @@ describe("buildPrompt", () => {
     );
   });
 
-  it("tells the agent to finish each step before the next and re-check after", () => {
+  it("tells the agent to push each step before starting the next", () => {
+    // A reply to a review thread cites the commit SHA that answered it, so the
+    // conflict resolution has to be on the remote before the feedback step
+    // starts — otherwise the replies point at commits nobody can see.
     const prompt = buildPrompt(row({ flags: ["conflict", "feedback"] }));
-    expect(prompt).toMatch(/finish each before starting the next/i);
+    expect(prompt).toMatch(/finish each step, including its commit and push, before starting the next/i);
     expect(prompt).toMatch(/re-check the later ones/i);
   });
 
   it("does not number a single finding as a list of steps", () => {
     const prompt = buildPrompt(row({ flags: ["conflict"] }));
     expect(prompt).toMatch(/found one thing/i);
-    expect(prompt).not.toMatch(/finish each before starting the next/i);
+    expect(prompt).not.toMatch(/finish each step, including its commit and push/i);
   });
 
   it("says so when a row carries no flags at all", () => {
