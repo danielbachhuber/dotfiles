@@ -33,6 +33,12 @@ export interface IssueRow {
   createdAt: number;
   updatedAt: number;
   commentsCount: number;
+  /**
+   * How many open issues block this one, via GitHub's issue dependencies.
+   * Stamped after the listing: dependencies are neither a label nor a board
+   * field, so only GraphQL reports them.
+   */
+  blockedBy: number;
   /** The status column on the configured board, or null when it has none. */
   boardStatus: string | null;
   /**
@@ -80,6 +86,9 @@ export function toRow(raw: RawIssue, board = ""): IssueRow | null {
     createdAt: Number.isNaN(createdAt) ? resolvedUpdatedAt : createdAt,
     updatedAt: resolvedUpdatedAt,
     commentsCount: raw.commentsCount ?? (raw.comments?.length ?? 0),
+    // Nothing in the listing call knows about dependencies; the sweep stamps
+    // this from its own query once every row exists.
+    blockedBy: 0,
     boardStatus: placement.status,
     onBoard: placement.onBoard,
   };

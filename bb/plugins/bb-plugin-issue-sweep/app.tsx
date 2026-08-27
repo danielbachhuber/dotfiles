@@ -27,6 +27,7 @@ type Row = {
   labels: string[];
   boardStatus: string | null;
   onBoard: boolean;
+  blockedBy: number;
   createdAt: number;
   updatedAt: number;
   commentsCount: number;
@@ -65,6 +66,17 @@ const BADGE = "rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-
 
 /** Where an issue lands when it is on no board, or on a different one. */
 const NO_BOARD = "No board status";
+
+/**
+ * Issues something else has to happen to first, via GitHub's own issue
+ * dependencies rather than a label or a board column.
+ *
+ * Last, and out of its board section: an issue nobody can start does not
+ * belong beside issues that are ready, whatever the board says about it. The
+ * board tracks where work stands, not whether it can proceed, so these two
+ * facts genuinely disagree and the blocking one wins.
+ */
+const BLOCKED = "Blocked";
 
 /** Shared header cell styling, so every column is declared the same way. */
 const HEAD = "text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground";
@@ -296,16 +308,22 @@ function Panel() {
 
   // Grouped by the board's own column, in the board's own order. An issue that
   // is on no board, or on a different one, still has to appear somewhere.
+  // Drawn from the blocked rows too, so a status that only blocked issues
+  // carry does not silently lose its place in the order.
   const present = listing.rows
     .map((row) => row.boardStatus)
     .filter((status): status is string => status !== null);
 
+  const blocked = listing.rows.filter((row) => row.blockedBy > 0);
+  const actionable = listing.rows.filter((row) => row.blockedBy === 0);
+
   const sections = [
     ...sectionOrder(listing.statusOrder, present).map((status) => ({
       status,
-      rows: listing.rows.filter((row) => row.boardStatus === status),
+      rows: actionable.filter((row) => row.boardStatus === status),
     })),
-    { status: NO_BOARD, rows: listing.rows.filter((row) => row.boardStatus === null) },
+    { status: NO_BOARD, rows: actionable.filter((row) => row.boardStatus === null) },
+    { status: BLOCKED, rows: blocked },
   ].filter((section) => section.rows.length > 0);
 
   return (

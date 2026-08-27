@@ -8,6 +8,7 @@ import {
 export { GhUnavailableError, createGhRunner };
 export type { GhRunner };
 
+import { blockedKey, fetchBlockedBy } from "./blocked.js";
 import {
   REPO_SLUG_PATTERN,
   sortRows,
@@ -84,6 +85,20 @@ export async function runSweep(
     } catch (error) {
       if (error instanceof GhUnavailableError) throw error;
       failedRepos.push(repo);
+    }
+  }
+
+  // One query for the whole sweep, skipped when there is nothing to stamp, and
+  // a failure here is not worth losing the listing over: the rows are correct,
+  // they just cannot say what is blocked.
+  if (rows.length > 0) {
+    try {
+      const blocked = await fetchBlockedBy(gh);
+      for (const row of rows) {
+        row.blockedBy = blocked.get(blockedKey(row.repo, row.number)) ?? 0;
+      }
+    } catch (error) {
+      if (error instanceof GhUnavailableError) throw error;
     }
   }
 

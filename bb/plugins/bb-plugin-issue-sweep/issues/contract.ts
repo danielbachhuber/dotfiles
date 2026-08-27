@@ -9,6 +9,7 @@ const rowSchema = z.object({
   labels: z.array(z.string()),
   boardStatus: z.string().nullable(),
   onBoard: z.boolean(),
+  blockedBy: z.number(),
   createdAt: z.number(),
   updatedAt: z.number(),
   commentsCount: z.number(),

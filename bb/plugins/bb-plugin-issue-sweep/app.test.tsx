@@ -20,6 +20,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     commentsCount: 2,
     boardStatus: null,
     onBoard: false,
+    blockedBy: 0,
     ...overrides,
   };
 }
@@ -193,6 +194,75 @@ describe("board sections", () => {
       listing({ statusOrder: ["In Progress"], rows: [rowFixture({ boardStatus: null })] }),
     );
     await slot.findByText(/^No board status \(1\)$/);
+  });
+});
+
+describe("blocked section", () => {
+  it("files a blocked issue last, under its own heading", async () => {
+    const slot = render(
+      listing({
+        statusOrder: ["Ready", "In Progress"],
+        rows: [
+          rowFixture({ number: 1, title: "Ready one", boardStatus: "Ready" }),
+          rowFixture({ number: 2, title: "Blocked one", boardStatus: "Ready", blockedBy: 1 }),
+        ],
+      }),
+    );
+
+    const headings = (await slot.findAllByRole("heading")).map((node) => node.textContent);
+    expect(headings).toEqual(["Ready (1)", "Blocked (1)"]);
+  });
+
+  it("takes a blocked issue out of its board section", async () => {
+    // The board says where the work stands; the dependency says it cannot
+    // proceed. Leaving it in "In Progress" would overstate what is moving.
+    const slot = render(
+      listing({
+        statusOrder: ["In Progress"],
+        rows: [rowFixture({ boardStatus: "In Progress", blockedBy: 2 })],
+      }),
+    );
+    const headings = (await slot.findAllByRole("heading")).map((node) => node.textContent);
+    expect(headings).toEqual(["Blocked (1)"]);
+  });
+
+  it("sits below the issues on no board, not just below the board columns", async () => {
+    const slot = render(
+      listing({
+        statusOrder: ["Ready"],
+        rows: [
+          rowFixture({ number: 1, boardStatus: "Ready" }),
+          rowFixture({ number: 2, boardStatus: null }),
+          rowFixture({ number: 3, boardStatus: null, blockedBy: 1 }),
+        ],
+      }),
+    );
+    const headings = (await slot.findAllByRole("heading")).map((node) => node.textContent);
+    expect(headings).toEqual(["Ready (1)", "No board status (1)", "Blocked (1)"]);
+  });
+
+  it("shows no Blocked section when nothing is blocked", async () => {
+    const slot = render(
+      listing({ statusOrder: ["Ready"], rows: [rowFixture({ boardStatus: "Ready" })] }),
+    );
+    await slot.findByText("Ready (1)");
+    expect(slot.queryByText(/^Blocked/)).toBeNull();
+  });
+
+  it("still keeps a board column that only blocked issues carry in the order", async () => {
+    // Otherwise unblocking the issue would move it to a section that has since
+    // lost its configured position and drifted to the end.
+    const slot = render(
+      listing({
+        statusOrder: ["Ready"],
+        rows: [
+          rowFixture({ number: 1, boardStatus: "Ready" }),
+          rowFixture({ number: 2, boardStatus: "In Review", blockedBy: 1 }),
+        ],
+      }),
+    );
+    const headings = (await slot.findAllByRole("heading")).map((node) => node.textContent);
+    expect(headings).toEqual(["Ready (1)", "Blocked (1)"]);
   });
 });
 
