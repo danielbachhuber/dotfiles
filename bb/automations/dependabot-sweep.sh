@@ -132,6 +132,10 @@ others: gather the facts, assess the real impact on this codebase, and write the
 assessment to a draft file. Stop there. Do not post the comment, approve, or
 merge until I have read the draft and told you to.
 
+When you point me at that draft file, link it with its absolute path
+(/Users/danielb/projects/drafts/...), not a \"~\"-relative one — bb only
+renders absolute-path links as clickable.
+
 Once the PR has actually landed, this thread is done, so file it away yourself
 rather than leaving it for the twice-daily sweep. Confirm it first: gh pr view
 ${number} --json state must report MERGED. If the merge is only queued behind
