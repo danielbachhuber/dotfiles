@@ -16,6 +16,7 @@
 #   DEPENDABOT_WORKSPACE     workspace path spawned threads attach to. Required.
 #   DEPENDABOT_MAX_THREADS   most threads to spawn per run. Default 5.
 #   DEPENDABOT_PROVIDER      provider for spawned threads. Default claude-code.
+#   DEPENDABOT_MODEL         model for spawned threads. Default claude-sonnet-5.
 #   DEPENDABOT_GH            path to the gh CLI, when it is not on PATH.
 #
 # BB_PROJECT_ID and BB_CLI are injected by the automations plugin.
@@ -27,6 +28,10 @@ WORKSPACE="${DEPENDABOT_WORKSPACE:?DEPENDABOT_WORKSPACE is required (workspace p
 PROJECT="${BB_PROJECT_ID:?BB_PROJECT_ID is not set; run this as a bb automation}"
 MAX_THREADS="${DEPENDABOT_MAX_THREADS:-5}"
 PROVIDER="${DEPENDABOT_PROVIDER:-claude-code}"
+# Pinned rather than inherited. With no --model, bb falls back to the project's
+# remembered default, which is whatever model was last used by hand in that
+# project: a dependency review would silently ride on it.
+MODEL="${DEPENDABOT_MODEL:-claude-sonnet-5}"
 
 BB="${BB_CLI:-bb}"
 
@@ -142,7 +147,8 @@ summary you have already written survives."
     --title "Dep: ${package} #${number}" \
     --prompt "$prompt" \
     --environment "$WORKSPACE" \
-    --provider "$PROVIDER" >/dev/null; then
+    --provider "$PROVIDER" \
+    --model "$MODEL" >/dev/null; then
     echo "Spawned a thread for ${package} #${number}"
     spawned=$((spawned + 1))
   else

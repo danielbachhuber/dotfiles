@@ -65,9 +65,12 @@ bb plugin run automations update <id> --project <project> --script-file ...
 bb plugin run automations resume <id> --project <project>
 ```
 
-An `update` on an active automation has been observed to fire a run
-immediately, which for the Dependabot sweep means a batch of threads you did not
-ask for. The same `update` against a paused automation does not.
+Touching an automation sometimes fires a run immediately, which for the
+Dependabot sweep means a batch of threads nobody asked for. It has happened
+twice, both times right after an `update`, and the identical sequence has also
+completed without a run more than once. Pausing first does not reliably prevent
+it, so treat the pause as a precaution rather than a guarantee and check
+`automations runs` afterward.
 
 ### Dependabot sweep
 
@@ -133,6 +136,12 @@ export BB_DEPENDABOT_SWEEPS='[
 `project` is the bb project name from `bb project list`. Threads attach to
 `workspace` rather than each getting a worktree: the review reads the repository
 and drives `gh`, and never writes to the checkout.
+
+Threads are pinned to Sonnet, and to the `claude-code` provider, rather than
+inheriting. Without `--model`, bb falls back to the project's remembered
+default, which is whatever was last chosen by hand in that project, so a routine
+dependency bump would quietly ride on it. Override with `DEPENDABOT_MODEL` and
+`DEPENDABOT_PROVIDER` in the automation's script variables.
 
 Requires `gh` on the server's PATH, authenticated as you. When it is not, set
 `DEPENDABOT_GH` to its absolute path in the automation's script variables.
