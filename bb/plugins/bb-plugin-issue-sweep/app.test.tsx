@@ -274,19 +274,19 @@ describe("blocked section", () => {
 describe("thread action", () => {
   it("offers to start a thread when the issue has none", async () => {
     const slot = render(listing());
-    expect(await slot.findByRole("button", { name: "Start thread" })).toBeEnabled();
+    expect(await slot.findByRole("button", { name: "Start" })).toBeEnabled();
   });
 
   it("offers to open the thread once one exists", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    expect(await slot.findByRole("button", { name: "Open thread" })).toBeInTheDocument();
-    expect(slot.queryByRole("button", { name: "Start thread" })).toBeNull();
+    expect(await slot.findByRole("button", { name: "Open" })).toBeInTheDocument();
+    expect(slot.queryByRole("button", { name: "Start" })).toBeNull();
   });
 
   it("will not offer to start one for a repository with no checkout", async () => {
     // The spawn would fail on the server; a disabled button says so up front.
     const slot = render(listing({ rows: [rowFixture({ canSpawn: false })] }));
-    expect(await slot.findByRole("button", { name: "Start thread" })).toBeDisabled();
+    expect(await slot.findByRole("button", { name: "Start" })).toBeDisabled();
   });
 
   it("starts one thread for the issue that was clicked", async () => {
@@ -306,7 +306,7 @@ describe("thread action", () => {
       },
     );
 
-    const buttons = await slot.findAllByRole("button", { name: "Start thread" });
+    const buttons = await slot.findAllByRole("button", { name: "Start" });
     fireEvent.click(buttons[1]!);
 
     await waitFor(() => expect(calls).toHaveLength(1));
@@ -324,7 +324,7 @@ describe("thread action", () => {
         }),
     });
 
-    const button = await slot.findByRole("button", { name: "Start thread" });
+    const button = await slot.findByRole("button", { name: "Start" });
     fireEvent.click(button);
 
     await waitFor(() =>
@@ -335,7 +335,7 @@ describe("thread action", () => {
 
   it("keeps the age line, which the action column replaced", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    await slot.findByRole("button", { name: "Open thread" });
+    await slot.findByRole("button", { name: "Open" });
     expect(slot.getByText(/3h ago/)).toBeInTheDocument();
   });
 });

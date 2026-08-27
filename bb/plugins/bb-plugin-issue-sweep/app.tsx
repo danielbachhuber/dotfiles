@@ -203,7 +203,7 @@ function ThreadAction({
         className="w-full whitespace-nowrap"
         onClick={() => onOpen(row.threadId!)}
       >
-        Open thread
+        Open
       </Button>
     );
   }
@@ -222,7 +222,7 @@ function ThreadAction({
         disabled={!row.canSpawn || isStarting}
         onClick={() => onStart(row)}
       >
-        {isStarting ? "Starting…" : "Start thread"}
+        {isStarting ? "Starting…" : "Start"}
       </Button>
     </span>
   );
@@ -258,7 +258,11 @@ function IssueTable({
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`w-[10rem] ${HEAD}`}>Status</TableHead>
-            <TableHead className="w-[9.5rem]" />
+            {/*
+              Sized for "Starting…", which is the widest thing this column ever
+              holds — wider than either resting label.
+            */}
+            <TableHead className="w-[7rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
