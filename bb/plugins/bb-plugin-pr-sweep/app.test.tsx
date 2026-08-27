@@ -786,7 +786,7 @@ describe("the merge button when comments are outstanding", () => {
         ],
       }),
     );
-    await slot.findByRole("button", { name: /^Review comments and merge$/ });
+    await slot.findByRole("button", { name: /^Review and merge$/ });
     expect(slot.queryByRole("button", { name: /^Merge$/ })).toBeNull();
   });
 

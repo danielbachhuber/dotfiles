@@ -355,7 +355,7 @@ describe("statusTone", () => {
 
 describe("a merge-ready pull request with comments on it", () => {
   it("says the click will read them, not just merge", () => {
-    expect(actionSummary(["merge-ready"], 3)).toBe("Review comments and merge");
+    expect(actionSummary(["merge-ready"], 3)).toBe("Review and merge");
     expect(actionSummary(["merge-ready"], 0)).toBe("Merge");
   });
 
@@ -365,15 +365,42 @@ describe("a merge-ready pull request with comments on it", () => {
     expect(actionSummary(["ci-failing"], 3)).toBe("Fix failing CI");
   });
 
-  it("titles the thread with the same words, cut at a word boundary", () => {
-    // The label is longer than the sidebar budget, so it gives way — but at a
-    // space, since "Review comments and mer…" does not read.
+  it("titles the thread with the same words, untruncated", () => {
     const title = threadTitle(["merge-ready"], 5801, 3);
+    expect(title).toBe("Review and merge #5801");
     expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toBe("Review comments and… #5801");
   });
 
   it("still fits the plain case exactly", () => {
     expect(threadTitle(["merge-ready"], 5801, 0)).toBe("Merge #5801");
+  });
+});
+
+describe("every button label fits its column", () => {
+  // The action column is 11rem and the button does not wrap, so a long label
+  // overflows and puts a horizontal scrollbar on the whole table. "Review
+  // comments and merge" did exactly that.
+  const MAX_BUTTON_LABEL = 20;
+
+  it("holds for every flag on its own", () => {
+    for (const flag of FLAG_SEVERITY) {
+      expect(actionSummary([flag]).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
+      expect(actionSummary([flag], 3).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
+    }
+  });
+
+  it("holds for every pair, and for the empty case", () => {
+    for (const first of FLAG_SEVERITY) {
+      for (const second of FLAG_SEVERITY) {
+        expect(actionSummary([first, second]).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
+      }
+    }
+    expect(actionSummary([]).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
+  });
+
+  it("keeps every thread title inside the sidebar budget too", () => {
+    for (const flag of FLAG_SEVERITY) {
+      expect(threadTitle([flag], 5801, 3).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    }
   });
 });

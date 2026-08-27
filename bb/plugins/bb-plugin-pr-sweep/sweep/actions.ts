@@ -283,7 +283,10 @@ export function actionSummary(flags: readonly string[], unresolvedThreads = 0): 
     // An approval does not clear inline comments: #5801 was approved, green,
     // and carrying three. "Merge" alone understated what the click starts.
     if (steps[0]!.flag === "merge-ready" && unresolvedThreads > 0) {
-      return "Review comments and merge";
+      // Short enough for the action column and for the sidebar title, which
+      // "Review comments and merge" was not: it overflowed the column and put
+      // a horizontal scrollbar on the table.
+      return "Review and merge";
     }
     return ACTION_LABELS[steps[0]!.flag];
   }
