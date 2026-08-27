@@ -10,6 +10,10 @@ const rowSchema = z.object({
   boardStatus: z.string().nullable(),
   onBoard: z.boolean(),
   blockedBy: z.number(),
+  /** The thread this plugin started for the issue, or null. */
+  threadId: z.string().nullable(),
+  /** False when no bb project is checked out for the issue's repository. */
+  canSpawn: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
   commentsCount: z.number(),
@@ -43,6 +47,19 @@ export const rpcContract = defineRpcContract({
    * first when it is not on it. One call covers both because the panel offers
    * them as one gesture.
    */
+  /**
+   * Starts a thread for an issue, or returns the one already linked to it.
+   * Idempotent by design: two fast clicks must not produce two threads.
+   */
+  startThread: {
+    input: z.object({ repo: z.string(), number: z.number() }).strict(),
+    output: z.object({
+      threadId: z.string().nullable(),
+      /** True when an existing thread was returned rather than a new one started. */
+      existing: z.boolean(),
+      reason: z.string().nullable(),
+    }),
+  },
   setBoardStatus: {
     input: z.object({ repo: z.string(), number: z.number(), status: z.string() }),
     output: z.object({

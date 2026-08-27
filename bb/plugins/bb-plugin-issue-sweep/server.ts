@@ -11,6 +11,8 @@ import {
   setBoardStatus as applyBoardStatus,
   type BoardProject,
 } from "./issues/project.js";
+import { buildPrompt, threadTitle } from "./issues/prompt.js";
+import { matchProjectForRepo, type ProjectCandidate } from "./issues/spawn-target.js";
 import { MIGRATIONS, createStore } from "./issues/store.js";
 
 export { rpcContract };
@@ -48,7 +50,58 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Path to the gh CLI",
       default: "gh",
     },
+    model: {
+      type: "string",
+      label: "Model for issue threads",
+      // Blank takes the provider's default. One action here, so one value
+      // rather than pr-sweep's model-by-action JSON.
+      default: "",
+    },
+    permissionMode: {
+      type: "select",
+      label: "Permission mode for spawned threads",
+      // auto keeps the workspace sandbox, which blocks network egress, so the
+      // thread could not reach GitHub to read the issue it was started for.
+      options: ["accept-edits", "auto", "full"],
+      default: "full",
+    },
+    providerId: {
+      type: "string",
+      label: "Provider for spawned threads",
+      // Blank falls back to bb's default.
+      default: "claude-code",
+    },
   });
+
+  const PERMISSION_MODES = ["accept-edits", "auto", "full"] as const;
+  type PermissionMode = (typeof PERMISSION_MODES)[number];
+
+  /**
+   * Narrows the stored setting, typed only as `string` by the SDK, to the
+   * union `threads.spawn` accepts. An unrecognised value falls back to the
+   * declared default rather than reaching the spawn call.
+   */
+  function parsePermissionMode(raw: string | undefined): PermissionMode {
+    return (PERMISSION_MODES as readonly string[]).includes(raw ?? "")
+      ? (raw as PermissionMode)
+      : "full";
+  }
+
+  /**
+   * One thread per issue, enforced on three levels: the durable link in the
+   * store, this in-flight map for clicks that race before the first spawn
+   * returns, and a disabled button in the panel. The link alone is not enough —
+   * two clicks a few hundred ms apart both read "no link yet".
+   */
+  const spawning = new Map<string, Promise<{ threadId: string | null; existing: boolean; reason: string | null }>>();
+
+  async function projectCandidates(): Promise<ProjectCandidate[]> {
+    const projects = await bb.sdk.projects.list();
+    return projects.map((project) => ({
+      id: project.id,
+      remoteUrls: project.gitRemoteUrl ? [project.gitRemoteUrl] : [],
+    }));
+  }
 
   /**
    * One board per owner, resolved on first use and kept for the process.
@@ -140,6 +193,18 @@ export default async function plugin(bb: BbPluginApi) {
       const meta = store.readMeta();
       const { statusOrder, projectBoard } = await settings.get();
       const rows = store.readRows();
+
+      let candidates: ProjectCandidate[] = [];
+      try {
+        candidates = await projectCandidates();
+      } catch (error) {
+        bb.log.warn(`could not resolve projects: ${String(error)}`);
+      }
+      const spawnable = new Set(
+        rows.map((row) => row.repo).filter((repo) => matchProjectForRepo(repo, candidates)),
+      );
+      const links = store.threadLinks();
+
       return {
         // The panel groups by status but must not invent the order; the board's
         // columns are the user's, so their order is a setting.
@@ -149,11 +214,73 @@ export default async function plugin(bb: BbPluginApi) {
         // exist, and the picker must only offer what `item-edit` will accept.
         statusOptions: statusOptionsFor(rows),
         boardName: projectBoard,
-        rows,
+        rows: rows.map((row) => ({
+          ...row,
+          canSpawn: spawnable.has(row.repo),
+          threadId: links.get(`${row.repo}#${row.number}`) ?? null,
+        })),
         sweptAt: meta.sweptAt,
         truncated: meta.truncated,
         lastError: meta.lastError,
       };
+    },
+
+    async startThread({ repo, number }) {
+      const key = `${repo}#${number}`;
+
+      const inFlight = spawning.get(key);
+      if (inFlight) return inFlight;
+
+      const attempt = (async () => {
+        const existingThreadId = store.threadFor(repo, number);
+        if (existingThreadId) {
+          return { threadId: existingThreadId, existing: true, reason: null };
+        }
+
+        const row = store.readRows().find((entry) => entry.repo === repo && entry.number === number);
+        if (!row) {
+          return { threadId: null, existing: false, reason: `#${number} is no longer in the sweep.` };
+        }
+
+        const projectId = matchProjectForRepo(repo, await projectCandidates());
+        if (!projectId) {
+          return { threadId: null, existing: false, reason: `No bb project is checked out for ${repo}.` };
+        }
+
+        const { providerId, model, permissionMode } = await settings.get();
+        const mode = parsePermissionMode(permissionMode);
+        const chosenModel = model.trim();
+
+        const thread = await bb.sdk.threads.spawn({
+          projectId,
+          // The project's own default rather than a worktree forced from here:
+          // an issue has no branch to land on, so there is nothing this plugin
+          // knows about the workspace that the project's setting does not.
+          environment: { type: "project-default" },
+          ...(providerId ? { providerId } : {}),
+          ...(chosenModel ? { model: chosenModel } : {}),
+          permissionMode: mode,
+          prompt: buildPrompt(row),
+          title: threadTitle(row.title, number),
+        });
+
+        bb.log.info(
+          `started ${thread.id} for ${key}` +
+            ` on ${providerId || "the default provider"}` +
+            (chosenModel ? ` with ${chosenModel}` : "") +
+            `, permission mode ${mode}`,
+        );
+        store.linkThread(repo, number, thread.id, Date.now());
+        bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+        return { threadId: thread.id, existing: false, reason: null };
+      })();
+
+      spawning.set(key, attempt);
+      try {
+        return await attempt;
+      } finally {
+        spawning.delete(key);
+      }
     },
 
     async setBoardStatus({ repo, number, status }) {
@@ -194,6 +321,15 @@ export default async function plugin(bb: BbPluginApi) {
       return sweepNow();
     },
   });
+
+  // A thread the user archived or deleted should not keep its issue pinned to
+  // it, otherwise the row offers to open a thread that is gone.
+  for (const event of ["thread.archived", "thread.deleted"] as const) {
+    bb.events.on(event, ({ thread }) => {
+      store.unlinkThread(thread.id);
+      bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+    });
+  }
 
   bb.background.service("sweep", {
     async start(signal) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   definePluginApp,
+  useBbNavigate,
   useRealtime,
   useRpc,
   UrlLink,
@@ -28,6 +29,8 @@ type Row = {
   boardStatus: string | null;
   onBoard: boolean;
   blockedBy: number;
+  threadId: string | null;
+  canSpawn: boolean;
   createdAt: number;
   updatedAt: number;
   commentsCount: number;
@@ -174,18 +177,75 @@ function StatusCell({
   );
 }
 
+/**
+ * Start or open the thread for one issue.
+ *
+ * This column replaced "Updated", which is the right trade: the age of an
+ * issue is context, and context belongs under the title, while starting work
+ * is the thing you came to the panel to do.
+ */
+function ThreadAction({
+  row,
+  isStarting,
+  onStart,
+  onOpen,
+}: {
+  row: Row;
+  isStarting: boolean;
+  onStart: (row: Row) => void;
+  onOpen: (threadId: string) => void;
+}) {
+  if (row.threadId) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full whitespace-nowrap"
+        onClick={() => onOpen(row.threadId!)}
+      >
+        Open thread
+      </Button>
+    );
+  }
+
+  return (
+    // The title sits on the wrapper, not the Button: a disabled button fires
+    // no pointer events, so a tooltip on it would never show.
+    <span
+      title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
+      className="block"
+    >
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full whitespace-nowrap"
+        disabled={!row.canSpawn || isStarting}
+        onClick={() => onStart(row)}
+      >
+        {isStarting ? "Starting…" : "Start thread"}
+      </Button>
+    </span>
+  );
+}
+
 function IssueTable({
   rows,
   showRepo,
   statusOptions,
   busyKeys,
+  starting,
   onPick,
+  onStart,
+  onOpen,
 }: {
   rows: Row[];
   showRepo: boolean;
   statusOptions: string[];
   busyKeys: ReadonlySet<string>;
+  starting: ReadonlySet<string>;
   onPick: (row: Row, status: string) => void;
+  onStart: (row: Row) => void;
+  onOpen: (threadId: string) => void;
 }) {
   // One clock for the whole render, so two rows updated a second apart never
   // disagree about what "now" is.
@@ -198,7 +258,7 @@ function IssueTable({
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`w-[10rem] ${HEAD}`}>Status</TableHead>
-            <TableHead className={`w-[7rem] ${HEAD}`}>Updated</TableHead>
+            <TableHead className="w-[9.5rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -207,9 +267,6 @@ function IssueTable({
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
                 <TableCell className="align-top">
-                  {showRepo ? (
-                    <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
-                  ) : null}
                   {/*
                     An explicit target opts out of BB's in-app browser: BB uses
                     its URL preference only for ordinary activation and leaves
@@ -225,6 +282,17 @@ function IssueTable({
                   >
                     {row.title} (#{row.number})
                   </UrlLink>
+                  {/*
+                    The age and comment count used to be their own column. The
+                    action took that column, and they are context rather than
+                    something to act on, so they read better under the title
+                    than they did beside it.
+                  */}
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {[showRepo ? row.repo : null, relativeTime(row.updatedAt, now), comments]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
                 </TableCell>
                 <TableCell className="align-top">
                   <StatusCell
@@ -234,14 +302,13 @@ function IssueTable({
                     onPick={(status) => onPick(row, status)}
                   />
                 </TableCell>
-                <TableCell className="align-top text-xs text-muted-foreground">
-                  <span
-                    className="block whitespace-nowrap"
-                    title={new Date(row.updatedAt).toLocaleString()}
-                  >
-                    {relativeTime(row.updatedAt, now)}
-                  </span>
-                  {comments ? <span className="block whitespace-nowrap">{comments}</span> : null}
+                <TableCell className="align-top">
+                  <ThreadAction
+                    row={row}
+                    isStarting={starting.has(`${row.repo}#${row.number}`)}
+                    onStart={onStart}
+                    onOpen={onOpen}
+                  />
                 </TableCell>
               </TableRow>
             );
@@ -258,6 +325,38 @@ function Panel() {
   // Per-row, not one flag: two statuses can be set in quick succession and a
   // single flag would lock the whole table for the first one.
   const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(new Set());
+  const [starting, setStarting] = useState<ReadonlySet<string>>(new Set());
+  const navigate = useBbNavigate();
+
+  const onOpen = useCallback((threadId: string) => navigate.toThread(threadId), [navigate]);
+
+  const onStart = useCallback(
+    (row: Row) => {
+      const key = `${row.repo}#${row.number}`;
+      // Marked before awaiting anything, so the button changes on the same tick
+      // as the click rather than after the spawn returns.
+      setStarting((keys) => new Set(keys).add(key));
+
+      void (async () => {
+        try {
+          const result = await rpc.call("startThread", { repo: row.repo, number: row.number });
+          if (!result.threadId) {
+            toast.error(result.reason ?? "Could not start a thread.");
+            return;
+          }
+          if (!result.existing) toast.success(`Started a thread for ${key}`);
+          await reload();
+        } finally {
+          setStarting((keys) => {
+            const next = new Set(keys);
+            next.delete(key);
+            return next;
+          });
+        }
+      })();
+    },
+    [reload, rpc],
+  );
 
   const onPick = useCallback(
     async (row: Row, status: string) => {
@@ -365,7 +464,10 @@ function Panel() {
                 showRepo={showRepo}
                 statusOptions={listing.statusOptions}
                 busyKeys={busyKeys}
+                starting={starting}
                 onPick={(row, status) => void onPick(row, status)}
+                onStart={onStart}
+                onOpen={onOpen}
               />
             </section>
           ))

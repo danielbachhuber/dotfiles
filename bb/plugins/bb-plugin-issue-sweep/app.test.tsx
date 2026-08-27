@@ -21,6 +21,8 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     boardStatus: null,
     onBoard: false,
     blockedBy: 0,
+    threadId: null,
+    canSpawn: true,
     ...overrides,
   };
 }
@@ -78,9 +80,11 @@ describe("panel", () => {
     expect(await slot.findByText(/\(#42\)$/)).toBeInTheDocument();
   });
 
-  it("shows the comment count", async () => {
+  it("shows the age and comment count under the title", async () => {
+    // Both used to be their own column; the action took it, so they moved to
+    // the title cell rather than being dropped.
     const slot = render(listing());
-    expect(await slot.findByText("2 comments")).toBeInTheDocument();
+    expect(await slot.findByText(/3h ago · 2 comments/)).toBeInTheDocument();
   });
 
   it("keeps its own order, since the server already sorted", async () => {
@@ -93,10 +97,10 @@ describe("panel", () => {
       }),
     );
     await slot.findByText(/^Newer issue \(#/);
-    // The first cell is now the title, which carries the number.
+    // The title cell also carries the age line now, so read the link itself.
     const titles = Array.from(
-      slot.container.querySelectorAll("tbody tr td:first-child"),
-      (cell) => cell.textContent,
+      slot.container.querySelectorAll("tbody tr td:first-child a"),
+      (link) => link.textContent,
     );
     expect(titles).toEqual(["Newer issue (#7)", "Older issue (#3)"]);
   });
@@ -104,7 +108,7 @@ describe("panel", () => {
   it("names the repository only when more than one is in play", async () => {
     const one = render(listing());
     await one.findByText(/Widget rotation/i);
-    expect(one.queryByText("acme/widgets")).not.toBeInTheDocument();
+    expect(one.queryByText(/acme\/widgets/)).not.toBeInTheDocument();
     one.lifecycle.unmount();
 
     const many = render(
@@ -112,8 +116,9 @@ describe("panel", () => {
         rows: [rowFixture(), rowFixture({ repo: "acme/gadgets", number: 8, title: "Other" })],
       }),
     );
-    expect(await many.findByText("acme/widgets")).toBeInTheDocument();
-    expect(await many.findByText("acme/gadgets")).toBeInTheDocument();
+    // The repository now shares its line with the age, so match within it.
+    expect(await many.findByText(/^acme\/widgets · /)).toBeInTheDocument();
+    expect(await many.findByText(/^acme\/gadgets · /)).toBeInTheDocument();
   });
 
   it("says so when nothing is assigned", async () => {
@@ -263,6 +268,75 @@ describe("blocked section", () => {
     );
     const headings = (await slot.findAllByRole("heading")).map((node) => node.textContent);
     expect(headings).toEqual(["Ready (1)", "Blocked (1)"]);
+  });
+});
+
+describe("thread action", () => {
+  it("offers to start a thread when the issue has none", async () => {
+    const slot = render(listing());
+    expect(await slot.findByRole("button", { name: "Start thread" })).toBeEnabled();
+  });
+
+  it("offers to open the thread once one exists", async () => {
+    const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
+    expect(await slot.findByRole("button", { name: "Open thread" })).toBeInTheDocument();
+    expect(slot.queryByRole("button", { name: "Start thread" })).toBeNull();
+  });
+
+  it("will not offer to start one for a repository with no checkout", async () => {
+    // The spawn would fail on the server; a disabled button says so up front.
+    const slot = render(listing({ rows: [rowFixture({ canSpawn: false })] }));
+    expect(await slot.findByRole("button", { name: "Start thread" })).toBeDisabled();
+  });
+
+  it("starts one thread for the issue that was clicked", async () => {
+    const calls: unknown[] = [];
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ number: 1, title: "First" }),
+          rowFixture({ number: 2, title: "Second" }),
+        ],
+      }),
+      {
+        startThread: (input: unknown) => {
+          calls.push(input);
+          return { threadId: "thr_new", existing: false, reason: null };
+        },
+      },
+    );
+
+    const buttons = await slot.findAllByRole("button", { name: "Start thread" });
+    fireEvent.click(buttons[1]!);
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toEqual({ repo: "acme/widgets", number: 2 });
+  });
+
+  it("disables the button while the spawn is in flight", async () => {
+    // A second click before the first returns is how two threads got created
+    // for one row in pr-sweep.
+    let release: (() => void) | null = null;
+    const slot = render(listing(), {
+      startThread: () =>
+        new Promise((resolve) => {
+          release = () => resolve({ threadId: "thr_new", existing: false, reason: null });
+        }),
+    });
+
+    const button = await slot.findByRole("button", { name: "Start thread" });
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(slot.getByRole("button", { name: "Starting…" })).toBeDisabled(),
+    );
+    release?.();
+  });
+
+  it("keeps the age line, which the action column replaced", async () => {
+    const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
+    await slot.findByRole("button", { name: "Open thread" });
+    expect(slot.getByText(/3h ago/)).toBeInTheDocument();
   });
 });
 

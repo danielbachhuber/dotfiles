@@ -17,6 +17,13 @@ export const MIGRATIONS = [
      truncated INTEGER NOT NULL DEFAULT 0,
      last_error TEXT
    )`,
+  `CREATE TABLE IF NOT EXISTS issue_threads (
+     repo TEXT NOT NULL,
+     number INTEGER NOT NULL,
+     thread_id TEXT NOT NULL,
+     created_at INTEGER NOT NULL,
+     PRIMARY KEY (repo, number)
+   )`,
 ];
 
 export interface SweepMeta {
@@ -44,6 +51,13 @@ export interface Store {
   readMeta(): SweepMeta;
   /** Notes why a sweep failed, leaving the last good rows in place. */
   recordFailure(message: string): void;
+  /** Records the thread started for an issue. Re-linking replaces it. */
+  linkThread(repo: string, number: number, threadId: string, createdAt: number): void;
+  threadFor(repo: string, number: number): string | null;
+  /** repo#number -> threadId, for stamping the whole listing in one read. */
+  threadLinks(): Map<string, string>;
+  /** Drops the link when its thread is archived or deleted. */
+  unlinkThread(threadId: string): void;
 }
 
 export function createStore(db: DatabaseLike): Store {
@@ -59,6 +73,16 @@ export function createStore(db: DatabaseLike): Store {
        truncated = excluded.truncated,
        last_error = NULL`,
   );
+  const insertLink = db.prepare(
+    `INSERT INTO issue_threads (repo, number, thread_id, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(repo, number) DO UPDATE SET
+       thread_id = excluded.thread_id,
+       created_at = excluded.created_at`,
+  );
+  const selectLink = db.prepare(`SELECT thread_id FROM issue_threads WHERE repo = ? AND number = ?`);
+  const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM issue_threads`);
+  const deleteLink = db.prepare(`DELETE FROM issue_threads WHERE thread_id = ?`);
   const upsertFailure = db.prepare(
     `INSERT INTO meta (id, swept_at, truncated, last_error)
      VALUES (1, NULL, 0, ?)
@@ -100,6 +124,24 @@ export function createStore(db: DatabaseLike): Store {
 
     recordFailure(message) {
       upsertFailure.run(message);
+    },
+
+    linkThread(repo, number, threadId, createdAt) {
+      insertLink.run(repo, number, threadId, createdAt);
+    },
+
+    threadFor(repo, number) {
+      const link = selectLink.get(repo, number) as { thread_id: string } | undefined;
+      return link?.thread_id ?? null;
+    },
+
+    threadLinks() {
+      const links = selectLinks.all() as Array<{ repo: string; number: number; thread_id: string }>;
+      return new Map(links.map((link) => [`${link.repo}#${link.number}`, link.thread_id]));
+    },
+
+    unlinkThread(threadId) {
+      deleteLink.run(threadId);
     },
   };
 }
