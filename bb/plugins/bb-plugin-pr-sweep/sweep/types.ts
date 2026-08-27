@@ -52,6 +52,14 @@ export interface ClassifiedRow {
    * as ready to merge.
    */
   lastCommentBy: string | null;
+  /**
+   * Unresolved inline review threads. Invisible to every field `gh pr list`
+   * can return, and the reason an approved pull request can still have
+   * comments to address.
+   */
+  unresolvedThreads: number;
+  /** Of those, how many sit on code that has since changed. */
+  outdatedThreads: number;
   /** Answered and re-requested: the ball is in the reviewer's court. */
   awaitingReReview: boolean;
 }

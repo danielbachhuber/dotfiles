@@ -1,3 +1,4 @@
+import { fetchThreadCounts, threadKey } from "./threads.js";
 import {
   GhUnavailableError,
   REPO_SLUG_PATTERN,
@@ -99,6 +100,20 @@ export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepRe
       if (error instanceof GhUnavailableError) throw error;
       failedRepos.push(repo);
     }
+  }
+
+  // One extra call for the whole sweep. A failure here loses a hint, not the
+  // sweep, so the rows are returned either way.
+  try {
+    const counts = await fetchThreadCounts(gh);
+    for (const row of rows) {
+      const found = counts.get(threadKey(row.repo, row.number));
+      if (!found) continue;
+      row.unresolvedThreads = found.unresolved;
+      row.outdatedThreads = found.outdated;
+    }
+  } catch {
+    // Leave the counts at zero.
   }
 
   return { rows, repos, failedRepos, truncated, sweptAt: now() };

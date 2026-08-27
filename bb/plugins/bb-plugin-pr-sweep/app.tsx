@@ -58,6 +58,8 @@ type Row = {
   waitingOn: string[];
   awaitingReReview: boolean;
   lastCommentBy: string | null;
+  unresolvedThreads: number;
+  outdatedThreads: number;
   canSpawn: boolean;
   threadId: string | null;
 };
@@ -119,6 +121,16 @@ function Review({ row }: { row: Row }) {
   }
   if (row.awaitingReReview) {
     lines.push({ key: "re-review", text: "awaiting re-review" });
+  }
+  if (row.unresolvedThreads > 0) {
+    // Inline threads are the case an approval hides: robennals can approve
+    // #5801 and still have left three comments on the diff.
+    const outdated = row.outdatedThreads > 0 ? `, ${row.outdatedThreads} outdated` : "";
+    lines.push({
+      key: "threads",
+      text: `${row.unresolvedThreads} unresolved comment${row.unresolvedThreads === 1 ? "" : "s"}${outdated}`,
+      strong: true,
+    });
   }
   if (row.lastCommentBy) {
     // Last word belongs to someone else, so the pull request is probably

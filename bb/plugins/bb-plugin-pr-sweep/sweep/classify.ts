@@ -207,6 +207,8 @@ export function classifyOne(
     commentedBy: commenters(pr),
     waitingOn: requestedReviewers(pr),
     lastCommentBy: lastCommentBy(pr),
+    unresolvedThreads: 0,
+    outdatedThreads: 0,
     awaitingReReview: isAwaitingReReview(pr),
   };
 }

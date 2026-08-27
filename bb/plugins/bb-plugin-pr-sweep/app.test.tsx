@@ -21,6 +21,8 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     waitingOn: [],
     awaitingReReview: false,
     lastCommentBy: null,
+    unresolvedThreads: 0,
+    outdatedThreads: 0,
     canSpawn: true,
     threadId: null,
     ...overrides,
@@ -730,5 +732,43 @@ describe("the Open pull request page", () => {
     fireEvent.change(field, { target: { value: "42" } });
     fireEvent.blur(field);
     await slot.findByText(/not removed when the thread is archived/i);
+  });
+});
+
+describe("unresolved review threads", () => {
+  it("reports them even on a pull request that is otherwise ready", async () => {
+    // #5801's shape: approved, green, and three inline comments to address.
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({
+            flags: ["merge-ready"],
+            group: "ready-to-merge",
+            approvedBy: ["robennals"],
+            unresolvedThreads: 3,
+          }),
+        ],
+      }),
+    );
+    await slot.findByText("approved by robennals");
+    await slot.findByText("3 unresolved comments");
+  });
+
+  it("names how many sit on code that has since changed", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ unresolvedThreads: 3, outdatedThreads: 1 })] }),
+    );
+    await slot.findByText("3 unresolved comments, 1 outdated");
+  });
+
+  it("uses the singular for one", async () => {
+    const slot = render(listing({ rows: [rowFixture({ unresolvedThreads: 1 })] }));
+    await slot.findByText("1 unresolved comment");
+  });
+
+  it("says nothing when every thread is resolved", async () => {
+    const slot = render(listing({ rows: [rowFixture({ unresolvedThreads: 0 })] }));
+    await slot.findByText(/Add the widget endpoint/);
+    expect(slot.queryByText(/unresolved comment/)).toBeNull();
   });
 });

@@ -89,6 +89,8 @@ function seedRow() {
     waitingOn: [],
     awaitingReReview: false,
     lastCommentBy: null,
+    unresolvedThreads: 0,
+    outdatedThreads: 0,
   };
 }
 

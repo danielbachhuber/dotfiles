@@ -24,6 +24,8 @@ const rowSchema = z.object({
   waitingOn: z.array(z.string()),
   awaitingReReview: z.boolean(),
   lastCommentBy: z.string().nullable(),
+  unresolvedThreads: z.number(),
+  outdatedThreads: z.number(),
   canSpawn: z.boolean(),
   /** The thread already started for this PR, if any. */
   threadId: z.string().nullable(),
