@@ -114,14 +114,60 @@ and drives `gh`, and never writes to the checkout.
 Requires `gh` on the server's PATH, authenticated as you. When it is not, set
 `DEPENDABOT_GH` to its absolute path in the automation's script variables.
 
+## The full inventory
+
+Everything bb keeps in `bb.db`, and whether `setup.sh` puts it back on a new
+machine. Audited 2026-08-27.
+
+| Configuration | Reproduced by `setup.sh` |
+| --- | --- |
+| First-party plugins in `plugins/` | Yes, installed from a `path:` source |
+| Automations in `automations/` | Yes, one per entry in `BB_DEPENDABOT_SWEEPS` |
+| Which builtin plugins are disabled | No, see below |
+| Plugin settings | No, see below |
+| Registered projects | No, added by hand as you start work in a repo |
+| Plugin marketplaces | Nothing to do; only the default `bb-community` is registered |
+| `connect` pairing | No, pairing is interactive and machine-specific |
+| Settings → General, appearance, keybindings, experiments | Nothing to do; all still at their defaults |
+
+Two gaps are deliberate rather than pending.
+
+**Disabled builtin plugins.** Four ship with bb and are turned off here:
+`ask-user-question`, `monaco-editor`, `plugin-api-tester`, and `workflows`.
+`bb plugin list` prints the state of each. Re-disable them by hand on a new
+machine, or add `bb plugin disable <id>` lines to `setup.sh` if that becomes
+tedious.
+
+**Plugin settings.** One is set today: `issue-sweep` has a `projectBoard`
+naming the board its panel buckets issues by. The value is a real team name, so
+it cannot be committed to this public repository, and there is no
+`environment.local` indirection for plugin settings the way there is for
+automations. Set it in the plugin's settings panel.
+
+Registered projects are also left out on purpose. A project binds a name to an
+absolute checkout path, and both are private, so `bb project add` belongs in the
+same category as the settings above.
+
+The AI-service settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`,
+`BB_TRANSCRIPTION`) read as populated in `bb settings ai-services`, but nothing
+in this repository exports them and they are absent from `bb.db`, so what you
+see is bb resolving its own defaults against the one registered provider. The
+guidance above about putting them in `../environment.local` applies the day you
+want to pin them to something else.
+
 ## Usage
 
 ```sh
 ./setup.sh
 ```
 
-It is idempotent: already-installed plugins are skipped, and an existing
-non-empty `~/.bb/skills` is left alone rather than replaced.
+It is idempotent: an already-installed plugin is skipped, and an automation
+whose name is already registered against the project is left alone. Directories
+under `plugins/` without a `bb` manifest block are shared libraries, not
+plugins, and are passed over.
+
+Re-running it does not pick up an edit to a script under `automations/`, because
+bb runs its own snapshot copy. Refresh those with the paused update above.
 
 ## Building plugins
 
