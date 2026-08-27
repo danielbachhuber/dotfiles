@@ -8,7 +8,7 @@ import {
 export { GhUnavailableError, createGhRunner };
 export type { GhRunner };
 
-import { blockedKey, fetchBlockedBy } from "./blocked.js";
+import { factsKey, fetchIssueFacts } from "./graph.js";
 import {
   REPO_SLUG_PATTERN,
   sortRows,
@@ -90,12 +90,14 @@ export async function runSweep(
 
   // One query for the whole sweep, skipped when there is nothing to stamp, and
   // a failure here is not worth losing the listing over: the rows are correct,
-  // they just cannot say what is blocked.
+  // they just cannot say what is blocked or what is already in review.
   if (rows.length > 0) {
     try {
-      const blocked = await fetchBlockedBy(gh);
+      const facts = await fetchIssueFacts(gh);
       for (const row of rows) {
-        row.blockedBy = blocked.get(blockedKey(row.repo, row.number)) ?? 0;
+        const fact = facts.get(factsKey(row.repo, row.number));
+        row.blockedBy = fact?.openBlockers ?? 0;
+        row.closingPr = fact?.closingPr ?? null;
       }
     } catch (error) {
       if (error instanceof GhUnavailableError) throw error;

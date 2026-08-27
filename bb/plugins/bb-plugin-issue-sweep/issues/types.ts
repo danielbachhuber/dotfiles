@@ -39,6 +39,11 @@ export interface IssueRow {
    * field, so only GraphQL reports them.
    */
   blockedBy: number;
+  /**
+   * An open pull request that closes this issue, or null. Stamped alongside
+   * blockedBy from the same query.
+   */
+  closingPr: number | null;
   /** The status column on the configured board, or null when it has none. */
   boardStatus: string | null;
   /**
@@ -89,6 +94,7 @@ export function toRow(raw: RawIssue, board = ""): IssueRow | null {
     // Nothing in the listing call knows about dependencies; the sweep stamps
     // this from its own query once every row exists.
     blockedBy: 0,
+    closingPr: null,
     boardStatus: placement.status,
     onBoard: placement.onBoard,
   };

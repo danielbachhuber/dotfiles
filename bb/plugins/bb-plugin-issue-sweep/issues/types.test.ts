@@ -32,6 +32,7 @@ describe("toRow", () => {
       updatedAt: Date.parse("2026-01-03T00:00:00Z"),
       commentsCount: 3,
       blockedBy: 0,
+      closingPr: null,
       boardStatus: null,
       onBoard: false,
     });

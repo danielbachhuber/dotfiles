@@ -24,6 +24,13 @@ export const MIGRATIONS = [
      created_at INTEGER NOT NULL,
      PRIMARY KEY (repo, number)
    )`,
+  `CREATE TABLE IF NOT EXISTS board_auto (
+     repo TEXT NOT NULL,
+     number INTEGER NOT NULL,
+     status TEXT NOT NULL,
+     applied_at INTEGER NOT NULL,
+     PRIMARY KEY (repo, number)
+   )`,
 ];
 
 export interface SweepMeta {
@@ -58,6 +65,15 @@ export interface Store {
   threadLinks(): Map<string, string>;
   /** Drops the link when its thread is archived or deleted. */
   unlinkThread(threadId: string): void;
+  /**
+   * The last board status this plugin moved an issue to on its own, or null.
+   *
+   * The point is to move an issue at most once per target. Without it the
+   * sweep would drag a card back to "In Review" every five minutes for as long
+   * as the pull request stayed open, undoing any move made by hand.
+   */
+  autoAppliedStatus(repo: string, number: number): string | null;
+  recordAutoStatus(repo: string, number: number, status: string, appliedAt: number): void;
 }
 
 export function createStore(db: DatabaseLike): Store {
@@ -83,6 +99,14 @@ export function createStore(db: DatabaseLike): Store {
   const selectLink = db.prepare(`SELECT thread_id FROM issue_threads WHERE repo = ? AND number = ?`);
   const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM issue_threads`);
   const deleteLink = db.prepare(`DELETE FROM issue_threads WHERE thread_id = ?`);
+  const selectAuto = db.prepare(`SELECT status FROM board_auto WHERE repo = ? AND number = ?`);
+  const upsertAuto = db.prepare(
+    `INSERT INTO board_auto (repo, number, status, applied_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(repo, number) DO UPDATE SET
+       status = excluded.status,
+       applied_at = excluded.applied_at`,
+  );
   const upsertFailure = db.prepare(
     `INSERT INTO meta (id, swept_at, truncated, last_error)
      VALUES (1, NULL, 0, ?)
@@ -142,6 +166,15 @@ export function createStore(db: DatabaseLike): Store {
 
     unlinkThread(threadId) {
       deleteLink.run(threadId);
+    },
+
+    autoAppliedStatus(repo, number) {
+      const row = selectAuto.get(repo, number) as { status: string } | undefined;
+      return row?.status ?? null;
+    },
+
+    recordAutoStatus(repo, number, status, appliedAt) {
+      upsertAuto.run(repo, number, status, appliedAt);
     },
   };
 }

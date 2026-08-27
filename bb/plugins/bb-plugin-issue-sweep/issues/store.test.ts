@@ -16,6 +16,7 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
     boardStatus: null,
     onBoard: false,
     blockedBy: 0,
+    closingPr: null,
     ...overrides,
   };
 }
@@ -80,5 +81,37 @@ describe("createStore", () => {
     store.replaceAll(result({ rows: [] }));
     expect(store.readRows()).toEqual([]);
     expect(store.readMeta().sweptAt).toBe(1_700_000_000_000);
+  });
+});
+
+describe("auto-applied board status", () => {
+  it("remembers the last status this plugin applied on its own", () => {
+    store.recordAutoStatus("acme/widgets", 12, "In Review", 1_700_000_000_000);
+    expect(store.autoAppliedStatus("acme/widgets", 12)).toBe("In Review");
+  });
+
+  it("reports nothing for an issue it has never moved", () => {
+    expect(store.autoAppliedStatus("acme/widgets", 99)).toBeNull();
+  });
+
+  it("keeps one record per issue, the most recent", () => {
+    // Start thread writes In Progress, then a pull request writes In Review;
+    // only the latter should block a repeat.
+    store.recordAutoStatus("acme/widgets", 12, "In Progress", 1);
+    store.recordAutoStatus("acme/widgets", 12, "In Review", 2);
+    expect(store.autoAppliedStatus("acme/widgets", 12)).toBe("In Review");
+  });
+
+  it("keys by repository as well as number", () => {
+    store.recordAutoStatus("acme/widgets", 12, "In Review", 1);
+    expect(store.autoAppliedStatus("acme/gadgets", 12)).toBeNull();
+  });
+
+  it("survives the listing being swapped out under it", () => {
+    // replaceAll wipes rows; a card this plugin already moved must not become
+    // eligible to be moved again just because the sweep refreshed.
+    store.recordAutoStatus("acme/widgets", 12, "In Review", 1);
+    store.replaceAll(result());
+    expect(store.autoAppliedStatus("acme/widgets", 12)).toBe("In Review");
   });
 });

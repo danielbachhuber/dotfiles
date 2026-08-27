@@ -10,6 +10,7 @@ const rowSchema = z.object({
   boardStatus: z.string().nullable(),
   onBoard: z.boolean(),
   blockedBy: z.number(),
+  closingPr: z.number().nullable(),
   /** The thread this plugin started for the issue, or null. */
   threadId: z.string().nullable(),
   /** False when no bb project is checked out for the issue's repository. */

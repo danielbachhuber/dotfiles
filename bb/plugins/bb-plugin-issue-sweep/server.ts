@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { rpcContract } from "./issues/contract.js";
-import { parseStatusOrder } from "./issues/board.js";
+import { parseStatusOrder, shouldAutoApply } from "./issues/board.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./issues/gh.js";
 import {
   BoardUnavailableError,
@@ -14,6 +14,7 @@ import {
 import { buildPrompt, threadTitle } from "./issues/prompt.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./issues/spawn-target.js";
 import { MIGRATIONS, createStore } from "./issues/store.js";
+import type { IssueRow } from "./issues/types.js";
 
 export { rpcContract };
 
@@ -72,6 +73,18 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Provider for spawned threads",
       // Blank falls back to bb's default.
       default: "claude-code",
+    },
+    statusOnStart: {
+      type: "string",
+      label: "Board status when a thread starts",
+      // Blank turns the move off. A name rather than a fixed constant because
+      // a board is free to call this column whatever it likes.
+      default: "In Progress",
+    },
+    statusOnPullRequest: {
+      type: "string",
+      label: "Board status when a closing pull request opens",
+      default: "In Review",
     },
   });
 
@@ -136,6 +149,10 @@ export default async function plugin(bb: BbPluginApi) {
       // Before the publish, so the panel's reload finds the options already
       // there and renders pickers on its first paint rather than its second.
       await warmBoards(result.rows);
+      // Also before the publish, but the rows it moves are stale by then, so
+      // the moved cards show their new status on the next sweep rather than
+      // this one. Worth it to avoid a second full listing call per promotion.
+      await promoteIssuesInReview(result.rows);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
       bb.log.info(`swept ${result.rows.length} open issue(s)`);
       return { ok: true, error: null };
@@ -188,6 +205,74 @@ export default async function plugin(bb: BbPluginApi) {
       if (project) return project.statusOptions.map((option) => option.name);
     }
     return [];
+  }
+
+  /**
+   * Moves an issue's card on the board, on this plugin's own initiative rather
+   * than because someone picked a status.
+   *
+   * Applied at most once per target, which is what `board_auto` records. The
+   * sweep runs every few minutes and a pull request stays open for days, so
+   * without that a card dragged back by hand would be dragged forward again
+   * before you finished reading the row.
+   *
+   * Everything here fails quietly. These moves are a convenience on top of the
+   * listing; a board that cannot be reached, or has no column by this name,
+   * must not turn into an error banner over a listing that is perfectly good.
+   */
+  async function autoSetStatus(
+    row: { repo: string; number: number; url: string; boardStatus: string | null },
+    target: string,
+  ): Promise<boolean> {
+    const wanted = target.trim();
+    const applied = store.autoAppliedStatus(row.repo, row.number);
+    if (!shouldAutoApply(row.boardStatus, applied, wanted)) return false;
+
+    try {
+      const { ghPath } = await settings.get();
+      const project = await boardFor(ownerOf(row.repo));
+      const option = project.statusOptions.find(
+        (candidate) => candidate.name.toLowerCase() === wanted.toLowerCase(),
+      );
+      if (!option) {
+        bb.log.warn(`${project.title} has no "${wanted}" status; leaving ${row.repo}#${row.number}`);
+        return false;
+      }
+
+      await applyBoardStatus(createGhRunner(ghPath), {
+        project,
+        repo: row.repo,
+        number: row.number,
+        url: row.url,
+        option,
+      });
+      store.recordAutoStatus(row.repo, row.number, option.name, Date.now());
+      bb.log.info(`moved ${row.repo}#${row.number} to ${option.name}`);
+      return true;
+    } catch (error) {
+      if (error instanceof BoardUnavailableError) return false;
+      bb.log.warn(`could not move ${row.repo}#${row.number} to ${wanted}: ${String(error)}`);
+      return false;
+    }
+  }
+
+  /**
+   * Promotes every issue whose closing pull request is open.
+   *
+   * Driven from the sweep rather than from an event because nothing tells this
+   * plugin that a pull request was opened — the "Fixes #n" link is a fact about
+   * the issue, discovered by asking.
+   */
+  async function promoteIssuesInReview(rows: readonly IssueRow[]): Promise<boolean> {
+    const { statusOnPullRequest } = await settings.get();
+    if (statusOnPullRequest.trim() === "") return false;
+
+    let moved = false;
+    for (const row of rows) {
+      if (row.closingPr === null) continue;
+      if (await autoSetStatus(row, statusOnPullRequest)) moved = true;
+    }
+    return moved;
   }
 
   bb.rpc.register(rpcContract, {
@@ -273,6 +358,13 @@ export default async function plugin(bb: BbPluginApi) {
             `, permission mode ${mode}`,
         );
         store.linkThread(repo, number, thread.id, Date.now());
+
+        // Starting work is the one moment the plugin knows more than the board
+        // does, so it says so. After the spawn deliberately: a board that
+        // cannot be reached must not stop a thread from being created.
+        const { statusOnStart } = await settings.get();
+        await autoSetStatus(row, statusOnStart);
+
         bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
         return { threadId: thread.id, existing: false, reason: null };
       })();

@@ -71,3 +71,31 @@ export function sectionOrder(configured: string[], present: readonly string[]): 
     .sort((a, b) => a.localeCompare(b));
   return [...configured, ...extra];
 }
+
+/**
+ * Whether this plugin should move an issue's card to `target` on its own.
+ *
+ * Three ways the answer is no, and each one exists because of a specific way
+ * the sweep could otherwise misbehave:
+ *
+ * - No target configured. The move is a convenience, and blank turns it off.
+ * - The card is already there. A write that changes nothing still costs a
+ *   round trip, and the sweep runs every few minutes.
+ * - This plugin already moved it to that same status once. This is the one
+ *   that matters: a pull request stays open for days, so without it every
+ *   sweep would drag a card back to "In Review" for as long as the pull
+ *   request lived, quietly undoing any move made by hand. Moving it once and
+ *   then leaving it alone is the difference between a helpful default and a
+ *   fight with the board.
+ */
+export function shouldAutoApply(
+  current: string | null,
+  alreadyApplied: string | null,
+  target: string,
+): boolean {
+  const wanted = target.trim().toLowerCase();
+  if (wanted === "") return false;
+  if ((current ?? "").trim().toLowerCase() === wanted) return false;
+  if ((alreadyApplied ?? "").trim().toLowerCase() === wanted) return false;
+  return true;
+}

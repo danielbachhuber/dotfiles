@@ -21,6 +21,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     boardStatus: null,
     onBoard: false,
     blockedBy: 0,
+    closingPr: null,
     threadId: null,
     canSpawn: true,
     ...overrides,
