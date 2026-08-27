@@ -400,9 +400,10 @@ describe("a merge-ready pull request with comments on it", () => {
 });
 
 describe("every button label fits its column", () => {
-  // The action column is 11rem and the button does not wrap, so a long label
-  // overflows and puts a horizontal scrollbar on the whole table. "Review
-  // comments and merge" did exactly that.
+  // The action column is 11.5rem, of which 1.5rem is cell padding, and the
+  // button does not wrap. A long label overflows and puts a horizontal
+  // scrollbar on the whole table; "Review comments and merge" did exactly
+  // that.
   const MAX_BUTTON_LABEL = 20;
 
   it("holds for every flag on its own", () => {

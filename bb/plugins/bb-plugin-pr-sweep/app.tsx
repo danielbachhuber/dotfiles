@@ -343,7 +343,14 @@ function PrTable({
             <TableHead className={`w-[9rem] ${HEAD}`}>Status</TableHead>
             <TableHead className={`hidden w-[9rem] lg:table-cell ${HEAD}`}>Checks</TableHead>
             <TableHead className={`hidden w-[15rem] xl:table-cell ${HEAD}`}>Review</TableHead>
-            <TableHead className="w-[11rem]" />
+            {/*
+              11.5rem, not 11: the cell padding went from px-2 to px-3 to match
+              the bundled GitHub plugin, and the extra 0.5rem has to come from
+              somewhere. The button does not wrap, so taking it out of the
+              content box is what put a horizontal scrollbar on this table once
+              before.
+            */}
+            <TableHead className="w-[11.5rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
