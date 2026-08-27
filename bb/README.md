@@ -100,6 +100,26 @@ sweeps instead of all at once. When the cap bites, the run says how many PRs it
 left behind rather than quietly stopping at five. A sweep that finds nothing new
 prints nothing at all, which bb records as a silent tick.
 
+Each thread gets its own checkout of the pull request branch, at
+`<workspace>-dependabot/pr-<number>`, so bb shows the PR and its CI state in the
+thread header. The branch name is what makes that work. bb resolves a thread's
+pull request by running bare `gh pr view` in the environment's working
+directory, and that resolves the local branch name, so only a checkout whose
+local branch *is* the PR head qualifies. A shared workspace sits on `main` and a
+bb-managed worktree carries a `bb/thr_...` branch; neither matches a pull
+request. The sweep therefore runs `git worktree add -B <head>` itself and hands
+the thread an unmanaged workspace. If that fails, because the branch is already
+checked out somewhere else or the fetch does not land, the thread still spawns
+against the shared workspace and the run says so on stderr.
+
+The same pass removes a checkout once its PR is no longer open and no
+unarchived thread still points at it, so an agent reading the code while the
+merge lands is never pulled out from under. Removal uses `git worktree remove`
+without `--force`: a dirty worktree is reported and left alone, since anything
+the review wrote there is worth seeing. The thread's transcript is untouched
+either way, though a thread reopened after its checkout is gone will report its
+workspace as unavailable.
+
 The threads stop at a draft assessment. Posting the comment, approving, and
 merging stay manual, because approving carries your identity.
 
@@ -133,9 +153,8 @@ export BB_DEPENDABOT_SWEEPS='[
 ]'
 ```
 
-`project` is the bb project name from `bb project list`. Threads attach to
-`workspace` rather than each getting a worktree: the review reads the repository
-and drives `gh`, and never writes to the checkout.
+`project` is the bb project name from `bb project list`, and `workspace` is the
+checkout the per-PR worktrees are branched from.
 
 Threads are pinned to Sonnet, and to the `claude-code` provider, rather than
 inheriting. Without `--model`, bb falls back to the project's remembered
@@ -143,8 +162,15 @@ default, which is whatever was last chosen by hand in that project, so a routine
 dependency bump would quietly ride on it. Override with `DEPENDABOT_MODEL` and
 `DEPENDABOT_PROVIDER` in the automation's script variables.
 
-Requires `gh` on the server's PATH, authenticated as you. When it is not, set
-`DEPENDABOT_GH` to its absolute path in the automation's script variables.
+The worktrees land beside the source checkout by default. Point
+`DEPENDABOT_WORKTREE_ROOT` somewhere else in the automation's script variables
+to move them. One worktree costs a tracked-file copy of the repository, roughly
+27 MB for psi-product, and lives only as long as its PR stays open.
+
+Requires `gh` and `git` on the server's PATH, `gh` authenticated as you. The
+server's PATH is not a login shell's, so when either is missing set
+`DEPENDABOT_GH` or `DEPENDABOT_GIT` to its absolute path in the automation's
+script variables.
 
 ## The full inventory
 

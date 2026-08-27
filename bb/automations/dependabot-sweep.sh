@@ -13,11 +13,16 @@
 # Configuration arrives as script variables (`--env-json`):
 #
 #   DEPENDABOT_REPO          owner/name to sweep. Required.
-#   DEPENDABOT_WORKSPACE     workspace path spawned threads attach to. Required.
+#   DEPENDABOT_WORKSPACE     source checkout the per-PR worktrees branch from,
+#                            and the fallback workspace when one cannot be
+#                            created. Required.
+#   DEPENDABOT_WORKTREE_ROOT directory holding the per-PR worktrees.
+#                            Default "<DEPENDABOT_WORKSPACE>-dependabot".
 #   DEPENDABOT_MAX_THREADS   most threads to spawn per run. Default 5.
 #   DEPENDABOT_PROVIDER      provider for spawned threads. Default claude-code.
 #   DEPENDABOT_MODEL         model for spawned threads. Default claude-sonnet-5.
 #   DEPENDABOT_GH            path to the gh CLI, when it is not on PATH.
+#   DEPENDABOT_GIT           path to the git CLI, when it is not on PATH.
 #
 # BB_PROJECT_ID and BB_CLI are injected by the automations plugin.
 
@@ -25,6 +30,7 @@ set -euo pipefail
 
 REPO="${DEPENDABOT_REPO:?DEPENDABOT_REPO is required (owner/name)}"
 WORKSPACE="${DEPENDABOT_WORKSPACE:?DEPENDABOT_WORKSPACE is required (workspace path)}"
+WORKTREE_ROOT="${DEPENDABOT_WORKTREE_ROOT:-${WORKSPACE}-dependabot}"
 PROJECT="${BB_PROJECT_ID:?BB_PROJECT_ID is not set; run this as a bb automation}"
 MAX_THREADS="${DEPENDABOT_MAX_THREADS:-5}"
 PROVIDER="${DEPENDABOT_PROVIDER:-claude-code}"
@@ -55,10 +61,29 @@ resolve_gh() {
 }
 GH="$(resolve_gh)"
 
+resolve_git() {
+  if [ -n "${DEPENDABOT_GIT:-}" ]; then
+    printf '%s' "$DEPENDABOT_GIT"
+    return
+  fi
+  if command -v git >/dev/null 2>&1; then
+    command -v git
+    return
+  fi
+  for candidate in /opt/homebrew/bin/git /usr/local/bin/git /usr/bin/git; do
+    [ -x "$candidate" ] && printf '%s' "$candidate" && return
+  done
+  echo "git was not found. Set DEPENDABOT_GIT to its absolute path." >&2
+  exit 1
+}
+GIT="$(resolve_git)"
+
 # --- The queue ---------------------------------------------------------------
+#
+# headRefName comes along because the per-PR worktree is checked out on it.
 
 open_prs="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state open \
-  --json number,title --limit 50)"
+  --json number,title,headRefName --limit 50)"
 
 # --- What already has a thread -----------------------------------------------
 #
@@ -106,10 +131,44 @@ dependabot_package() {
   esac
 }
 
+# A checkout of the pull request branch itself, so that bb shows the PR and its
+# CI state in the thread header.
+#
+# bb reads a thread's pull request by running bare `gh pr view` in the
+# environment's working directory, and that resolves the *local* branch name.
+# Only a checkout whose local branch is named after the PR head qualifies: the
+# shared workspace sits on main, and a bb-managed worktree branched from the
+# head gets a `bb/thr_...` branch that matches no pull request. So the sweep
+# creates the worktree itself and hands the thread an unmanaged workspace.
+#
+# Prints the path on success and nothing on failure; the caller falls back to
+# the shared workspace so a sweep still produces threads when, say, the branch
+# is already checked out somewhere else.
+ensure_pr_worktree() {
+  local number="$1" head="$2"
+  local dir="${WORKTREE_ROOT}/pr-${number}"
+
+  if [ -d "$dir" ]; then
+    printf '%s' "$dir"
+    return 0
+  fi
+  mkdir -p "$WORKTREE_ROOT" || return 1
+
+  # Stale metadata from a directory removed by hand would block `worktree add`.
+  "$GIT" -C "$WORKSPACE" worktree prune >/dev/null 2>&1 || true
+
+  "$GIT" -C "$WORKSPACE" fetch --quiet origin \
+    "+refs/heads/${head}:refs/remotes/origin/${head}" >/dev/null 2>&1 || return 1
+  "$GIT" -C "$WORKSPACE" worktree add --quiet -B "$head" "$dir" \
+    "origin/${head}" >/dev/null 2>&1 || return 1
+
+  printf '%s' "$dir"
+}
+
 spawned=0
 skipped_for_cap=0
 
-while IFS=$'\t' read -r number title; do
+while IFS=$'\t' read -r number title head; do
   [ -z "$number" ] && continue
 
   if printf '%s\n' "$existing" | grep -qF "${REPO}#${number}"; then
@@ -123,9 +182,20 @@ while IFS=$'\t' read -r number title; do
 
   url="https://github.com/${REPO}/pull/${number}"
   package="$(dependabot_package "$title")"
+
+  workspace="$(ensure_pr_worktree "$number" "$head")"
+  if [ -z "$workspace" ]; then
+    workspace="$WORKSPACE"
+    echo "Could not create a checkout of ${head} for #${number}; the thread gets the shared workspace and no pull request card." >&2
+  fi
+
   prompt="${REPO}#${number} is a Dependabot pull request: ${url}
 
 Title: ${title}
+
+This thread's workspace is a checkout of the pull request branch, kept for
+reading the code the bump lands in. Leave it alone otherwise: no commits, no
+pushes, no branch switching. The sweep deletes it once the PR closes.
 
 Use the review-dependabot-prs skill. This thread covers that one PR and no
 others: gather the facts, assess the real impact on this codebase, and write the
@@ -150,7 +220,7 @@ summary you have already written survives."
     --project "$PROJECT" \
     --title "Dep: ${package} #${number}" \
     --prompt "$prompt" \
-    --environment "$WORKSPACE" \
+    --environment "$workspace" \
     --provider "$PROVIDER" \
     --model "$MODEL" >/dev/null; then
     echo "Spawned a thread for ${package} #${number}"
@@ -158,7 +228,7 @@ summary you have already written survives."
   else
     echo "Failed to spawn a thread for ${package} #${number}" >&2
   fi
-done < <(printf '%s' "$open_prs" | jq -r '.[] | [.number, .title] | @tsv')
+done < <(printf '%s' "$open_prs" | jq -r '.[] | [.number, .title, .headRefName] | @tsv')
 
 # A cap that truncates quietly reads as "everything is handled" when it is not.
 if [ "$skipped_for_cap" -gt 0 ]; then
@@ -179,6 +249,7 @@ merged="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state merged 
   --limit 100 --json number --jq '.[].number')"
 
 archived=0
+just_archived=""
 while IFS=$'\t' read -r id status archived_at text; do
   [ -z "$id" ] && continue
   [ "$archived_at" = "null" ] || continue
@@ -191,9 +262,57 @@ while IFS=$'\t' read -r id status archived_at text; do
   if "$BB" thread archive "$id" >/dev/null 2>&1; then
     echo "Archived the thread for #${number}, merged."
     archived=$((archived + 1))
+    just_archived="${just_archived}${number}
+"
   else
     echo "Failed to archive the thread for #${number} (${id})." >&2
   fi
 done < <(printf '%s\n' "$all_threads")
+
+# --- Retire the checkouts that have nothing left to review -------------------
+#
+# A per-PR worktree outlives its usefulness the moment the pull request stops
+# being open, but only once its thread is off the board too: an agent may still
+# be reading the code while the merge lands. Removing the directory leaves the
+# archived thread's transcript intact; only its workspace goes away, so bb
+# reports the workspace as unavailable if the thread is reopened later.
+
+if [ -d "$WORKTREE_ROOT" ]; then
+  open_numbers="$(printf '%s' "$open_prs" | jq -r '.[].number')"
+
+  # Threads still on the board, minus the ones this run just filed away.
+  live_numbers=""
+  while IFS=$'\t' read -r id status archived_at text; do
+    [ -z "$id" ] && continue
+    [ "$archived_at" = "null" ] || continue
+    number="$(thread_pr_number "$text")"
+    [ -z "$number" ] && continue
+    printf '%s\n' "$just_archived" | grep -qx "$number" && continue
+    live_numbers="${live_numbers}${number}
+"
+  done < <(printf '%s\n' "$all_threads")
+
+  for dir in "$WORKTREE_ROOT"/pr-*; do
+    [ -d "$dir" ] || continue
+    number="${dir##*/pr-}"
+    case "$number" in "" | *[!0-9]*) continue ;; esac
+
+    printf '%s\n' "$open_numbers" | grep -qx "$number" && continue
+    printf '%s\n' "$live_numbers" | grep -qx "$number" && continue
+
+    branch="$("$GIT" -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    # No --force: a dirty worktree means the review left something behind, and
+    # that is worth seeing rather than deleting on a schedule.
+    if "$GIT" -C "$WORKSPACE" worktree remove "$dir" >/dev/null 2>&1; then
+      case "$branch" in
+        "" | HEAD) ;;
+        *) "$GIT" -C "$WORKSPACE" branch -D "$branch" >/dev/null 2>&1 || true ;;
+      esac
+      echo "Removed the checkout for #${number}; its pull request is no longer open."
+    else
+      echo "Left ${dir} in place: it has uncommitted changes or is in use." >&2
+    fi
+  done
+fi
 
 exit 0
