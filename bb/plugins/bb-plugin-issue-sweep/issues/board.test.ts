@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardPlacement, shouldAutoApply } from "./board.js";
+import { boardPlacement, countedRows, shouldAutoApply } from "./board.js";
 
 describe("boardPlacement", () => {
   it("reads the status from the named board, ignoring the others", () => {
@@ -59,5 +59,35 @@ describe("shouldAutoApply", () => {
   it("does nothing when the target is blank, which is how the move is turned off", () => {
     expect(shouldAutoApply("Backlog", null, "")).toBe(false);
     expect(shouldAutoApply("Backlog", null, "   ")).toBe(false);
+  });
+});
+
+describe("countedRows", () => {
+  const row = (boardStatus: string | null, blockedBy = 0) => ({ boardStatus, blockedBy });
+
+  it("counts only the statuses asked for", () => {
+    const rows = [row("In Progress"), row("Ready"), row("Backlog"), row("In Review")];
+    expect(countedRows(rows, ["In Progress", "Ready"])).toHaveLength(2);
+  });
+
+  it("matches a status however it is cased or spaced", () => {
+    expect(countedRows([row("in progress")], [" In Progress "])).toHaveLength(1);
+  });
+
+  it("never counts a blocked issue, whatever its status", () => {
+    // The panel lifts blocked rows out of their section and files them last,
+    // so counting one would put a number on the badge that no visible section
+    // accounts for.
+    expect(countedRows([row("In Progress", 1)], ["In Progress"])).toHaveLength(0);
+  });
+
+  it("does not count an issue with no board status", () => {
+    expect(countedRows([row(null)], ["In Progress", "Ready"])).toHaveLength(0);
+  });
+
+  it("counts every unblocked row when no statuses are configured", () => {
+    // Blank is how a board-less setup turns the filter off.
+    const rows = [row("Backlog"), row(null), row("Ready", 2)];
+    expect(countedRows(rows, [])).toHaveLength(2);
   });
 });

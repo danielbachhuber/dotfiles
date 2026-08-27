@@ -99,3 +99,23 @@ export function shouldAutoApply(
   if ((alreadyApplied ?? "").trim().toLowerCase() === wanted) return false;
   return true;
 }
+
+/**
+ * The rows the sidebar badge counts.
+ *
+ * Blocked rows never count, whatever their status says. The panel already
+ * lifts them out of their board section and files them last, so counting one
+ * would put a number on the badge that no visible section accounts for.
+ *
+ * An empty `counted` counts everything, which is what a board-less setup wants.
+ */
+export function countedRows<T extends { boardStatus: string | null; blockedBy: number }>(
+  rows: readonly T[],
+  counted: readonly string[],
+): T[] {
+  const actionable = rows.filter((row) => row.blockedBy === 0);
+  if (counted.length === 0) return actionable;
+
+  const wanted = new Set(counted.map((status) => status.trim().toLowerCase()));
+  return actionable.filter((row) => wanted.has((row.boardStatus ?? "").trim().toLowerCase()));
+}

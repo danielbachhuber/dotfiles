@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { commentsLabel, relativeTime } from "./issues/format.js";
 import type { rpcContract } from "./server.js";
-import { sectionOrder } from "./issues/board.js";
+import { countedRows, sectionOrder } from "./issues/board.js";
 
 type Row = {
   repo: string;
@@ -40,6 +40,7 @@ type Listing = {
   rows: Row[];
   statusOrder: string[];
   statusOptions: string[];
+  countedStatuses: string[];
   boardName: string;
   sweptAt: number | null;
   truncated: boolean;
@@ -483,7 +484,9 @@ function Panel() {
 
 function AssignedCount() {
   const { listing } = useListing();
-  const count = listing?.rows.length ?? 0;
+  // Not every assigned issue: the badge is a "how much is on me right now"
+  // number, and a Backlog item three months out is not on you today.
+  const count = listing ? countedRows(listing.rows, listing.countedStatuses).length : 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;
 }

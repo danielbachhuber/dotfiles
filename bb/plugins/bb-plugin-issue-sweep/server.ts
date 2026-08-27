@@ -74,6 +74,13 @@ export default async function plugin(bb: BbPluginApi) {
       // Blank falls back to bb's default.
       default: "claude-code",
     },
+    countedStatuses: {
+      type: "string",
+      label: "Statuses counted in the sidebar",
+      // The badge answers "how much is on me right now", which is a smaller
+      // question than "how much is assigned to me". Blank counts everything.
+      default: "In Progress,Ready",
+    },
     statusOnStart: {
       type: "string",
       label: "Board status when a thread starts",
@@ -278,7 +285,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     async listRows() {
       const meta = store.readMeta();
-      const { statusOrder, projectBoard } = await settings.get();
+      const { statusOrder, projectBoard, countedStatuses } = await settings.get();
       const rows = store.readRows();
 
       let candidates: ProjectCandidate[] = [];
@@ -300,6 +307,7 @@ export default async function plugin(bb: BbPluginApi) {
         // setting is a display preference and can name a column that does not
         // exist, and the picker must only offer what `item-edit` will accept.
         statusOptions: statusOptionsFor(rows),
+        countedStatuses: parseStatusOrder(countedStatuses),
         boardName: projectBoard,
         rows: rows.map((row) => ({
           ...row,

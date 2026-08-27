@@ -32,6 +32,8 @@ export const rpcContract = defineRpcContract({
        * board's private node ids, and the server has to resolve them anyway.
        */
       statusOptions: z.array(z.string()),
+      /** Board statuses the sidebar badge counts. Empty counts every row. */
+      countedStatuses: z.array(z.string()),
       /** Named so the panel can say which board it is offering to add to. */
       boardName: z.string(),
       sweptAt: z.number().nullable(),
