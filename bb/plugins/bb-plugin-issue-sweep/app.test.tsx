@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
@@ -18,6 +19,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     updatedAt: Date.now() - 3 * HOUR,
     commentsCount: 2,
     boardStatus: null,
+    onBoard: false,
     ...overrides,
   };
 }
@@ -26,6 +28,8 @@ function listing(overrides: Record<string, unknown> = {}) {
   return {
     rows: [rowFixture()],
     statusOrder: [],
+    statusOptions: [],
+    boardName: "Acme Board",
     sweptAt: 1_700_000_000_000,
     truncated: false,
     lastError: null,
@@ -189,5 +193,80 @@ describe("board sections", () => {
       listing({ statusOrder: ["In Progress"], rows: [rowFixture({ boardStatus: null })] }),
     );
     await slot.findByText(/^No board status \(1\)$/);
+  });
+});
+
+const OPTIONS = ["Backlog", "Ready", "In Progress", "In Review"];
+
+describe("status column", () => {
+  it("offers the board's own options, in the board's order", async () => {
+    const slot = render(
+      listing({ statusOptions: OPTIONS, rows: [rowFixture({ boardStatus: "Ready", onBoard: true })] }),
+    );
+    const picker = (await slot.findByLabelText("Board status for #42")) as HTMLSelectElement;
+    expect(picker.value).toBe("Ready");
+    // The placeholder leads, then the board's options untouched.
+    expect([...picker.options].slice(1).map((option) => option.text)).toEqual(OPTIONS);
+  });
+
+  it("offers to add an issue that is on no board", async () => {
+    const slot = render(
+      listing({ statusOptions: OPTIONS, rows: [rowFixture({ onBoard: false, boardStatus: null })] }),
+    );
+    expect(await slot.findByText("Add to board")).toBeInTheDocument();
+  });
+
+  it("does not offer to add an issue already on the board with no status", async () => {
+    // Adding it again would be a no-op, and the label would be a lie.
+    const slot = render(
+      listing({ statusOptions: OPTIONS, rows: [rowFixture({ onBoard: true, boardStatus: null })] }),
+    );
+    expect(await slot.findByText("No status")).toBeInTheDocument();
+    expect(slot.queryByText("Add to board")).toBeNull();
+  });
+
+  it("keeps showing a status the board no longer offers", async () => {
+    // Otherwise the picker selects nothing and the row reads as unfiled.
+    const slot = render(
+      listing({
+        statusOptions: OPTIONS,
+        rows: [rowFixture({ boardStatus: "Retired column", onBoard: true })],
+      }),
+    );
+    const picker = (await slot.findByLabelText("Board status for #42")) as HTMLSelectElement;
+    expect(picker.value).toBe("Retired column");
+  });
+
+  it("falls back to plain text when the board could not be read", async () => {
+    // No options means no picker, but the status is still worth showing.
+    const slot = render(
+      listing({ statusOptions: [], rows: [rowFixture({ boardStatus: "Ready", onBoard: true })] }),
+    );
+    await slot.findByText("Ready");
+    expect(slot.queryByLabelText("Board status for #42")).toBeNull();
+  });
+
+  it("sends the picked status, by name, for that row", async () => {
+    const calls: unknown[] = [];
+    const slot = render(
+      listing({
+        statusOptions: OPTIONS,
+        rows: [rowFixture({ number: 42, boardStatus: "Backlog", onBoard: true })],
+      }),
+      {
+        setBoardStatus: (input: unknown) => {
+          calls.push(input);
+          return { ok: true, added: false, error: null };
+        },
+      },
+    );
+
+    const picker = (await slot.findByLabelText("Board status for #42")) as HTMLSelectElement;
+    fireEvent.change(picker, { target: { value: "In Review" } });
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    // By name, never by option id: the ids are the board's private node ids
+    // and the panel never sees them.
+    expect(calls[0]).toEqual({ repo: "acme/widgets", number: 42, status: "In Review" });
   });
 });

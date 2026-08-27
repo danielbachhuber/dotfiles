@@ -1,5 +1,5 @@
 /**
- * The status an issue carries on one particular board.
+ * One entry in an issue's `projectItems`, narrowed to what placement needs.
  *
  * An issue can sit on several projects at once, and most of these sit on two —
  * a team board and someone's personal one. Reading "the first project item"
@@ -9,18 +9,46 @@
  * The board's name is a plugin setting rather than a constant: it identifies a
  * private org project, and this repository is public.
  */
-export function boardStatus(
-  items: Array<{ title?: string; status?: { name?: string } | null }> | null | undefined,
+export interface ProjectItem {
+  title?: string;
+  status?: { name?: string } | null;
+}
+
+/**
+ * Whether an issue sits on the configured board, and what its Status column
+ * says there.
+ *
+ * These are two questions, not one. An issue added to a board without a status
+ * is on it, in the board's own "No Status" column, and reporting that as "not
+ * on a board" would offer to add an issue that is already there.
+ */
+export interface BoardPlacement {
+  onBoard: boolean;
+  status: string | null;
+}
+
+export function boardPlacement(
+  items: ProjectItem[] | null | undefined,
   board: string,
-): string | null {
+): BoardPlacement {
   const wanted = board.trim().toLowerCase();
+  let onBoard = false;
   for (const item of items ?? []) {
     const title = (item.title ?? "").trim();
     if (wanted !== "" && title.toLowerCase() !== wanted) continue;
+    onBoard = true;
     const status = (item.status?.name ?? "").trim();
-    if (status !== "") return status;
+    if (status !== "") return { onBoard: true, status };
   }
-  return null;
+  return { onBoard, status: null };
+}
+
+/** The status alone, for callers that do not care about membership. */
+export function boardStatus(
+  items: ProjectItem[] | null | undefined,
+  board: string,
+): string | null {
+  return boardPlacement(items, board).status;
 }
 
 /**

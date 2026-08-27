@@ -14,6 +14,7 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
     updatedAt: 200,
     commentsCount: 3,
     boardStatus: null,
+    onBoard: false,
     ...overrides,
   };
 }

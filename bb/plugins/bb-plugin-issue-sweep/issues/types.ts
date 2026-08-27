@@ -1,4 +1,4 @@
-import { boardStatus } from "./board.js";
+import { boardPlacement } from "./board.js";
 
 export const REPO_SLUG_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
@@ -33,8 +33,14 @@ export interface IssueRow {
   createdAt: number;
   updatedAt: number;
   commentsCount: number;
-  /** The status column on the configured board, or null when it is not on it. */
+  /** The status column on the configured board, or null when it has none. */
   boardStatus: string | null;
+  /**
+   * True when the issue sits on the configured board at all. Distinct from a
+   * non-null status: an issue can be on the board in its "No Status" column,
+   * and offering to add that one again would do nothing.
+   */
+  onBoard: boolean;
 }
 
 export interface SweepResult {
@@ -63,6 +69,8 @@ export function toRow(raw: RawIssue, board = ""): IssueRow | null {
   const resolvedUpdatedAt = Number.isNaN(updatedAt) ? createdAt : updatedAt;
   if (Number.isNaN(resolvedUpdatedAt)) return null;
 
+  const placement = boardPlacement(raw.projectItems, board);
+
   return {
     repo,
     number: raw.number,
@@ -72,7 +80,8 @@ export function toRow(raw: RawIssue, board = ""): IssueRow | null {
     createdAt: Number.isNaN(createdAt) ? resolvedUpdatedAt : createdAt,
     updatedAt: resolvedUpdatedAt,
     commentsCount: raw.commentsCount ?? (raw.comments?.length ?? 0),
-    boardStatus: boardStatus(raw.projectItems, board),
+    boardStatus: placement.status,
+    onBoard: placement.onBoard,
   };
 }
 

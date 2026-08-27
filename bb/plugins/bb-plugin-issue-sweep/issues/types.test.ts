@@ -32,6 +32,7 @@ describe("toRow", () => {
       updatedAt: Date.parse("2026-01-03T00:00:00Z"),
       commentsCount: 3,
       boardStatus: null,
+      onBoard: false,
     });
   });
 
@@ -57,6 +58,32 @@ describe("toRow", () => {
       "Acme Board",
     );
     expect(row?.boardStatus).toBeNull();
+    expect(row?.onBoard).toBe(false);
+  });
+
+  it("separates being on the board from having a status there", () => {
+    // An issue added to a board sits in its "No Status" column until someone
+    // files it. Reading that as "not on a board" would offer to add an issue
+    // that is already there, and the add would be a no-op.
+    const row = toRow(
+      raw({ projectItems: [{ title: "Acme Board", status: { name: "" } }] }),
+      "Acme Board",
+    );
+    expect(row?.onBoard).toBe(true);
+    expect(row?.boardStatus).toBeNull();
+  });
+
+  it("counts an issue with a status as on the board", () => {
+    const row = toRow(
+      raw({ projectItems: [{ title: "Acme Board", status: { name: "Ready" } }] }),
+      "Acme Board",
+    );
+    expect(row?.onBoard).toBe(true);
+  });
+
+  it("reports an issue on no project at all as off the board", () => {
+    expect(toRow(raw({ projectItems: [] }), "Acme Board")?.onBoard).toBe(false);
+    expect(toRow(raw({ projectItems: null }), "Acme Board")?.onBoard).toBe(false);
   });
 
   it("takes the first status it finds when no board is named", () => {
