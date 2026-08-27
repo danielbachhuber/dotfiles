@@ -15,6 +15,9 @@ function row(overrides: Partial<ClassifiedRow> = {}): ClassifiedRow {
     approvedBy: [],
     commentedBy: [],
     waitingOn: [],
+    lastCommentBy: null,
+    unresolvedThreads: 0,
+    outdatedThreads: 0,
     awaitingReReview: false,
     ...overrides,
   };
@@ -178,6 +181,19 @@ describe("buildPrompt", () => {
       row({ flags: ["conflict", "ci-failing", "feedback", "no-reviewer"] }),
     );
     expect(prompt.match(/ {3}Use the `[a-z-]+` skill\./g)).toHaveLength(4);
+  });
+
+  it("sends a merge carrying unresolved comments to the code-review skill", () => {
+    const prompt = buildPrompt(row({ flags: ["merge-ready"], unresolvedThreads: 3 }));
+    expect(prompt).toContain("`address-code-review` skill");
+    expect(prompt).not.toContain("`pr-sweep` skill");
+    // And so it drops the triage caveat, which only applies to pr-sweep steps.
+    expect(prompt).not.toMatch(/triage rather than a fixed workflow/);
+  });
+
+  it("leaves a merge with nothing outstanding on pr-sweep", () => {
+    const prompt = buildPrompt(row({ flags: ["merge-ready"] }));
+    expect(prompt).toContain("`pr-sweep` skill");
   });
 
   it("still withholds the actions that cannot be undone", () => {

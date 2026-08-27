@@ -64,6 +64,29 @@ describe("skillFor", () => {
     expect(skillFor([])).toBe("pr-sweep");
   });
 
+  it("routes a merge with unresolved comments to the code-review skill", () => {
+    // The button already says "Review and merge" for this row, so sending it
+    // to triage contradicted what the click promised. Answering comments is
+    // exactly what the feedback skill specifies.
+    expect(actionSummary(["merge-ready"], 3)).toBe("Review and merge");
+    expect(skillFor(["merge-ready"], 3)).toBe("address-code-review");
+    expect(skillOwnsWorkflow(["merge-ready"], 3)).toBe(true);
+  });
+
+  it("leaves a clean merge on pr-sweep", () => {
+    // No comments means no review work, and pr-sweep owns the merge playbook.
+    expect(skillFor(["merge-ready"], 0)).toBe("pr-sweep");
+  });
+
+  it("only lets unresolved comments matter where a merge is the work", () => {
+    // A row whose worst flag is anything else has real work in front of the
+    // comments, and that flag's skill still owns the step.
+    for (const flag of FLAG_SEVERITY) {
+      if (flag === "merge-ready") continue;
+      expect(skillFor([flag], 3)).toBe(skillFor([flag], 0));
+    }
+  });
+
   it("routes on the worst flag, matching the action label", () => {
     // The button says "Resolve conflict", so the skill must be the conflict one.
     expect(actionLabel(["conflict", "feedback"])).toBe("Resolve conflict");

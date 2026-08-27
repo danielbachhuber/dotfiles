@@ -37,6 +37,20 @@ const SKILL_FOR: Partial<Record<Flag, string>> = {
 
 const DEFAULT_SKILL = "pr-sweep";
 
+/**
+ * The skill for one flag, on one row.
+ *
+ * Only merge-readiness depends on more than the flag. An approved, green pull
+ * request carrying unresolved inline comments is review work before it is a
+ * merge, and `address-code-review` is the skill that owns answering comments —
+ * it knows to read each thread, reply, and resolve. Routing that to `pr-sweep`
+ * sent the thread to a triage skill for work whose shape was already known.
+ */
+function skillForFlag(flag: Flag, unresolvedThreads: number): string {
+  if (flag === "merge-ready" && unresolvedThreads > 0) return SKILL_FOR.feedback ?? DEFAULT_SKILL;
+  return SKILL_FOR[flag] ?? DEFAULT_SKILL;
+}
+
 /** Falls back to a generic label if a row somehow carries no known flag. */
 export function actionLabel(flags: readonly string[]): string {
   for (const flag of FLAG_SEVERITY) {
@@ -46,16 +60,16 @@ export function actionLabel(flags: readonly string[]): string {
 }
 
 /** The skill for a row's worst flag, which is the work its action starts. */
-export function skillFor(flags: readonly string[]): string {
+export function skillFor(flags: readonly string[], unresolvedThreads = 0): string {
   for (const flag of FLAG_SEVERITY) {
-    if (flags.includes(flag)) return SKILL_FOR[flag] ?? DEFAULT_SKILL;
+    if (flags.includes(flag)) return skillForFlag(flag, unresolvedThreads);
   }
   return DEFAULT_SKILL;
 }
 
 /** True when a dedicated skill specifies the whole flow, worktree included. */
-export function skillOwnsWorkflow(flags: readonly string[]): boolean {
-  return skillFor(flags) !== DEFAULT_SKILL;
+export function skillOwnsWorkflow(flags: readonly string[], unresolvedThreads = 0): boolean {
+  return skillFor(flags, unresolvedThreads) !== DEFAULT_SKILL;
 }
 
 /**
@@ -260,10 +274,10 @@ export interface WorkStep {
  * order rather than the panel spawning one thread per flag, which would put two
  * agents on the same branch.
  */
-export function workSteps(flags: readonly string[]): WorkStep[] {
+export function workSteps(flags: readonly string[], unresolvedThreads = 0): WorkStep[] {
   return FLAG_SEVERITY.filter((flag) => flags.includes(flag)).map((flag) => ({
     flag,
-    skill: SKILL_FOR[flag] ?? DEFAULT_SKILL,
+    skill: skillForFlag(flag, unresolvedThreads),
   }));
 }
 

@@ -39,7 +39,7 @@ function describeFlag(flag: Flag, row: ClassifiedRow): string | null {
 }
 
 export function buildPrompt(row: ClassifiedRow): string {
-  const steps = workSteps(row.flags);
+  const steps = workSteps(row.flags, row.unresolvedThreads);
 
   if (steps.length === 0) {
     return [
