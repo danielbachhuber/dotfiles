@@ -100,12 +100,19 @@ prints nothing at all, which bb records as a silent tick.
 The threads stop at a draft assessment. Posting the comment, approving, and
 merging stay manual, because approving carries your identity.
 
-The same sweep archives what has landed. A thread whose PR is merged has nothing
-left to say, so it is filed away rather than left waiting to be cleared by hand.
-Two conditions guard it: only merged PRs, since a closed one usually means
-Dependabot superseded it and that is worth seeing before the thread disappears,
-and only idle threads, so a review still in progress is never cut off. It picks
-up again on the next sweep once the thread settles.
+A thread files itself away the moment its PR lands. The prompt tells it to
+confirm the merge with `gh pr view`, write its closing summary, and then run
+`bb thread archive --self` as its very last action. Ordering matters: that
+command interrupts the turn it runs in, so anything after it is lost, while a
+summary already written survives. The thread shows a `Stopped manually` marker
+afterward, which is cosmetic.
+
+The sweep archives the stragglers. A merge queued behind auto-merge lands after
+the thread has finished, and a PR you merge yourself never had a thread watching
+it, so the same pass runs twice a day as a backstop. Two conditions guard it:
+only merged PRs, since a closed one usually means Dependabot superseded it and
+that is worth seeing before the thread disappears, and only idle threads, so a
+review still in progress is never cut off.
 
 Worth knowing if you extend this: `bb thread list --json` returns archived
 threads alongside the rest, where the human table hides them. Filter on

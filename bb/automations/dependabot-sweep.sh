@@ -125,7 +125,17 @@ Title: ${title}
 Use the review-dependabot-prs skill. This thread covers that one PR and no
 others: gather the facts, assess the real impact on this codebase, and write the
 assessment to a draft file. Stop there. Do not post the comment, approve, or
-merge until I have read the draft and told you to."
+merge until I have read the draft and told you to.
+
+Once the PR has actually landed, this thread is done, so file it away yourself
+rather than leaving it for the twice-daily sweep. Confirm it first: gh pr view
+${number} --json state must report MERGED. If the merge is only queued behind
+auto-merge, leave the thread alone and the sweep will archive it once it lands.
+When it is merged, write your closing summary first, then as your very last
+action run: bb thread archive --self
+
+That command interrupts the turn it runs in, which is why it goes last. The
+summary you have already written survives."
 
   if "$BB" thread spawn \
     --project "$PROJECT" \
