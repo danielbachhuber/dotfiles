@@ -304,7 +304,7 @@ function Action({
         onClick={() => onWork(row)}
         className="whitespace-nowrap"
       >
-        {isStarting ? "Starting…" : actionSummary(row.flags)}
+        {isStarting ? "Starting…" : actionSummary(row.flags, row.unresolvedThreads)}
       </Button>
     </span>
   );

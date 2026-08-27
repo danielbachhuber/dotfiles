@@ -26,8 +26,13 @@ function describeFlag(flag: Flag, row: ClassifiedRow): string | null {
       return "It is not a draft and has no reviewer requested and no reviews.";
     case "merge-blocked":
       return "It is approved and green, but GitHub reports the merge as blocked, so a required review or ruleset is unsatisfied.";
-    case "merge-ready":
-      return `It is approved${row.approvedBy.length ? ` by ${row.approvedBy.join(", ")}` : ""} and every check is green${row.waitingOn.length ? `, though ${row.waitingOn.join(", ")} has not reviewed yet` : ""}.`;
+    case "merge-ready": {
+      const threads =
+        row.unresolvedThreads > 0
+          ? ` There ${row.unresolvedThreads === 1 ? "is" : "are"} ${row.unresolvedThreads} unresolved review comment${row.unresolvedThreads === 1 ? "" : "s"}${row.outdatedThreads > 0 ? `, ${row.outdatedThreads} of them on code that has since changed` : ""}. Read and answer them before merging; an approval does not clear them.`
+          : "";
+      return `It is approved${row.approvedBy.length ? ` by ${row.approvedBy.join(", ")}` : ""} and every check is green${row.waitingOn.length ? `, though ${row.waitingOn.join(", ")} has not reviewed yet` : ""}.${threads}`;
+    }
     default:
       return null;
   }

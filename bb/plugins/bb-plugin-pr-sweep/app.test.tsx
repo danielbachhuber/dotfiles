@@ -772,3 +772,30 @@ describe("unresolved review threads", () => {
     expect(slot.queryByText(/unresolved comment/)).toBeNull();
   });
 });
+
+describe("the merge button when comments are outstanding", () => {
+  it("says it will read them first", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({
+            flags: ["merge-ready"],
+            group: "ready-to-merge",
+            unresolvedThreads: 3,
+          }),
+        ],
+      }),
+    );
+    await slot.findByRole("button", { name: /^Review comments and merge$/ });
+    expect(slot.queryByRole("button", { name: /^Merge$/ })).toBeNull();
+  });
+
+  it("still says Merge when nothing is outstanding", async () => {
+    const slot = render(
+      listing({
+        rows: [rowFixture({ flags: ["merge-ready"], group: "ready-to-merge" })],
+      }),
+    );
+    await slot.findByRole("button", { name: /^Merge$/ });
+  });
+});

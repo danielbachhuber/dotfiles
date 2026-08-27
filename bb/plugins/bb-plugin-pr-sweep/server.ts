@@ -421,7 +421,7 @@ export default async function plugin(bb: BbPluginApi) {
           ...(model ? { model } : {}),
           permissionMode: mode,
           prompt: buildPrompt(row),
-          title: threadTitle(row.flags, number),
+          title: threadTitle(row.flags, number, row.unresolvedThreads),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +

@@ -352,3 +352,28 @@ describe("statusTone", () => {
     expect(statusTone(null)).toBe("info");
   });
 });
+
+describe("a merge-ready pull request with comments on it", () => {
+  it("says the click will read them, not just merge", () => {
+    expect(actionSummary(["merge-ready"], 3)).toBe("Review comments and merge");
+    expect(actionSummary(["merge-ready"], 0)).toBe("Merge");
+  });
+
+  it("does not change a row that is not merge-ready", () => {
+    // Those already say what to do, and their flags outrank the comments.
+    expect(actionSummary(["conflict"], 3)).toBe("Resolve conflict");
+    expect(actionSummary(["ci-failing"], 3)).toBe("Fix failing CI");
+  });
+
+  it("titles the thread with the same words, cut at a word boundary", () => {
+    // The label is longer than the sidebar budget, so it gives way — but at a
+    // space, since "Review comments and mer…" does not read.
+    const title = threadTitle(["merge-ready"], 5801, 3);
+    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(title).toBe("Review comments and… #5801");
+  });
+
+  it("still fits the plain case exactly", () => {
+    expect(threadTitle(["merge-ready"], 5801, 0)).toBe("Merge #5801");
+  });
+});

@@ -72,15 +72,25 @@ export const MAX_THREAD_TITLE = 30;
  * The number is what identifies the pull request, so if the pair somehow
  * exceeds the budget the label gives way, never the number.
  */
-export function threadTitle(flags: readonly string[], number: number): string {
+export function threadTitle(
+  flags: readonly string[],
+  number: number,
+  unresolvedThreads = 0,
+): string {
   const suffix = ` #${number}`;
-  const label = actionSummary(flags);
+  const label = actionSummary(flags, unresolvedThreads);
   const full = `${label}${suffix}`;
   if (full.length <= MAX_THREAD_TITLE) return full;
 
   const room = MAX_THREAD_TITLE - suffix.length;
   if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
-  return `${label.slice(0, room - 1).trimEnd()}…${suffix}`;
+
+  // Cut at a word boundary where one is available: "Review comments and…"
+  // reads, "Review comments and mer…" does not.
+  const clipped = label.slice(0, room - 1);
+  const lastSpace = clipped.lastIndexOf(" ");
+  const kept = lastSpace > room / 2 ? clipped.slice(0, lastSpace) : clipped;
+  return `${kept.trimEnd()}…${suffix}`;
 }
 
 /**
@@ -266,10 +276,17 @@ export function workSteps(flags: readonly string[]): WorkStep[] {
  * tail matters less than knowing more is queued. The Status column lists them
  * all.
  */
-export function actionSummary(flags: readonly string[]): string {
+export function actionSummary(flags: readonly string[], unresolvedThreads = 0): string {
   const steps = workSteps(flags);
   if (steps.length === 0) return "Work on this";
-  if (steps.length === 1) return ACTION_LABELS[steps[0]!.flag];
+  if (steps.length === 1) {
+    // An approval does not clear inline comments: #5801 was approved, green,
+    // and carrying three. "Merge" alone understated what the click starts.
+    if (steps[0]!.flag === "merge-ready" && unresolvedThreads > 0) {
+      return "Review comments and merge";
+    }
+    return ACTION_LABELS[steps[0]!.flag];
+  }
 
   // Naming each step spelled out the sequence but wrapped to two lines and
   // grew with every extra flag. The Status column already lists them, so the
