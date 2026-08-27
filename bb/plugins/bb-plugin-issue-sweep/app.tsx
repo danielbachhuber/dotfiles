@@ -116,7 +116,7 @@ function StatusCell({
   // showing; only the ability to change it is lost.
   if (options.length === 0) {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
         <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`} />
         <span className="truncate">{row.boardStatus ?? placeholder}</span>
       </span>
@@ -130,8 +130,10 @@ function StatusCell({
       ? [row.boardStatus, ...options]
       : options;
 
+  // Shrink-wrapped, not stretched to the column: a full-width select pins the
+  // caret to the column's right edge, a long way from the text it belongs to.
   return (
-    <span className="relative flex items-center gap-1.5">
+    <span className="relative inline-flex max-w-full items-center gap-1.5">
       <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`} />
       <select
         aria-label={`Board status for #${row.number}`}
@@ -139,7 +141,7 @@ function StatusCell({
         value={row.boardStatus ?? ""}
         disabled={busy}
         onChange={(event) => onPick(event.target.value)}
-        className="w-full appearance-none truncate bg-transparent pr-4 text-xs text-muted-foreground outline-none hover:text-foreground disabled:opacity-50"
+        className="max-w-full appearance-none truncate bg-transparent pr-3.5 text-xs text-muted-foreground outline-none hover:text-foreground disabled:opacity-50"
       >
         <option value="" disabled>
           {busy ? "Saving…" : placeholder}

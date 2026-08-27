@@ -78,6 +78,9 @@ export default async function plugin(bb: BbPluginApi) {
     try {
       const result = await runSweep(createGhRunner(ghPath), () => Date.now(), projectBoard);
       store.replaceAll(result);
+      // Before the publish, so the panel's reload finds the options already
+      // there and renders pickers on its first paint rather than its second.
+      await warmBoards(result.rows);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
       bb.log.info(`swept ${result.rows.length} open issue(s)`);
       return { ok: true, error: null };
@@ -97,22 +100,37 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * The board's Status options, for whichever owner the listing covers.
+   * Resolves the board for every owner in the listing, ignoring failures.
    *
-   * Every repository in the listing is normally one org's, so the first owner
-   * that resolves wins. A failure here is not worth surfacing: it only means
-   * the panel shows statuses as text with no picker, which is what it did
-   * before this existed.
+   * Called from the sweep rather than from `listRows` so the panel never waits
+   * on it. Resolving costs two `gh project` calls, and doing that inline made
+   * the first paint after a reload block for five seconds.
    */
-  async function statusOptionsFor(rows: readonly { repo: string }[]): Promise<string[]> {
+  async function warmBoards(rows: readonly { repo: string }[]): Promise<void> {
     for (const owner of new Set(rows.map((row) => ownerOf(row.repo)))) {
-      if (owner === "") continue;
+      if (owner === "" || boards.has(owner)) continue;
       try {
-        return (await boardFor(owner)).statusOptions.map((option) => option.name);
+        await boardFor(owner);
       } catch (error) {
+        // A missing or misnamed board is a configuration matter, not a sweep
+        // failure: the listing is still correct, it just has no picker.
         if (error instanceof BoardUnavailableError) continue;
         bb.log.warn(`could not read the board for ${owner}: ${String(error)}`);
       }
+    }
+  }
+
+  /**
+   * The board's Status options, for whichever owner the listing covers.
+   *
+   * Every repository in the listing is normally one org's, so the first owner
+   * already resolved wins. Reads the cache only — an unwarmed cache yields no
+   * options, which degrades to statuses as text with no picker.
+   */
+  function statusOptionsFor(rows: readonly { repo: string }[]): string[] {
+    for (const owner of new Set(rows.map((row) => ownerOf(row.repo)))) {
+      const project = boards.get(owner);
+      if (project) return project.statusOptions.map((option) => option.name);
     }
     return [];
   }
@@ -129,7 +147,7 @@ export default async function plugin(bb: BbPluginApi) {
         // Offered options come from the board, not from statusOrder: that
         // setting is a display preference and can name a column that does not
         // exist, and the picker must only offer what `item-edit` will accept.
-        statusOptions: await statusOptionsFor(rows),
+        statusOptions: statusOptionsFor(rows),
         boardName: projectBoard,
         rows,
         sweptAt: meta.sweptAt,
