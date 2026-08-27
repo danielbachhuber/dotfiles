@@ -55,8 +55,6 @@ GH="$(resolve_gh)"
 open_prs="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state open \
   --json number,title --limit 50)"
 
-[ "$(printf '%s' "$open_prs" | jq 'length')" -eq 0 ] && exit 0
-
 # --- What already has a thread -----------------------------------------------
 #
 # bb itself is the record of which PRs have been picked up, so there is no state
@@ -69,11 +67,24 @@ open_prs="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state open 
 # display title: that reads "<package> #<number>", and a bare "#5790" would also
 # match an unrelated thread that happens to mention that number.
 
-thread_titles() {
-  "$BB" thread list --project "$PROJECT" --include-hidden --json "$@" \
-    | jq -r '.[] | (.title // ""), (.titleFallback // "")'
+# `--json` reports archived threads alongside the rest, unlike the human table,
+# so one call is the whole picture. The archived flag is carried through: the
+# dedupe below wants every thread, and the archive phase wants only the ones
+# still on the board, or it would re-archive the same threads every sweep.
+all_threads="$("$BB" thread list --project "$PROJECT" --include-hidden --json \
+  | jq -r '.[] | [.id, .status, (.archivedAt | tostring),
+                  ((.title // "") + " " + (.titleFallback // ""))] | @tsv' || true)"
+existing="$(printf '%s\n' "$all_threads" | cut -f4)"
+
+# The PR number the thread is about, or nothing if it is not one of ours.
+thread_pr_number() {
+  case "$1" in
+    *"${REPO}#"*)
+      local rest="${1#*"${REPO}#"}"
+      printf '%s' "${rest%%[!0-9]*}"
+      ;;
+  esac
 }
-existing="$( { thread_titles; thread_titles --archived; } || true )"
 
 # --- Spawn -------------------------------------------------------------------
 
@@ -133,5 +144,36 @@ done < <(printf '%s' "$open_prs" | jq -r '.[] | [.number, .title] | @tsv')
 if [ "$skipped_for_cap" -gt 0 ]; then
   echo "${skipped_for_cap} more open Dependabot PR(s) were left for the next sweep (cap: ${MAX_THREADS})."
 fi
+
+# --- Archive what has landed ------------------------------------------------
+#
+# Once the PR is merged the thread has nothing left to say, so it should not sit
+# in the sidebar waiting to be filed by hand. Only merged counts: a closed PR
+# usually means Dependabot superseded it, and that is worth a look before the
+# thread disappears.
+#
+# Only idle threads are archived. A thread still mid-review keeps working, and
+# the next sweep will pick it up once it settles.
+
+merged="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state merged \
+  --limit 100 --json number --jq '.[].number')"
+
+archived=0
+while IFS=$'\t' read -r id status archived_at text; do
+  [ -z "$id" ] && continue
+  [ "$archived_at" = "null" ] || continue
+  [ "$status" = "idle" ] || continue
+
+  number="$(thread_pr_number "$text")"
+  [ -z "$number" ] && continue
+  printf '%s\n' "$merged" | grep -qx "$number" || continue
+
+  if "$BB" thread archive "$id" >/dev/null 2>&1; then
+    echo "Archived the thread for #${number}, merged."
+    archived=$((archived + 1))
+  else
+    echo "Failed to archive the thread for #${number} (${id})." >&2
+  fi
+done < <(printf '%s\n' "$all_threads")
 
 exit 0

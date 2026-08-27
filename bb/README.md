@@ -53,6 +53,10 @@ bb stores its own snapshot copy of a script when the automation is created, so
 editing a file in `automations/` does not change what runs. Re-run `setup.sh`
 after an edit, or the `update ... --script-file` command that `create` printed.
 
+The stored copy is written under a fresh randomized filename on every update,
+so compare against the `Script:` line that `show` prints rather than a path you
+noted earlier.
+
 Pause before you refresh a snapshot, and resume afterward:
 
 ```sh
@@ -95,6 +99,18 @@ prints nothing at all, which bb records as a silent tick.
 
 The threads stop at a draft assessment. Posting the comment, approving, and
 merging stay manual, because approving carries your identity.
+
+The same sweep archives what has landed. A thread whose PR is merged has nothing
+left to say, so it is filed away rather than left waiting to be cleared by hand.
+Two conditions guard it: only merged PRs, since a closed one usually means
+Dependabot superseded it and that is worth seeing before the thread disappears,
+and only idle threads, so a review still in progress is never cut off. It picks
+up again on the next sweep once the thread settles.
+
+Worth knowing if you extend this: `bb thread list --json` returns archived
+threads alongside the rest, where the human table hides them. Filter on
+`archivedAt` or the sweep will re-archive the same threads twice a day and never
+fall silent.
 
 Configure the sweeps in `../environment.local` (gitignored, since a private
 repository name cannot live in this public repository):
