@@ -43,7 +43,9 @@ export default async function plugin(bb: BbPluginApi) {
       // The order the board's columns are listed in. A status the board
       // reports that is not named here still gets a section, after these, so a
       // new column shows up rather than vanishing.
-      default: "Ready,In Progress,In Review,Backlog",
+      // In Review last of the four: the work is out of your hands there, so
+      // it sits below the Backlog you could actually pick something up from.
+      default: "Ready,In Progress,Backlog,In Review",
     },
     ghPath: {
       type: "string",
