@@ -7,21 +7,28 @@ import type { IssueRow } from "./types.js";
 export const MAX_THREAD_TITLE = 30;
 
 /**
- * "#4060 Document product features". The number leads because it is what
- * identifies the issue, and it is what survives when the title is cut.
+ * The issue's own title, cut to fit the sidebar.
+ *
+ * No number in front. An issue title already says what the thread is for, and
+ * a "#5837 " prefix spent six of the thirty characters the sidebar shows on
+ * an identifier that is only useful for looking the issue up — which the row
+ * itself is for. Six characters is the difference between a phrase and a
+ * fragment at this width.
+ *
+ * pr-sweep keeps its numbers on purpose: its titles are actions ("Resolve
+ * conflict"), not descriptions, so there the number is the only thing saying
+ * which pull request.
  */
-export function threadTitle(title: string, number: number): string {
-  const prefix = `#${number} `;
-  const room = MAX_THREAD_TITLE - prefix.length;
-  if (room <= 1) return `#${number}`;
-  if (title.length <= room) return `${prefix}${title}`;
+export function threadTitle(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length <= MAX_THREAD_TITLE) return trimmed;
 
   // Cut at a word boundary where one is available, so the title reads as a
   // phrase rather than stopping mid-word.
-  const clipped = title.slice(0, room - 1);
+  const clipped = trimmed.slice(0, MAX_THREAD_TITLE - 1);
   const lastSpace = clipped.lastIndexOf(" ");
-  const kept = lastSpace > room / 2 ? clipped.slice(0, lastSpace) : clipped;
-  return `${prefix}${kept.trimEnd()}…`;
+  const kept = lastSpace > MAX_THREAD_TITLE / 2 ? clipped.slice(0, lastSpace) : clipped;
+  return `${kept.trimEnd()}…`;
 }
 
 /**

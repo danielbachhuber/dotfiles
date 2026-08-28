@@ -21,31 +21,43 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
 }
 
 describe("threadTitle", () => {
-  it("leads with the number, which is what identifies the issue", () => {
-    expect(threadTitle("Fix the widget", 42)).toBe("#42 Fix the widget");
+  it("is the issue's own title, with no number in front", () => {
+    // The number spent six of thirty characters on something the row already
+    // shows, and six characters is a phrase versus a fragment at this width.
+    expect(threadTitle("Fix the widget")).toBe("Fix the widget");
+    expect(threadTitle("Fix the widget")).not.toMatch(/#/);
   });
 
   it("leaves out the repository, which the sidebar already shows", () => {
-    expect(threadTitle("Fix the widget", 42)).not.toMatch(/\//);
+    expect(threadTitle("Fix the widget")).not.toMatch(/\//);
   });
 
   it("fits the sidebar however long the title is", () => {
     const long = "Represent translated fields with a top-level translations attribute";
-    expect(threadTitle(long, 5496).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(threadTitle(long, 5496)).toMatch(/^#5496 /);
+    expect(threadTitle(long).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
   });
 
   it("cuts at a word boundary rather than mid-word", () => {
-    expect(threadTitle("Document the v2 HTTP API design", 4042)).toBe(
-      "#4042 Document the v2 HTTP…",
+    expect(threadTitle("Move the silo-singleton config out of the instance")).toBe(
+      "Move the silo-singleton…",
     );
   });
 
-  it("keeps the number when the title cannot fit at all", () => {
-    // The number survives; the label is what gives way.
-    const title = threadTitle("Anything at all", 12_345_678_901_234);
-    expect(title).toContain("12345678901234");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE + "#".length);
+  it("spends the whole budget on the title now the prefix is gone", () => {
+    // Exactly at the cap is not truncated at all.
+    const exact = "x".repeat(MAX_THREAD_TITLE);
+    expect(threadTitle(exact)).toBe(exact);
+  });
+
+  it("cuts mid-word rather than to nothing when the first word is huge", () => {
+    const title = `${"x".repeat(40)} tail`;
+    const result = threadTitle(title);
+    expect(result.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(result).toMatch(/^x+…$/);
+  });
+
+  it("trims surrounding space rather than spending the budget on it", () => {
+    expect(threadTitle("  Fix the widget  ")).toBe("Fix the widget");
   });
 });
 

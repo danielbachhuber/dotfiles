@@ -356,7 +356,7 @@ export default async function plugin(bb: BbPluginApi) {
           ...(chosenModel ? { model: chosenModel } : {}),
           permissionMode: mode,
           prompt: buildPrompt(row),
-          title: threadTitle(row.title, number),
+          title: threadTitle(row.title),
         });
 
         bb.log.info(
