@@ -200,13 +200,28 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /** The project checked out for a repository, with its local path. */
-  async function projectForRepo(repo: string): Promise<{ id: string; path: string } | null> {
+  /**
+   * The checked-out project for a repository, with the host its source lives
+   * on.
+   *
+   * The host matters: spawning into an unmanaged workspace is a request to use
+   * a path on a specific machine, and bb rejects it outright without one
+   * ("hostId is required unless workspace.type is personal"). The source that
+   * gives us the path is the same source that names the host, so they are read
+   * together and cannot drift.
+   */
+  async function projectForRepo(
+    repo: string,
+  ): Promise<{ id: string; path: string; hostId: string } | null> {
     const projects = await bb.sdk.projects.list();
     for (const project of projects) {
       if (!project.gitRemoteUrl) continue;
       if (parseRemoteSlug(project.gitRemoteUrl)?.toLowerCase() !== repo.toLowerCase()) continue;
-      const source = (project.sources ?? []).find((entry) => entry.path);
-      if (source?.path) return { id: project.id, path: source.path };
+      const sources = (project.sources ?? []).filter((entry) => entry.path && entry.hostId);
+      // The default source first: a project with several checkouts means the
+      // one bb itself would pick, not whichever came back first.
+      const source = sources.find((entry) => entry.isDefault) ?? sources[0];
+      if (source) return { id: project.id, path: source.path, hostId: source.hostId };
     }
     return null;
   }
@@ -398,21 +413,36 @@ export default async function plugin(bb: BbPluginApi) {
         };
       }
 
-      const thread = await bb.sdk.threads.spawn({
-        projectId: project.id,
-        environment: {
-          type: "host",
-          workspace: {
-            type: "unmanaged",
-            path,
-            branch: { kind: "existing", name: pr.headRef },
+      let thread;
+      try {
+        thread = await bb.sdk.threads.spawn({
+          projectId: project.id,
+          environment: {
+            type: "host",
+            hostId: project.hostId,
+            workspace: {
+              type: "unmanaged",
+              path,
+              branch: { kind: "existing", name: pr.headRef },
+            },
           },
-        },
-        ...(providerId ? { providerId } : {}),
-        permissionMode: parsePermissionMode(permissionMode),
-        prompt: buildOpenPrompt(pr, instructions),
-        title: `PR #${pr.number}`,
-      });
+          ...(providerId ? { providerId } : {}),
+          permissionMode: parsePermissionMode(permissionMode),
+          prompt: buildOpenPrompt(pr, instructions),
+          title: `PR #${pr.number}`,
+        });
+      } catch (error) {
+        // Reported rather than thrown: an unhandled rejection here reaches the
+        // panel as a generic failure, and the worktree is already on disk, so
+        // the one visible symptom is a button that does nothing.
+        const message = error instanceof Error ? error.message : String(error);
+        bb.log.warn(`could not open ${pr.repo}#${pr.number}: ${message}`);
+        return {
+          threadId: null,
+          worktree: path,
+          error: `The worktree at ${path} is ready, but the thread could not start: ${message}`,
+        };
+      }
 
       store.linkThread(pr.repo, pr.number, thread.id, Date.now());
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
