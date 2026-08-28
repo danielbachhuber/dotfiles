@@ -319,6 +319,45 @@ function Section({
   );
 }
 
+/**
+ * The empty state, drawn in the vernacular of the thing it is about.
+ *
+ * A tray, an inbox or a checkmark would say "nothing here" for any panel in
+ * any product. A diff hunk header with zero ranges says it in the only
+ * notation that means anything to someone who reviews code, and `-0,0` and
+ * `+0,0` carry the colours git itself gives them.
+ *
+ * Type rather than an illustration on purpose: grey rounded bars are the
+ * universal loading-skeleton idiom, so an SVG of an empty diff would read as
+ * "still fetching" — the opposite of what this panel has to say.
+ */
+function NothingToReview() {
+  return (
+    <div className="flex flex-col items-center gap-5 py-20 text-center">
+      <p
+        role="img"
+        aria-label="An empty diff: zero lines removed, zero lines added"
+        className="font-mono text-2xl tracking-tight text-muted-foreground/60 sm:text-3xl"
+      >
+        <span aria-hidden="true">@@ </span>
+        <span aria-hidden="true" className="text-rose-500">
+          -0,0
+        </span>{" "}
+        <span aria-hidden="true" className="text-emerald-500">
+          +0,0
+        </span>
+        <span aria-hidden="true"> @@</span>
+      </p>
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Nothing to review.</p>
+        <p className="text-xs text-muted-foreground">
+          New requests appear here as they arrive.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function Panel() {
   const { listing, reload, rpc } = useListing();
   const navigate = useBbNavigate();
@@ -422,9 +461,7 @@ function Panel() {
             </p>
           ) : null}
 
-          {listing.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No reviews are waiting on you.</p>
-          ) : null}
+          {listing.rows.length === 0 ? <NothingToReview /> : null}
 
           {DISPLAY_SECTIONS.map((section) => (
             <Section

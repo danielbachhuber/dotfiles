@@ -124,7 +124,22 @@ describe("panel", () => {
 
   it("says so when nothing is waiting", async () => {
     const slot = render(listing({ rows: [] }));
-    await slot.findByText(/No reviews are waiting on you/i);
+    await slot.findByText("Nothing to review.");
+    await slot.findByText(/New requests appear here as they arrive/i);
+  });
+
+  it("gives the empty-state art a label, since it is punctuation to a reader", async () => {
+    // "@@ -0,0 +0,0 @@" read aloud is noise, so the art carries one label and
+    // its characters are hidden.
+    const slot = render(listing({ rows: [] }));
+    const art = await slot.findByRole("img", { name: /empty diff/i });
+    expect(art).toBeInTheDocument();
+  });
+
+  it("shows no empty state while rows are present", async () => {
+    const slot = render(listing());
+    await slot.findByText(/Widget rotation|Add the widget|#/);
+    expect(slot.queryByText("Nothing to review.")).toBeNull();
   });
 
   it("surfaces a sweep error without blanking the rows", async () => {
