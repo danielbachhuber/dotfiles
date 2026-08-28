@@ -97,7 +97,7 @@ export function CopyLink({ title, url }: { title: string; url: string }) {
           // confirmation the tick gives everyone else.
           aria-label={copied ? "Copied" : "Copy"}
           onClick={() => void onCopy()}
-          className="inline-flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <Icon name={copied ? "Check" : "Copy"} className="size-3.5" />
         </button>

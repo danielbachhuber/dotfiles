@@ -168,7 +168,7 @@ function StatusCell({
         value={row.boardStatus ?? ""}
         disabled={busy}
         onChange={(event) => onPick(event.target.value)}
-        className="max-w-full appearance-none truncate bg-transparent pr-3.5 text-xs text-muted-foreground outline-none hover:text-foreground disabled:opacity-50"
+        className="max-w-full cursor-pointer appearance-none truncate bg-transparent pr-3.5 text-xs text-muted-foreground outline-none hover:text-foreground disabled:cursor-default disabled:opacity-50"
       >
         <option value="" disabled>
           {busy ? "Saving…" : placeholder}
