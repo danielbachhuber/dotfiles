@@ -8,6 +8,8 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { CopyLink } from "@/components/ui/copy-link";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -66,7 +68,8 @@ function useListing() {
   return { listing, reload: load, rpc };
 }
 
-const BADGE = "rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground";
+const BADGE =
+  "rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground";
 
 /** Where an issue lands when it is on no board, or on a different one. */
 const NO_BOARD = "No board status";
@@ -83,7 +86,8 @@ const NO_BOARD = "No board status";
 const BLOCKED = "Blocked";
 
 /** Shared header cell styling, so every column is declared the same way. */
-const HEAD = "text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground";
+const HEAD =
+  "text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground";
 
 /** What the picker offers when an issue has no status to show. */
 const ADD_TO_BOARD = "Add to board";
@@ -133,7 +137,10 @@ function StatusCell({
   if (options.length === 0) {
     return (
       <span className="inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground">
-        <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`} />
+        <span
+          aria-hidden
+          className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`}
+        />
         <span className="truncate">{row.boardStatus ?? placeholder}</span>
       </span>
     );
@@ -150,7 +157,10 @@ function StatusCell({
   // caret to the column's right edge, a long way from the text it belongs to.
   return (
     <span className="relative inline-flex max-w-full items-center gap-1.5">
-      <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`} />
+      <span
+        aria-hidden
+        className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`}
+      />
       <select
         aria-label={`Board status for #${row.number}`}
         title={row.boardStatus ?? placeholder}
@@ -213,7 +223,11 @@ function ThreadAction({
     // The title sits on the wrapper, not the Button: a disabled button fires
     // no pointer events, so a tooltip on it would never show.
     <span
-      title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
+      title={
+        row.canSpawn
+          ? undefined
+          : `No bb project is checked out for ${row.repo}`
+      }
       className="block"
     >
       <Button
@@ -293,10 +307,20 @@ function IssueTable({
                     something to act on, so they read better under the title
                     than they did beside it.
                   */}
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {[showRepo ? row.repo : null, relativeTime(row.updatedAt, now), comments]
-                      .filter(Boolean)
-                      .join(" · ")}
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="truncate">
+                      {[
+                        showRepo ? row.repo : null,
+                        relativeTime(row.updatedAt, now),
+                        comments,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                    <CopyLink
+                      title={`${row.title} (#${row.number})`}
+                      url={row.url}
+                    />
                   </span>
                 </TableCell>
                 <TableCell className="align-top">
@@ -333,7 +357,10 @@ function Panel() {
   const [starting, setStarting] = useState<ReadonlySet<string>>(new Set());
   const navigate = useBbNavigate();
 
-  const onOpen = useCallback((threadId: string) => navigate.toThread(threadId), [navigate]);
+  const onOpen = useCallback(
+    (threadId: string) => navigate.toThread(threadId),
+    [navigate],
+  );
 
   const onStart = useCallback(
     (row: Row) => {
@@ -344,7 +371,10 @@ function Panel() {
 
       void (async () => {
         try {
-          const result = await rpc.call("startThread", { repo: row.repo, number: row.number });
+          const result = await rpc.call("startThread", {
+            repo: row.repo,
+            number: row.number,
+          });
           if (!result.threadId) {
             toast.error(result.reason ?? "Could not start a thread.");
             return;
@@ -405,7 +435,8 @@ function Panel() {
     }
   }, [reload, rpc]);
 
-  if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (!listing)
+    return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
 
   // The repository only earns a column when it actually varies.
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;
@@ -426,59 +457,74 @@ function Panel() {
       status,
       rows: actionable.filter((row) => row.boardStatus === status),
     })),
-    { status: NO_BOARD, rows: actionable.filter((row) => row.boardStatus === null) },
+    {
+      status: NO_BOARD,
+      rows: actionable.filter((row) => row.boardStatus === null),
+    },
     { status: BLOCKED, rows: blocked },
   ].filter((section) => section.rows.length > 0);
 
   return (
-    <div className="h-full overflow-auto p-4 md:p-5">
-      <div className="mx-auto w-full max-w-6xl space-y-5">
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>
-            {listing.sweptAt
-              ? `Last synced ${new Date(listing.sweptAt).toLocaleTimeString()}`
-              : "Not synced yet"}
-          </span>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void onRefresh()}>
-            {busy ? "Refreshing…" : "Refresh"}
-          </Button>
+    // 300ms matches the other two panels, so a tooltip in any of them waits
+    // the same beat before appearing.
+    <TooltipProvider delayDuration={300}>
+      <div className="h-full overflow-auto p-4 md:p-5">
+        <div className="mx-auto w-full max-w-6xl space-y-5">
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>
+              {listing.sweptAt
+                ? `Last synced ${new Date(listing.sweptAt).toLocaleTimeString()}`
+                : "Not synced yet"}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => void onRefresh()}
+            >
+              {busy ? "Refreshing…" : "Refresh"}
+            </Button>
+          </div>
+
+          {listing.lastError ? (
+            <p className="rounded-lg border border-border p-3 text-sm text-destructive">
+              {listing.lastError}
+            </p>
+          ) : null}
+
+          {listing.truncated ? (
+            <p className="text-xs text-muted-foreground">
+              The sweep hit the 100 issue ceiling, so this list may be
+              incomplete.
+            </p>
+          ) : null}
+
+          {listing.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No issues assigned to you.
+            </p>
+          ) : (
+            sections.map(({ status, rows }) => (
+              <section key={status} className="space-y-2">
+                <h2 className="text-sm font-medium">
+                  {status} ({rows.length})
+                </h2>
+                <IssueTable
+                  rows={rows}
+                  showRepo={showRepo}
+                  statusOptions={listing.statusOptions}
+                  busyKeys={busyKeys}
+                  starting={starting}
+                  onPick={(row, status) => void onPick(row, status)}
+                  onStart={onStart}
+                  onOpen={onOpen}
+                />
+              </section>
+            ))
+          )}
         </div>
-
-        {listing.lastError ? (
-          <p className="rounded-lg border border-border p-3 text-sm text-destructive">
-            {listing.lastError}
-          </p>
-        ) : null}
-
-        {listing.truncated ? (
-          <p className="text-xs text-muted-foreground">
-            The sweep hit the 100 issue ceiling, so this list may be incomplete.
-          </p>
-        ) : null}
-
-        {listing.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No issues assigned to you.</p>
-        ) : (
-          sections.map(({ status, rows }) => (
-            <section key={status} className="space-y-2">
-              <h2 className="text-sm font-medium">
-                {status} ({rows.length})
-              </h2>
-              <IssueTable
-                rows={rows}
-                showRepo={showRepo}
-                statusOptions={listing.statusOptions}
-                busyKeys={busyKeys}
-                starting={starting}
-                onPick={(row, status) => void onPick(row, status)}
-                onStart={onStart}
-                onOpen={onOpen}
-              />
-            </section>
-          ))
-        )}
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -486,9 +532,13 @@ function AssignedCount() {
   const { listing } = useListing();
   // Not every assigned issue: the badge is a "how much is on me right now"
   // number, and a Backlog item three months out is not on you today.
-  const count = listing ? countedRows(listing.rows, listing.countedStatuses).length : 0;
+  const count = listing
+    ? countedRows(listing.rows, listing.countedStatuses).length
+    : 0;
   if (count === 0) return null;
-  return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;
+  return (
+    <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+  );
 }
 
 export default definePluginApp((app) => {

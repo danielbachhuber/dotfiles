@@ -9,6 +9,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { CopyLink } from "@/components/ui/copy-link";
 import { Icon } from "@/components/ui/icon";
 import {
   Tooltip,
@@ -241,10 +242,13 @@ function ReviewTable({
                     what you scan for; on this line, because a second muted line
                     would cost a row of height to say one more thing.
                   */}
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {[showRepo ? row.repo : null, row.author, row.isDraft ? "draft" : null]
-                      .filter(Boolean)
-                      .join(" · ")}
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="truncate">
+                      {[showRepo ? row.repo : null, row.author, row.isDraft ? "draft" : null]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                    <CopyLink title={`${row.title} (#${row.number})`} url={row.url} />
                   </span>
                 </TableCell>
                 <TableCell className="align-top">

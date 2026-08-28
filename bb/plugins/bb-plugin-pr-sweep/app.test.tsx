@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
-import { fireEvent } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
@@ -803,3 +803,113 @@ describe("the merge button when comments are outstanding", () => {
     await slot.findByRole("button", { name: /^Merge$/ });
   });
 });
+
+describe("copy link", () => {
+  // This jsdom ships Blob without Blob.prototype.text, and Node's Response
+  // does not recognise jsdom's Blob either — it stringifies it to
+  // "[object Blob]". FileReader is jsdom's own, so it can read jsdom's Blob.
+  // Worth the detour: without a working read the stub throws, the component's
+  // catch swallows it, and the test reports "nothing was copied" about a
+  // component that copied correctly.
+  const readBlob = (blob: Blob): Promise<string> =>
+    typeof blob.text === "function"
+      ? blob.text()
+      : new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(blob);
+        });
+
+  function stubClipboard() {
+    const writes: Array<Record<string, string>> = [];
+    // jsdom has neither, so both are stood up rather than spied on.
+    (globalThis as Record<string, unknown>).ClipboardItem = class {
+      constructor(public items: Record<string, Blob>) {}
+    };
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        async write(items: Array<{ items: Record<string, Blob> }>) {
+          const entry: Record<string, string> = {};
+          for (const [type, blob] of Object.entries(items[0]!.items)) {
+            entry[type] = await readBlob(blob);
+          }
+          writes.push(entry);
+        },
+        async writeText(text: string) {
+          writes.push({ "text/plain": text });
+        },
+      },
+    });
+    return writes;
+  }
+
+  it("offers one copy button per row, labelled Copy", async () => {
+    const writes = stubClipboard();
+    const slot = render(
+      listing({ rows: [rowFixture({ number: 1 }), rowFixture({ number: 2 })] }),
+    );
+    expect(await slot.findAllByRole("button", { name: "Copy" })).toHaveLength(2);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("copies the title and link as HTML, with plain text alongside", async () => {
+    const writes = stubClipboard();
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({
+            number: 42,
+            title: "Add the widget endpoint",
+            url: "https://github.com/acme/widgets/pull/42",
+          }),
+        ],
+      }),
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Copy" }));
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]!["text/html"]).toBe(
+      '<a href="https://github.com/acme/widgets/pull/42">Add the widget endpoint (#42)</a>',
+    );
+    expect(writes[0]!["text/plain"]).toBe(
+      "[Add the widget endpoint (#42)](https://github.com/acme/widgets/pull/42)",
+    );
+  });
+
+  it("switches to a tick, then back", async () => {
+    stubClipboard();
+    const slot = render(listing());
+
+    fireEvent.click(await slot.findByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(slot.getByRole("button", { name: "Copied" })).toBeInTheDocument());
+
+    // The label is what a screen reader hears, so it has to carry the same
+    // confirmation the icon gives everyone else — and it has to expire.
+    await waitFor(() => expect(slot.getByRole("button", { name: "Copy" })).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+  });
+
+  it("stays on Copy when the clipboard refuses", async () => {
+    // A denied permission must not claim success.
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        write: async () => {
+          throw new Error("denied");
+        },
+        writeText: async () => {
+          throw new Error("denied");
+        },
+      },
+    });
+    const slot = render(listing());
+    fireEvent.click(await slot.findByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(slot.getByRole("button", { name: "Copy" })).toBeInTheDocument());
+    expect(slot.queryByRole("button", { name: "Copied" })).toBeNull();
+  });
+});
+

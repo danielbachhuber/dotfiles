@@ -9,6 +9,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { CopyLink } from "@/components/ui/copy-link";
 import { OpenPullRequestPage } from "./sweep/open-panel.js";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -383,9 +384,10 @@ function PrTable({
                   and a repository line above pushed it down a row and made the
                   eye land on the least distinguishing part of the row first.
                 */}
-                {showRepo ? (
-                  <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
-                ) : null}
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {showRepo ? <span className="truncate">{row.repo}</span> : null}
+                  <CopyLink title={`${row.title} (#${row.number})`} url={row.url} />
+                </span>
               </TableCell>
               <TableCell className="align-top">
                 <StatusCell row={row} />
