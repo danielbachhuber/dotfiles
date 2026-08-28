@@ -219,11 +219,6 @@ function ReviewTable({
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
                 <TableCell className="align-top">
-                  {showRepo ? (
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {row.repo}
-                    </span>
-                  ) : null}
                   {/*
                     An explicit target opts out of BB's in-app browser: BB uses
                     its URL preference only for ordinary activation and leaves
@@ -240,9 +235,16 @@ function ReviewTable({
                   >
                     {row.title} (#{row.number})
                   </UrlLink>
+                  {/*
+                    The repository joins the line that was already here rather
+                    than taking one above the title. Below, because the title is
+                    what you scan for; on this line, because a second muted line
+                    would cost a row of height to say one more thing.
+                  */}
                   <span className="block truncate text-xs text-muted-foreground">
-                    {row.author}
-                    {row.isDraft ? " · draft" : ""}
+                    {[showRepo ? row.repo : null, row.author, row.isDraft ? "draft" : null]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </TableCell>
                 <TableCell className="align-top">

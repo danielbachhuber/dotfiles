@@ -357,9 +357,6 @@ function PrTable({
           {rows.map((row) => (
             <TableRow key={`${row.repo}#${row.number}`}>
               <TableCell className="align-top">
-                {showRepo ? (
-                  <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
-                ) : null}
                 {/*
                   An explicit target opts out of BB's in-app browser: BB uses
                   its URL preference only for ordinary activation and leaves
@@ -376,6 +373,14 @@ function PrTable({
                 >
                   {row.title} (#{row.number})
                 </UrlLink>
+                {/*
+                  Below the title, not above it: the title is what you scan for,
+                  and a repository line above pushed it down a row and made the
+                  eye land on the least distinguishing part of the row first.
+                */}
+                {showRepo ? (
+                  <span className="block truncate text-xs text-muted-foreground">{row.repo}</span>
+                ) : null}
               </TableCell>
               <TableCell className="align-top">
                 <StatusCell row={row} />

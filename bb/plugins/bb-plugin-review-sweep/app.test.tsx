@@ -199,8 +199,10 @@ describe("panel", () => {
         rows: [rowFixture({ number: 1 }), rowFixture({ number: 2, repo: "acme/gadgets" })],
       }),
     );
-    await slot.findByText("acme/widgets");
-    await slot.findByText("acme/gadgets");
+    // It shares the line under the title with the author now, so match
+    // within it rather than expecting a text node of its own.
+    await slot.findByText(/^acme\/widgets · /);
+    await slot.findByText(/^acme\/gadgets · /);
   });
 });
 
