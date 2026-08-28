@@ -147,9 +147,14 @@ function Review({ row }: { row: Row }) {
   return (
     <span className="flex flex-col gap-0.5">
       {lines.map((line) => (
+        // Wraps rather than truncates. A team slug is long enough that
+        // "waiting on wearenewpublic/psi-co…" hid the only part that
+        // distinguishes one team from another, and unlike a title there is no
+        // link to click through to. break-words because a slug is one
+        // unbroken token to the browser, so wrapping alone would not fit it.
         <span
           key={line.key}
-          className={line.strong ? "truncate text-foreground" : "truncate text-muted-foreground"}
+          className={`break-words ${line.strong ? "text-foreground" : "text-muted-foreground"}`}
         >
           {line.text}
         </span>

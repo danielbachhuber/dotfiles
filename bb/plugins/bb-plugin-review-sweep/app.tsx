@@ -261,8 +261,13 @@ function ReviewTable({
                     {ageLabel(row.requestedAt, now)}
                   </span>
                 </TableCell>
+                {/*
+                  Wraps rather than truncates, the same as pr-sweep's Review
+                  column and for the same reason: these are team slugs, and
+                  clipping one hides the part that says which team.
+                */}
                 <TableCell
-                  className="hidden truncate align-top text-xs text-muted-foreground xl:table-cell"
+                  className="hidden break-words align-top text-xs text-muted-foreground xl:table-cell"
                   title={reviewersLabel(row.requestedReviewers)}
                 >
                   {reviewersLabel(row.requestedReviewers)}

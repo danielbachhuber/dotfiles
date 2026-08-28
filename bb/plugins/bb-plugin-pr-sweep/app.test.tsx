@@ -367,7 +367,11 @@ describe("panel", () => {
       }),
     );
     await slot.findByText("approved by hubber");
-    await slot.findByText("waiting on acme/reviewers");
+    const line = await slot.findByText("waiting on acme/reviewers");
+    // Wrapped, not truncated: a team slug clipped at the column edge hides the
+    // only part that says which team, and there is no link to click through.
+    expect(line.className).not.toMatch(/truncate/);
+    expect(line.className).toMatch(/break-words/);
   });
 
   it("emphasizes the approval over the pending request", async () => {
