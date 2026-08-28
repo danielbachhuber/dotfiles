@@ -81,9 +81,13 @@ export interface RawPullRequest {
   statusCheckRollup: Array<{
     __typename?: string;
     name?: string;
+    /** StatusContext names itself here rather than in `name`. */
+    context?: string;
     status?: string;
     conclusion?: string | null;
     state?: string;
+    /** Which run of a re-run check this is. See `latestChecks`. */
+    startedAt?: string | null;
   }> | null;
 }
 
