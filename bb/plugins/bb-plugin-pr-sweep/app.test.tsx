@@ -913,3 +913,33 @@ describe("copy link", () => {
   });
 });
 
+describe("title tooltip", () => {
+  const LONG = "refactor(profile): hide SRG profile toggles from per-instance menu";
+
+  it("shows the full title on focus, for the part the column cut off", async () => {
+    const slot = render(listing({ rows: [rowFixture({ number: 5840, title: LONG })] }));
+    const link = await slot.findByRole("link", { name: /hide SRG profile toggles/i });
+
+    fireEvent.focus(link);
+
+    const tip = await slot.findByRole("tooltip");
+    expect(tip).toHaveTextContent(`${LONG} (#5840)`);
+  });
+
+  it("keeps the link working, so the tooltip is not in the way of the click", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({
+            number: 5840,
+            title: LONG,
+            url: "https://github.com/acme/widgets/pull/5840",
+          }),
+        ],
+      }),
+    );
+    const link = await slot.findByRole("link", { name: /hide SRG profile toggles/i });
+    expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/pull/5840");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+});

@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CopyLink } from "@/components/ui/copy-link";
+import { TitleLink } from "@/components/ui/title-link";
 import { Icon } from "@/components/ui/icon";
 import {
   Tooltip,
@@ -220,22 +221,7 @@ function ReviewTable({
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
                 <TableCell className="align-top">
-                  {/*
-                    An explicit target opts out of BB's in-app browser: BB uses
-                    its URL preference only for ordinary activation and leaves
-                    explicit targets to the browser. A pull request belongs in a
-                    real browser tab, where the session, extensions and history
-                    are.
-                  */}
-                  <UrlLink
-                    href={row.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={`${row.title} (#${row.number})`}
-                    className="block truncate font-medium hover:underline"
-                  >
-                    {row.title} (#{row.number})
-                  </UrlLink>
+                  <TitleLink href={row.url} text={`${row.title} (#${row.number})`} />
                   {/*
                     The repository joins the line that was already here rather
                     than taking one above the title. Below, because the title is
