@@ -157,3 +157,37 @@ describe("thread links", () => {
     expect(store.threadFor("acme/widgets", 42)).toBe("thr_1");
   });
 });
+
+describe("thread reasons", () => {
+  it("records the flag a thread was started for", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
+    expect(store.threadReasons()).toEqual([
+      { repo: "acme/widgets", number: 42, threadId: "thr_1", reason: "conflict" },
+    ]);
+  });
+
+  it("leaves the reason null when none was given", () => {
+    // Links written before the column existed. They are simply never
+    // auto-archived, rather than being archived against a guessed reason.
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1);
+    expect(store.threadReasons()[0]?.reason).toBeNull();
+  });
+
+  it("replaces the reason when a pull request is re-linked", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
+    store.linkThread("acme/widgets", 42, "thr_2", 2, "ci-failing");
+    expect(store.threadReasons()).toEqual([
+      { repo: "acme/widgets", number: 42, threadId: "thr_2", reason: "ci-failing" },
+    ]);
+  });
+
+  it("drops the reason with the link", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
+    store.unlinkThread("thr_1");
+    expect(store.threadReasons()).toEqual([]);
+  });
+});

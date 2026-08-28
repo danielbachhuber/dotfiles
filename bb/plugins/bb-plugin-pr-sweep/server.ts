@@ -12,7 +12,10 @@ import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
 import {
+  isWorkFinished,
+  worstFlag,
   modelForFlags,
+  parseAutoArchiveActions,
   parseModelByAction,
   parsePermissionMode,
   threadTitle,
@@ -36,6 +39,16 @@ export default async function plugin(bb: BbPluginApi) {
       type: "string",
       label: "Path to the gh CLI",
       default: "gh",
+    },
+    autoArchiveActions: {
+      type: "string",
+      label: "Auto-archive threads for these actions",
+      // Only conflicts by default. A conflict has an unambiguous finish line —
+      // GitHub either reports the branch mergeable or it does not — so the
+      // sweep can tell it is over without reading the thread. "Address
+      // feedback" and "Fix failing CI" have no such line: CI can pass on a
+      // change that missed the point, so those stay for you to close.
+      default: "conflict",
     },
     modelByAction: {
       type: "string",
@@ -133,6 +146,14 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.warn(`could not reconcile thread links: ${String(error)}`);
     }
 
+    // After reconciliation, so a link whose thread is already gone has been
+    // dropped and is not archived a second time.
+    try {
+      await archiveFinishedThreads();
+    } catch (error) {
+      bb.log.warn(`could not archive finished threads: ${String(error)}`);
+    }
+
     return outcome;
   }
 
@@ -205,6 +226,47 @@ export default async function plugin(bb: BbPluginApi) {
     if (existsSync(path)) return;
     await git(["fetch", "origin", branch]);
     await git(["worktree", "add", path, branch]);
+  }
+
+  /**
+   * Closes threads whose work the sweep can see is done.
+   *
+   * The judgement comes from the pull request, never from the thread: a thread
+   * announces success in prose, and the row is a fact recomputed from GitHub
+   * on this very cycle. If the flag that justified the thread is gone, the
+   * thread has nothing left to do.
+   *
+   * A thread still running is left alone even when the flag has cleared. It may
+   * have pushed the fix and still be verifying, and archiving mid-run would
+   * pull the worktree out from under it.
+   */
+  async function archiveFinishedThreads(): Promise<void> {
+    const { autoArchiveActions } = await settings.get();
+    const actions = parseAutoArchiveActions(autoArchiveActions);
+    if (actions.size === 0) return;
+
+    const links = store.threadReasons().filter((link) => link.reason && actions.has(link.reason));
+    if (links.length === 0) return;
+
+    const rows = store.readRows();
+    for (const link of links) {
+      const row = rows.find((entry) => entry.repo === link.repo && entry.number === link.number);
+      // No row means the pull request left the sweep entirely — merged, closed,
+      // or the listing failed. None of those are "the conflict was resolved",
+      // so the thread stays and the user decides.
+      if (!row) continue;
+      if (!isWorkFinished(link.reason!, row.flags)) continue;
+
+      const thread = await bb.sdk.threads.get({ threadId: link.threadId });
+      if (thread.status !== "idle") continue;
+
+      await bb.sdk.threads.archive({ threadId: link.threadId });
+      store.unlinkThread(link.threadId);
+      bb.log.info(
+        `archived ${link.threadId}: ${link.repo}#${link.number} no longer reports ${link.reason}`,
+      );
+      bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+    }
   }
 
   bb.rpc.register(rpcContract, {
@@ -429,7 +491,9 @@ export default async function plugin(bb: BbPluginApi) {
             (model ? ` with ${model}` : "") +
             `, permission mode ${mode}`,
         );
-        store.linkThread(repo, number, thread.id, Date.now());
+        // The worst flag is what the button named and what the thread was sent
+        // to do, so it is the one whose disappearance means "finished".
+        store.linkThread(repo, number, thread.id, Date.now(), worstFlag(row.flags));
         bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
         return { threadId: thread.id, existing: false, reason: null };
       })();

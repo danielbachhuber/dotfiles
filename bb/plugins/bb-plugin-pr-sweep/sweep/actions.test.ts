@@ -9,6 +9,9 @@ import {
   actionSummary,
   displaySection,
   isOnlyWaitingOnCi,
+  isWorkFinished,
+  parseAutoArchiveActions,
+  worstFlag,
   modelForFlags,
   parseModelByAction,
   parsePermissionMode,
@@ -426,5 +429,79 @@ describe("every button label fits its column", () => {
     for (const flag of FLAG_SEVERITY) {
       expect(threadTitle([flag], 5801, 3).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
     }
+  });
+});
+
+describe("worstFlag", () => {
+  it("agrees with everything else that resolves against the worst flag", () => {
+    // The stored reason has to name the same flag the button and the skill
+    // did, or a thread would be judged finished against work it never started.
+    for (const first of FLAG_SEVERITY) {
+      for (const second of FLAG_SEVERITY) {
+        const worst = worstFlag([first, second])!;
+        expect(actionLabel([first, second])).toBe(actionLabel([worst]));
+        expect(skillFor([first, second])).toBe(skillFor([worst]));
+      }
+    }
+  });
+
+  it("is null for a row with nothing on it", () => {
+    expect(worstFlag([])).toBeNull();
+    expect(worstFlag(["something-new"])).toBeNull();
+  });
+});
+
+describe("isWorkFinished", () => {
+  it("is not finished while the flag is still there", () => {
+    expect(isWorkFinished("conflict", ["conflict"])).toBe(false);
+    expect(isWorkFinished("ci-failing", ["ci-failing", "feedback"])).toBe(false);
+  });
+
+  it("is finished once the flag has gone", () => {
+    expect(isWorkFinished("conflict", [])).toBe(true);
+    expect(isWorkFinished("ci-failing", ["no-reviewer"])).toBe(true);
+  });
+
+  it("does not treat an unknown merge state as a resolved conflict", () => {
+    // GitHub drops the conflict flag while it recomputes mergeability, so an
+    // unknown reads exactly like a fix that never landed.
+    expect(isWorkFinished("conflict", ["mergeable-unknown"])).toBe(false);
+  });
+
+  it("lets a different reason finish even while mergeability is unknown", () => {
+    // The guard is about conflicts specifically; a CI fix does not wait on
+    // GitHub recomputing whether the branch merges.
+    expect(isWorkFinished("ci-failing", ["mergeable-unknown"])).toBe(true);
+  });
+
+  it("judges every flag by its own disappearance", () => {
+    for (const flag of FLAG_SEVERITY) {
+      expect(isWorkFinished(flag, [flag])).toBe(false);
+    }
+  });
+});
+
+describe("parseAutoArchiveActions", () => {
+  it("defaults the setting to conflicts alone", () => {
+    expect([...parseAutoArchiveActions("conflict")]).toEqual(["conflict"]);
+  });
+
+  it("reads a list", () => {
+    const actions = parseAutoArchiveActions("conflict, ci-failing");
+    expect(actions.has("conflict")).toBe(true);
+    expect(actions.has("ci-failing")).toBe(true);
+  });
+
+  it("turns the behaviour off when blank", () => {
+    expect(parseAutoArchiveActions("").size).toBe(0);
+    expect(parseAutoArchiveActions("   ").size).toBe(0);
+    expect(parseAutoArchiveActions(undefined).size).toBe(0);
+  });
+
+  it("drops a name no flag will ever match", () => {
+    // A typo that stayed in the set would never fire, which is the safe
+    // failure, but keeping it invites the opposite bug later.
+    const actions = parseAutoArchiveActions("conflcit, conflict");
+    expect([...actions]).toEqual(["conflict"]);
   });
 });

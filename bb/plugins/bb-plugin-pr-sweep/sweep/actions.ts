@@ -334,3 +334,50 @@ export function statusTone(flag: string | null): StatusTone {
   if (flag === "ci-pending") return "info";
   return "negative";
 }
+
+/**
+ * The flag that decides a row's action, or null when it carries none. Every
+ * other per-row choice — label, skill, model — already resolves against this
+ * one, so a thread's stored reason has to as well.
+ */
+export function worstFlag(flags: readonly string[]): Flag | null {
+  return FLAG_SEVERITY.find((flag) => flags.includes(flag)) ?? null;
+}
+
+/**
+ * Whether the work a thread was started for is done, judged from the row
+ * rather than from anything the thread said about itself.
+ *
+ * A thread reports success in prose, and prose is not a signal a sweep can
+ * act on. The pull request is: the sweep already recomputes every flag from
+ * GitHub each cycle, so "the flag that justified this thread is gone" is a
+ * fact, checked against the same source that raised it.
+ *
+ * Conflicts get one extra guard. `mergeable-unknown` means GitHub has not
+ * finished recomputing mergeability, and an unknown is not an answer — the
+ * conflict flag is absent during that window whether or not anything was
+ * fixed. Waiting for a definite MERGEABLE costs one sweep and avoids
+ * archiving a thread whose merge never actually landed.
+ */
+export function isWorkFinished(reason: string, flags: readonly string[]): boolean {
+  if (flags.includes(reason)) return false;
+  if (reason === "conflict" && flags.includes("mergeable-unknown")) return false;
+  return true;
+}
+
+/**
+ * Parses the "Auto-archive actions" setting: the flags whose threads close
+ * themselves once the flag clears. Blank turns the whole behaviour off.
+ *
+ * Unknown names are dropped rather than honoured, so a typo cannot archive
+ * every thread by matching a flag no row will ever carry.
+ */
+export function parseAutoArchiveActions(raw: string | undefined): Set<string> {
+  const known = new Set<string>(FLAG_SEVERITY);
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => known.has(entry)),
+  );
+}

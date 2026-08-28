@@ -25,6 +25,10 @@ export const MIGRATIONS = [
      created_at INTEGER NOT NULL,
      PRIMARY KEY (repo, number)
    )`,
+  // The flag the thread was started for, so the sweep can tell when that
+  // particular piece of work is finished. Nullable: rows linked before this
+  // column existed have no reason and are simply never auto-archived.
+  `ALTER TABLE pr_threads ADD COLUMN reason TEXT`,
 ];
 
 export interface SweepMeta {
@@ -53,7 +57,15 @@ export interface Store {
   readMeta(): SweepMeta;
   recordFailure(message: string): void;
   /** Records the thread started for a PR. Re-linking the same PR replaces it. */
-  linkThread(repo: string, number: number, threadId: string, createdAt: number): void;
+  linkThread(
+    repo: string,
+    number: number,
+    threadId: string,
+    createdAt: number,
+    reason?: string | null,
+  ): void;
+  /** Every link with the flag it was started for, for the archive sweep. */
+  threadReasons(): Array<{ repo: string; number: number; threadId: string; reason: string | null }>;
   threadFor(repo: string, number: number): string | null;
   /** repo#number -> threadId, for stamping the whole listing in one read. */
   threadLinks(): Map<string, string>;
@@ -80,14 +92,16 @@ export function createStore(db: DatabaseLike): Store {
        last_error = NULL`,
   );
   const insertLink = db.prepare(
-    `INSERT INTO pr_threads (repo, number, thread_id, created_at)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO pr_threads (repo, number, thread_id, created_at, reason)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(repo, number) DO UPDATE SET
        thread_id = excluded.thread_id,
+       reason = excluded.reason,
        created_at = excluded.created_at`,
   );
   const selectLink = db.prepare(`SELECT thread_id FROM pr_threads WHERE repo = ? AND number = ?`);
   const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM pr_threads`);
+  const selectReasons = db.prepare(`SELECT repo, number, thread_id, reason FROM pr_threads`);
   const deleteLink = db.prepare(`DELETE FROM pr_threads WHERE thread_id = ?`);
   const selectByThread = db.prepare(
     `SELECT repo, number FROM pr_threads WHERE thread_id = ?`,
@@ -162,8 +176,24 @@ export function createStore(db: DatabaseLike): Store {
       upsertFailure.run(message);
     },
 
-    linkThread(repo, number, threadId, createdAt) {
-      insertLink.run(repo, number, threadId, createdAt);
+    linkThread(repo, number, threadId, createdAt, reason = null) {
+      insertLink.run(repo, number, threadId, createdAt, reason);
+    },
+
+    threadReasons() {
+      return (
+        selectReasons.all() as Array<{
+          repo: string;
+          number: number;
+          thread_id: string;
+          reason: string | null;
+        }>
+      ).map((link) => ({
+        repo: link.repo,
+        number: link.number,
+        threadId: link.thread_id,
+        reason: link.reason,
+      }));
     },
 
     threadFor(repo, number) {
