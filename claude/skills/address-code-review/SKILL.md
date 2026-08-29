@@ -47,15 +47,22 @@ Sort the comments into three buckets:
 
 ## 4. Walk the changes, one comment at a time
 
-For each code-change comment, in one message:
+Do the work first, then write one message. For each code-change comment:
 
-1. Quote the reviewer's comment and its id.
-2. Make the edit.
-3. **Paste the full diff inline, in a fenced `diff` block.**
-4. Name the commit subject you would use.
-5. Stop and wait for a yes.
+1. Read what you need, make the edit, and run `git diff -- <path>` — all tool calls.
+2. **Then**, with no further tool calls, write a single message containing:
+   - the reviewer's comment quoted verbatim, with its id
+   - what you concluded about it
+   - the full diff, inline, in a fenced `diff` block
+   - the commit subject you would use
+3. Stop and wait for a yes.
 
-**Paste the diff into your message text. Never leave it in tool output.** Tool results collapse to "Ran 1 shell command" in the user's terminal, so a diff shown only that way is invisible to them. Run `git diff -- <path>`, then copy the output into the message.
+**Everything the user needs to judge the change goes in that one final message.** Two different things bury it otherwise, and both have happened:
+
+- **Content left in tool output.** Tool results collapse to "Ran 1 shell command", so a diff shown only that way is invisible. Copy it into the message text.
+- **Content written before a tool call.** Anything you say and then follow with a tool call is folded into the collapsed "Worked for 2m 8s" section. A quote written at the top of the turn and followed by one more command ends up hidden, while the diff below the last command stays visible — so the user sees a change with no sign of what it was for.
+
+The order to hold: finish every tool call, then write. If you realise mid-message that you need to check something, check it and then rewrite the whole message, quote included. Never continue below a tool call and assume what you already wrote is still on screen.
 
 Show one comment's diff per message. The user asked for incremental, which means they see one change, respond, and then see the next.
 
@@ -101,6 +108,8 @@ Push before replying, always. A reply posted before the push names a SHA the rem
 | Mistake | Fix |
 |---------|-----|
 | Diff shown only in tool output | Paste it inline as a fenced `diff` block |
+| Quote written, then another tool call | Finish every tool call first, then write the whole message |
+| Final message shows a diff but not the comment | Both belong in the same message, quote first |
 | All diffs in one message | One comment per message, wait between each |
 | Reply before push | Push first, so the SHA resolves |
 | Prose around the SHA | Bare SHA only for a commit-addressed comment |
