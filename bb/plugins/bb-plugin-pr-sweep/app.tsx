@@ -34,6 +34,7 @@ import {
   actionSummary,
   commentsToRead,
   displaySection,
+  isCounted,
   isOnlyWaitingOnCi,
   statusTone,
   unflaggedStatus,
@@ -611,15 +612,16 @@ function Panel() {
 function NeedsActionCount() {
   const { listing } = useListing();
   const count =
-    listing?.rows.filter(
-      (row) =>
+    listing?.rows.filter((row) =>
+      isCounted(
         displaySection(
           row.group,
           Boolean(row.threadId),
           row.isDraft,
           row.waitingOn.length,
           row.flags,
-        ) === "needs-action",
+        ),
+      ),
     ).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;

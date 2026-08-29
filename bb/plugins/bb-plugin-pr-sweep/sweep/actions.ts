@@ -274,6 +274,25 @@ export function displaySection(
   return "needs-action";
 }
 
+/**
+ * The sections the sidebar badge counts: rows where the next move is yours.
+ *
+ * Ready to Merge belongs here even though nothing is wrong with those rows —
+ * clicking merge is an action, and a finished pull request nobody merges is
+ * exactly the thing a badge should nag about.
+ *
+ * The rest are excluded because the next move is someone else's or already
+ * under way: In Progress has a thread running, Waiting on CI is waiting on a
+ * machine, Partial Approval and Awaiting Review are waiting on a reviewer, and
+ * a Draft has not been offered to anyone.
+ */
+export const COUNTED_SECTIONS: readonly DisplaySection[] = ["needs-action", "ready-to-merge"];
+
+/** True when a row's section is one the badge counts. */
+export function isCounted(section: DisplaySection): boolean {
+  return COUNTED_SECTIONS.includes(section);
+}
+
 export interface WorkStep {
   flag: Flag;
   skill: string;

@@ -8,7 +8,9 @@ import {
   actionLabel,
   actionSummary,
   commentsToRead,
+  COUNTED_SECTIONS,
   displaySection,
+  isCounted,
   isOnlyWaitingOnCi,
   isWorkFinished,
   parseAutoArchiveActions,
@@ -530,5 +532,32 @@ describe("commentsToRead", () => {
     const row = { unresolvedThreads: 0, notedBy: [] };
     expect(actionSummary(["merge-ready"], commentsToRead(row))).toBe("Merge");
     expect(skillFor(["merge-ready"], commentsToRead(row))).toBe("pr-sweep");
+  });
+});
+
+describe("isCounted", () => {
+  it("counts a row that needs work", () => {
+    expect(isCounted("needs-action")).toBe(true);
+  });
+
+  it("counts a row that is ready to merge", () => {
+    // Nothing is wrong with it, but clicking merge is still your move, and a
+    // finished pull request nobody merges is what a badge is for.
+    expect(isCounted("ready-to-merge")).toBe(true);
+  });
+
+  it("does not count what is waiting on someone or something else", () => {
+    for (const section of ["in-progress", "waiting-on-ci", "partial-approval", "awaiting-review", "draft"] as const) {
+      expect(isCounted(section)).toBe(false);
+    }
+  });
+
+  it("gives every section an answer", () => {
+    // A new section must be classified deliberately rather than defaulting to
+    // uncounted by omission.
+    for (const section of DISPLAY_SECTIONS) {
+      expect(typeof isCounted(section)).toBe("boolean");
+    }
+    expect(COUNTED_SECTIONS.every((section) => DISPLAY_SECTIONS.includes(section))).toBe(true);
   });
 });

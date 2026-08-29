@@ -982,3 +982,41 @@ describe("sync header", () => {
   });
 });
 
+describe("sidebar count", () => {
+  function renderBadge(result: Record<string, unknown>) {
+    const panel = app.navPanels.find((entry) => entry.path === "prs")!;
+    const slot = renderSlot(
+      { component: panel.experimental_sidebarAccessory! },
+      {},
+      { rpc: { listRows: () => result } },
+    );
+    mounted = slot;
+    return slot;
+  }
+
+  it("counts rows that need work and rows ready to merge", async () => {
+    const slot = renderBadge(
+      listing({
+        rows: [
+          rowFixture({ number: 1, flags: ["conflict"], group: "needs-action" }),
+          rowFixture({ number: 2, flags: ["merge-ready"], group: "ready-to-merge" }),
+          // Waiting on a machine, a reviewer, and nobody respectively.
+          rowFixture({ number: 3, flags: ["ci-pending"], group: "needs-action" }),
+          rowFixture({ number: 4, flags: [], group: "clean" }),
+          rowFixture({ number: 5, flags: ["conflict"], group: "needs-action", isDraft: true }),
+        ],
+      }),
+    );
+    expect(await slot.findByText("2")).toBeInTheDocument();
+  });
+
+  it("stops counting a row once a thread is running on it", async () => {
+    const slot = renderBadge(
+      listing({
+        rows: [rowFixture({ flags: ["conflict"], group: "needs-action", threadId: "thr_1" })],
+      }),
+    );
+    await waitFor(() => expect(slot.container.textContent).toBe(""));
+  });
+});
+
