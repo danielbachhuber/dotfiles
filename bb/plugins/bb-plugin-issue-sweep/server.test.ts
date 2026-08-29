@@ -31,7 +31,10 @@ describe("server", () => {
     });
   });
 
-  it("reports needs-configuration when gh is missing", async () => {
+  it("does not hide itself over a single unreachable gh", async () => {
+    // needs-configuration is one-way — the SDK clears it on the next load and
+    // offers no way back — so latching on one blip takes the plugin's panels
+    // out of the sidebar until someone thinks to reload it. That happened.
     const { bb, harness } = createFakePluginHost({
       pluginId: "issue-sweep",
       settings: MISSING_GH,
@@ -40,7 +43,23 @@ describe("server", () => {
 
     const result = await harness.behavior.callRpc("refresh", null);
     expect(result.ok).toBe(false);
+    expect(harness.needsConfigurationMessages).toEqual([]);
+  });
+
+  it("reports needs-configuration once gh is consistently unreachable", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "issue-sweep",
+      settings: MISSING_GH,
+    });
+    await plugin(bb);
+
+    // Three consecutive failures is a configuration problem rather than
+    // weather, and by then the message is worth acting on.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await harness.behavior.callRpc("refresh", null);
+    }
     expect(harness.needsConfigurationMessages.length).toBeGreaterThan(0);
+    expect(harness.needsConfigurationMessages[0]).toMatch(/not found on PATH/i);
   });
 
   it("surfaces a failed sweep to the panel instead of throwing", async () => {

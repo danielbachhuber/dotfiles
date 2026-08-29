@@ -17,10 +17,39 @@ export interface GhRunner {
 }
 
 export class GhUnavailableError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** What gh actually said, for a log that has to explain a hidden panel. */
+    readonly detail: string,
+  ) {
     super(message);
     this.name = "GhUnavailableError";
   }
+}
+
+/**
+ * Phrases gh uses when the problem is genuinely the credentials.
+ *
+ * Deliberately specific. The previous test was /auth|logged in|credentials|
+ * token/i against the whole error, and an execFile error message contains the
+ * entire argv — so any future flag or GraphQL field containing "token" or
+ * "auth" would classify a network blip as a broken login. The cost of a false
+ * positive is not a wrong log line: it latches the plugin into
+ * needs-configuration, which hides its panels until someone reloads it.
+ */
+const AUTH_PATTERNS = [
+  /gh auth login/i,
+  /not logged in/i,
+  /bad credentials/i,
+  /requires authentication/i,
+  /authentication required/i,
+  /HTTP 401/,
+];
+
+/** gh writes the useful part to stderr; the message is mostly the argv. */
+function ghStderr(error: unknown): string {
+  const stderr = (error as { stderr?: unknown })?.stderr;
+  return typeof stderr === "string" ? stderr : "";
 }
 
 /** Argument-array spawn only. A shell string is never constructed. */
@@ -35,11 +64,16 @@ export function createGhRunner(ghPath: string): GhRunner {
         return stdout;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        const stderr = ghStderr(error);
         if (/ENOENT/.test(message)) {
-          throw new GhUnavailableError(`\`${ghPath}\` was not found on PATH.`);
+          throw new GhUnavailableError(`\`${ghPath}\` was not found on PATH.`, message);
         }
-        if (/auth|logged in|credentials|token/i.test(message)) {
-          throw new GhUnavailableError("`gh` is not authenticated. Run `gh auth login`.");
+        // Against stderr, not the message: the message carries the argv.
+        if (AUTH_PATTERNS.some((pattern) => pattern.test(stderr))) {
+          throw new GhUnavailableError(
+            "`gh` is not authenticated. Run `gh auth login`.",
+            stderr.trim(),
+          );
         }
         throw error;
       }

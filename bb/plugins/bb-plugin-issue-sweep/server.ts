@@ -148,6 +148,14 @@ export default async function plugin(bb: BbPluginApi) {
   bb.storage.migrate(db, MIGRATIONS);
   const store = createStore(db as never);
 
+  /**
+   * Consecutive sweeps that could not reach gh, and how many it takes before
+   * the plugin declares itself misconfigured. Three at the default interval is
+   * about fifteen minutes of consistent failure.
+   */
+  let unavailableRuns = 0;
+  const UNAVAILABLE_RUNS_BEFORE_CONFIG = 3;
+
   async function sweepNow(): Promise<{ ok: boolean; error: string | null }> {
     const { ghPath, projectBoard } = await settings.get();
     try {
@@ -162,6 +170,10 @@ export default async function plugin(bb: BbPluginApi) {
       await promoteIssuesInReview(result.rows);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
       bb.log.info(`swept ${result.rows.length} open issue(s)`);
+      // Reset here, not just on the failure path: three failures spread over a
+      // day are weather, and only an unbroken run means the configuration is
+      // actually wrong.
+      unavailableRuns = 0;
       return { ok: true, error: null };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -170,7 +182,20 @@ export default async function plugin(bb: BbPluginApi) {
       store.recordFailure(message);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
       if (error instanceof GhUnavailableError) {
-        bb.status.needsConfiguration(message);
+        // Always logged. This is the branch that can hide the plugin's panels,
+        // so it must never be the silent one — the first time it fired, the
+        // only evidence was the panels being gone.
+        unavailableRuns += 1;
+        bb.log.warn(
+          `gh unavailable (${unavailableRuns} in a row): ${message} — ${error.detail}`,
+        );
+        // needs-configuration is one-way: the SDK clears it on the next load
+        // and offers no way back at runtime, so one blip would hide the panels
+        // until someone thought to reload. Only a run of failures is a
+        // configuration problem; one is weather.
+        if (unavailableRuns >= UNAVAILABLE_RUNS_BEFORE_CONFIG) {
+          bb.status.needsConfiguration(message);
+        }
       } else {
         bb.log.warn(`sweep failed: ${message}`);
       }
