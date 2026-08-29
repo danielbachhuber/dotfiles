@@ -16,11 +16,20 @@ if ! command -v bb >/dev/null 2>&1; then
 fi
 
 # --- Skills -----------------------------------------------------------------
-# Nothing to do here. BB reads user skills from each provider's own directory
-# (~/.claude/skills for claude-code, ~/.codex/skills/.system for codex,
-# ~/.hermes/skills for acp-hermes-agent), not from ~/.bb/skills. The
-# building-bb-plugins skill therefore lives in ../claude/skills/ and is
-# symlinked into ~/.claude/skills like every other skill in this repository.
+# BB reads user skills from each provider's own directory (~/.claude/skills for
+# claude-code, ~/.codex/skills/.system for codex, ~/.hermes/skills for
+# acp-hermes-agent), not from ~/.bb/skills.
+#
+# building-bb-plugins is about authoring a plugin and lives in ../claude/skills/
+# with every other skill. improve-bb is about this directory specifically — the
+# plugins, their conventions, and how they have broken — so it is kept beside
+# them and linked into the provider directory here.
+mkdir -p "$HOME/.claude/skills"
+for skill in "$DIR"/skills/*/; do
+  [ -d "$skill" ] || continue
+  ln -sfn "${skill%/}" "$HOME/.claude/skills/$(basename "$skill")"
+  echo "linked skill $(basename "$skill")"
+done
 
 # --- Plugins -----------------------------------------------------------------
 # A path install builds against dependencies that are already on disk, so each
