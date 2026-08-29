@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CopyLink } from "@/components/ui/copy-link";
+import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -335,6 +336,38 @@ function IssueTable({
   );
 }
 
+/**
+ * The sweep's freshness and its refresh control, in the panel's title bar
+ * rather than at the top of its body.
+ *
+ * Mounted separately from the panel, so it runs its own listing subscription.
+ * That is the cost of the slot; it is small, and both mounts reload from the
+ * same realtime event, so a refresh started here updates the table too.
+ */
+function SyncHeader() {
+  const { listing, reload, rpc } = useListing();
+  const [busy, setBusy] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setBusy(true);
+    try {
+      const result = await rpc.call("refresh", null);
+      if (!result.ok) toast.error(result.error ?? "Sweep failed.");
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  }, [reload, rpc]);
+
+  return (
+    <SyncStatus
+      sweptAt={listing?.sweptAt ?? null}
+      busy={busy}
+      onRefresh={() => void onRefresh()}
+    />
+  );
+}
+
 function Panel() {
   const { listing, reload, rpc } = useListing();
   const [busy, setBusy] = useState(false);
@@ -457,22 +490,6 @@ function Panel() {
     <TooltipProvider delayDuration={300}>
       <div className="h-full overflow-auto p-4 md:p-5">
         <div className="mx-auto w-full max-w-6xl space-y-5">
-          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>
-              {listing.sweptAt
-                ? `Last synced ${new Date(listing.sweptAt).toLocaleTimeString()}`
-                : "Not synced yet"}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => void onRefresh()}
-            >
-              {busy ? "Refreshing…" : "Refresh"}
-            </Button>
-          </div>
-
           {listing.lastError ? (
             <p className="rounded-lg border border-border p-3 text-sm text-destructive">
               {listing.lastError}
@@ -536,5 +553,6 @@ export default definePluginApp((app) => {
     path: "issues",
     component: Panel,
     experimental_sidebarAccessory: AssignedCount,
+    headerContent: SyncHeader,
   });
 });

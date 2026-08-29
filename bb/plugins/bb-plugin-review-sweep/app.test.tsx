@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
@@ -471,3 +472,41 @@ describe("thread header action", () => {
     expect(call?.input).toEqual({ threadId: "thr_specific" });
   });
 });
+
+describe("sync header", () => {
+  function renderHeader(result: Record<string, unknown>, extraRpc: Record<string, unknown> = {}) {
+    const slot = renderSlot(
+      { component: app.navPanels[0]!.headerContent! },
+      { subPath: "" },
+      { rpc: { listRows: () => result, refresh: () => ({ ok: true, error: null }), ...extraRpc } },
+    );
+    mounted = slot;
+    return slot;
+  }
+
+  it("says how long ago the sweep landed, relatively", async () => {
+    // Relative, because the question the header answers is "is this current",
+    // not "what time is it".
+    const slot = renderHeader(listing({ sweptAt: Date.now() - 4 * 60_000 }));
+    expect(await slot.findByText("synced 4m ago")).toBeInTheDocument();
+  });
+
+  it("says so before the first sweep rather than showing a bogus age", async () => {
+    const slot = renderHeader(listing({ sweptAt: null }));
+    expect(await slot.findByText("not synced yet")).toBeInTheDocument();
+  });
+
+  it("refreshes on demand", async () => {
+    let refreshes = 0;
+    const slot = renderHeader(listing(), {
+      refresh: () => {
+        refreshes += 1;
+        return { ok: true, error: null };
+      },
+    });
+
+    fireEvent.click(await slot.findByRole("button", { name: /Refresh/i }));
+    await waitFor(() => expect(refreshes).toBe(1));
+  });
+});
+
