@@ -124,6 +124,31 @@ function commenters(pr: RawPullRequest): string[] {
 }
 
 /**
+ * Reviewers whose latest review says something in prose.
+ *
+ * The case this exists for: an APPROVED review whose body is three paragraphs
+ * of "one thing before you merge". GitHub files that as an approval, it leaves
+ * no unresolved thread, and it is not an issue comment — so every other signal
+ * on the row reports a clean approval, and the panel offers a Merge button
+ * over the top of it.
+ *
+ * Read from latestReviews rather than reviews: an earlier round's notes were
+ * answered by the round that superseded them, and re-raising them would make
+ * the flag permanent.
+ */
+export function reviewNotes(pr: RawPullRequest): string[] {
+  const authorLogin = pr.author?.login ?? null;
+  const seen = new Set<string>();
+  for (const entry of pr.latestReviews) {
+    const login = entry.author?.login;
+    if (!login || login === authorLogin) continue;
+    if ((entry.body ?? "").trim() === "") continue;
+    seen.add(login);
+  }
+  return [...seen];
+}
+
+/**
  * The newest comment's author, when it is not the pull request's own author.
  *
  * GitHub's review states say nothing about general comments, so an approved
@@ -246,6 +271,7 @@ export function classifyOne(
     checks,
     approvedBy,
     commentedBy: commenters(pr),
+    notedBy: reviewNotes(pr),
     waitingOn: requestedReviewers(pr),
     lastCommentBy: lastCommentBy(pr),
     unresolvedThreads: 0,

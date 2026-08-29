@@ -12,6 +12,7 @@ import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
 import {
+  commentsToRead,
   isWorkFinished,
   worstFlag,
   modelForFlags,
@@ -538,7 +539,7 @@ export default async function plugin(bb: BbPluginApi) {
           ...(model ? { model } : {}),
           permissionMode: mode,
           prompt: buildPrompt(row),
-          title: threadTitle(row.flags, number, row.unresolvedThreads),
+          title: threadTitle(row.flags, number, commentsToRead(row)),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +

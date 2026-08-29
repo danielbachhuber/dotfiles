@@ -7,6 +7,7 @@ import {
   MAX_THREAD_TITLE,
   actionLabel,
   actionSummary,
+  commentsToRead,
   displaySection,
   isOnlyWaitingOnCi,
   isWorkFinished,
@@ -503,5 +504,31 @@ describe("parseAutoArchiveActions", () => {
     // failure, but keeping it invites the opposite bug later.
     const actions = parseAutoArchiveActions("conflcit, conflict");
     expect([...actions]).toEqual(["conflict"]);
+  });
+});
+
+describe("commentsToRead", () => {
+  it("adds review notes to unresolved threads", () => {
+    // Two shapes of the same problem — an approval that came with conditions —
+    // so they add up rather than being tracked apart.
+    expect(commentsToRead({ unresolvedThreads: 2, notedBy: ["hubber"] })).toBe(3);
+  });
+
+  it("is zero for a row with neither", () => {
+    expect(commentsToRead({ unresolvedThreads: 0, notedBy: [] })).toBe(0);
+  });
+
+  it("turns a bare approval-with-notes into Review and merge", () => {
+    // The row that prompted this: approved, green, no unresolved thread, and a
+    // review body full of caveats. The button said "Merge".
+    const row = { unresolvedThreads: 0, notedBy: ["hubber"] };
+    expect(actionSummary(["merge-ready"], commentsToRead(row))).toBe("Review and merge");
+    expect(skillFor(["merge-ready"], commentsToRead(row))).toBe("address-code-review");
+  });
+
+  it("leaves a genuinely clean merge alone", () => {
+    const row = { unresolvedThreads: 0, notedBy: [] };
+    expect(actionSummary(["merge-ready"], commentsToRead(row))).toBe("Merge");
+    expect(skillFor(["merge-ready"], commentsToRead(row))).toBe("pr-sweep");
   });
 });

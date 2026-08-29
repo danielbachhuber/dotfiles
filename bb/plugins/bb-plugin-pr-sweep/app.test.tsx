@@ -23,6 +23,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     lastCommentBy: null,
     unresolvedThreads: 0,
     outdatedThreads: 0,
+    notedBy: [],
     canSpawn: true,
     threadId: null,
     ...overrides,

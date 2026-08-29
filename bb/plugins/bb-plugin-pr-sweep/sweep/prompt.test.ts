@@ -16,6 +16,7 @@ function row(overrides: Partial<ClassifiedRow> = {}): ClassifiedRow {
     commentedBy: [],
     waitingOn: [],
     lastCommentBy: null,
+    notedBy: [],
     unresolvedThreads: 0,
     outdatedThreads: 0,
     awaitingReReview: false,
@@ -200,5 +201,35 @@ describe("buildPrompt", () => {
     const prompt = buildPrompt(row({ flags: ["merge-ready"] }));
     expect(prompt).toMatch(/force-pushing/i);
     expect(prompt).toMatch(/merging the PR/i);
+  });
+});
+
+describe("buildPrompt: the merge check", () => {
+  const mergeReady = (overrides = {}) =>
+    buildPrompt(
+      row({ flags: ["merge-ready"], approvedBy: ["hubber"], group: "ready-to-merge", ...overrides }),
+    );
+
+  it("always asks for a final pass over the comments before merging", () => {
+    // Approval is not the same as "every point was dealt with", and the sweep
+    // cannot judge that — the thread has to read them.
+    const prompt = mergeReady();
+    expect(prompt).toMatch(/read the pull request's comments and every review body/i);
+    expect(prompt).toMatch(/rather than merging silently/i);
+  });
+
+  it("names a reviewer whose approval carried notes", () => {
+    const prompt = mergeReady({ notedBy: ["gostelna"] });
+    expect(prompt).toContain("gostelna");
+    expect(prompt).toMatch(/GitHub files as an approval/i);
+    expect(prompt).toMatch(/read that body, not just the diff/i);
+  });
+
+  it("routes such a row to the code-review skill, not to triage", () => {
+    expect(mergeReady({ notedBy: ["gostelna"] })).toContain("`address-code-review` skill");
+  });
+
+  it("says nothing about review notes when there are none", () => {
+    expect(mergeReady()).not.toMatch(/files as an approval/i);
   });
 });

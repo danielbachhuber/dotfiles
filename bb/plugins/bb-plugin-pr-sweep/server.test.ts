@@ -110,6 +110,7 @@ function seedRow() {
     lastCommentBy: null,
     unresolvedThreads: 0,
     outdatedThreads: 0,
+    notedBy: [],
   };
 }
 

@@ -1,4 +1,4 @@
-import { latestChecks } from "./classify.js";
+import { latestChecks, reviewNotes } from "./classify.js";
 import { describe, expect, it } from "vitest";
 import { classify, classifyOne, isBotLogin, repoRunsChecks, summarizeChecks } from "./classify.js";
 import { checkRun, makePr, review, statusContext, teamRequest, userRequest } from "./fixtures.js";
@@ -438,5 +438,62 @@ describe("latestChecks", () => {
   it("leaves a rollup with no repeats untouched", () => {
     expect(latestChecks([])).toEqual([]);
     expect(latestChecks(null)).toEqual([]);
+  });
+});
+
+describe("reviewNotes", () => {
+  const pr = (latestReviews: unknown[], authorLogin = "octocat") =>
+    ({ author: { login: authorLogin }, latestReviews }) as never;
+
+  it("reports an approval that came with prose", () => {
+    // #5840: APPROVED, no unresolved thread, no issue comment, and 3,495
+    // characters of caveats in the review body. Every other signal on the row
+    // read as unqualified agreement.
+    expect(
+      reviewNotes(pr([{ state: "APPROVED", author: { login: "hubber" }, body: "One thing…" }])),
+    ).toEqual(["hubber"]);
+  });
+
+  it("ignores an approval with nothing written on it", () => {
+    expect(reviewNotes(pr([{ state: "APPROVED", author: { login: "hubber" }, body: "" }]))).toEqual(
+      [],
+    );
+    expect(
+      reviewNotes(pr([{ state: "APPROVED", author: { login: "hubber" }, body: "   " }])),
+    ).toEqual([]);
+    expect(reviewNotes(pr([{ state: "APPROVED", author: { login: "hubber" } }]))).toEqual([]);
+  });
+
+  it("counts a body on any review state, not just an approval", () => {
+    expect(
+      reviewNotes(pr([{ state: "COMMENTED", author: { login: "mona" }, body: "hmm" }])),
+    ).toEqual(["mona"]);
+  });
+
+  it("ignores the pull request author talking about their own work", () => {
+    expect(
+      reviewNotes(pr([{ state: "COMMENTED", author: { login: "octocat" }, body: "context" }])),
+    ).toEqual([]);
+  });
+
+  it("names each reviewer once", () => {
+    const notes = reviewNotes(
+      pr([
+        { state: "APPROVED", author: { login: "hubber" }, body: "a" },
+        { state: "COMMENTED", author: { login: "hubber" }, body: "b" },
+      ]),
+    );
+    expect(notes).toEqual(["hubber"]);
+  });
+
+  it("reads latestReviews, so an answered round does not resurface", () => {
+    // An earlier round's notes were dealt with by the round that superseded
+    // them; re-raising them would make the flag permanent.
+    const raw = {
+      author: { login: "octocat" },
+      latestReviews: [{ state: "APPROVED", author: { login: "hubber" }, body: "" }],
+      reviews: [{ state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "fix this" }],
+    } as never;
+    expect(reviewNotes(raw)).toEqual([]);
   });
 });

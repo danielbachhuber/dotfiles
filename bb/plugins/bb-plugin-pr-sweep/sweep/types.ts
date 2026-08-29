@@ -60,6 +60,14 @@ export interface ClassifiedRow {
   unresolvedThreads: number;
   /** Of those, how many sit on code that has since changed. */
   outdatedThreads: number;
+  /**
+   * Reviewers whose latest review carries a written body.
+   *
+   * Invisible to every other signal: an approval with three paragraphs of
+   * caveats is APPROVED, has no unresolved inline thread, and adds no issue
+   * comment, so it reads as unqualified agreement.
+   */
+  notedBy: string[];
   /** Answered and re-requested: the ball is in the reviewer's court. */
   awaitingReReview: boolean;
 }
@@ -74,8 +82,13 @@ export interface RawPullRequest {
   mergeable: string;
   mergeStateStatus: string;
   reviewRequests: Array<{ __typename?: string; login?: string; slug?: string; name?: string }>;
-  latestReviews: Array<{ state: string; author?: { login: string } | null }>;
-  reviews: Array<{ state: string; author?: { login: string } | null }>;
+  latestReviews: Array<{
+    state: string;
+    author?: { login: string } | null;
+    /** An approval can carry paragraphs of caveats here. See `reviewNotes`. */
+    body?: string | null;
+  }>;
+  reviews: Array<{ state: string; author?: { login: string } | null; body?: string | null }>;
   reviewDecision: string | null;
   comments?: Array<{ author?: { login: string } | null; createdAt?: string }> | null;
   statusCheckRollup: Array<{

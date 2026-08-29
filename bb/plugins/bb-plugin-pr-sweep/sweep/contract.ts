@@ -26,6 +26,7 @@ const rowSchema = z.object({
   lastCommentBy: z.string().nullable(),
   unresolvedThreads: z.number(),
   outdatedThreads: z.number(),
+  notedBy: z.array(z.string()),
   canSpawn: z.boolean(),
   /** The thread already started for this PR, if any. */
   threadId: z.string().nullable(),

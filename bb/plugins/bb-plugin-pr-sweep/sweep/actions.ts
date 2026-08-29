@@ -46,8 +46,8 @@ const DEFAULT_SKILL = "pr-sweep";
  * it knows to read each thread, reply, and resolve. Routing that to `pr-sweep`
  * sent the thread to a triage skill for work whose shape was already known.
  */
-function skillForFlag(flag: Flag, unresolvedThreads: number): string {
-  if (flag === "merge-ready" && unresolvedThreads > 0) return SKILL_FOR.feedback ?? DEFAULT_SKILL;
+function skillForFlag(flag: Flag, commentsToRead: number): string {
+  if (flag === "merge-ready" && commentsToRead > 0) return SKILL_FOR.feedback ?? DEFAULT_SKILL;
   return SKILL_FOR[flag] ?? DEFAULT_SKILL;
 }
 
@@ -60,16 +60,16 @@ export function actionLabel(flags: readonly string[]): string {
 }
 
 /** The skill for a row's worst flag, which is the work its action starts. */
-export function skillFor(flags: readonly string[], unresolvedThreads = 0): string {
+export function skillFor(flags: readonly string[], commentsToRead = 0): string {
   for (const flag of FLAG_SEVERITY) {
-    if (flags.includes(flag)) return skillForFlag(flag, unresolvedThreads);
+    if (flags.includes(flag)) return skillForFlag(flag, commentsToRead);
   }
   return DEFAULT_SKILL;
 }
 
 /** True when a dedicated skill specifies the whole flow, worktree included. */
-export function skillOwnsWorkflow(flags: readonly string[], unresolvedThreads = 0): boolean {
-  return skillFor(flags, unresolvedThreads) !== DEFAULT_SKILL;
+export function skillOwnsWorkflow(flags: readonly string[], commentsToRead = 0): boolean {
+  return skillFor(flags, commentsToRead) !== DEFAULT_SKILL;
 }
 
 /**
@@ -89,10 +89,10 @@ export const MAX_THREAD_TITLE = 30;
 export function threadTitle(
   flags: readonly string[],
   number: number,
-  unresolvedThreads = 0,
+  commentsToRead = 0,
 ): string {
   const suffix = ` #${number}`;
-  const label = actionSummary(flags, unresolvedThreads);
+  const label = actionSummary(flags, commentsToRead);
   const full = `${label}${suffix}`;
   if (full.length <= MAX_THREAD_TITLE) return full;
 
@@ -168,6 +168,20 @@ export function modelForFlags(
     if (flags.includes(flag)) return models[flag];
   }
   return undefined;
+}
+
+/**
+ * Everything on a row that has to be read before it can be merged.
+ *
+ * Unresolved inline threads and written review notes are the same problem
+ * wearing different hats — an approval that came with conditions — so they add
+ * up rather than being tracked separately.
+ */
+export function commentsToRead(row: {
+  unresolvedThreads: number;
+  notedBy: readonly string[];
+}): number {
+  return row.unresolvedThreads + row.notedBy.length;
 }
 
 export const PERMISSION_MODES = ["accept-edits", "auto", "full"] as const;
@@ -274,10 +288,10 @@ export interface WorkStep {
  * order rather than the panel spawning one thread per flag, which would put two
  * agents on the same branch.
  */
-export function workSteps(flags: readonly string[], unresolvedThreads = 0): WorkStep[] {
+export function workSteps(flags: readonly string[], commentsToRead = 0): WorkStep[] {
   return FLAG_SEVERITY.filter((flag) => flags.includes(flag)).map((flag) => ({
     flag,
-    skill: skillForFlag(flag, unresolvedThreads),
+    skill: skillForFlag(flag, commentsToRead),
   }));
 }
 
@@ -290,13 +304,13 @@ export function workSteps(flags: readonly string[], unresolvedThreads = 0): Work
  * tail matters less than knowing more is queued. The Status column lists them
  * all.
  */
-export function actionSummary(flags: readonly string[], unresolvedThreads = 0): string {
+export function actionSummary(flags: readonly string[], commentsToRead = 0): string {
   const steps = workSteps(flags);
   if (steps.length === 0) return "Work on this";
   if (steps.length === 1) {
     // An approval does not clear inline comments: #5801 was approved, green,
     // and carrying three. "Merge" alone understated what the click starts.
-    if (steps[0]!.flag === "merge-ready" && unresolvedThreads > 0) {
+    if (steps[0]!.flag === "merge-ready" && commentsToRead > 0) {
       // Short enough for the action column and for the sidebar title, which
       // "Review comments and merge" was not: it overflowed the column and put
       // a horizontal scrollbar on the table.

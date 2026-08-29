@@ -32,6 +32,7 @@ import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
   actionSummary,
+  commentsToRead,
   displaySection,
   isOnlyWaitingOnCi,
   statusTone,
@@ -63,6 +64,7 @@ type Row = {
   lastCommentBy: string | null;
   unresolvedThreads: number;
   outdatedThreads: number;
+  notedBy: string[];
   canSpawn: boolean;
   threadId: string | null;
 };
@@ -132,6 +134,16 @@ function Review({ row }: { row: Row }) {
     lines.push({
       key: "threads",
       text: `${row.unresolvedThreads} unresolved comment${row.unresolvedThreads === 1 ? "" : "s"}${outdated}`,
+      strong: true,
+    });
+  }
+  if (row.notedBy.length) {
+    // An approval with a written body reads as unqualified agreement
+    // everywhere else on the row: it is APPROVED, it leaves no unresolved
+    // thread, and it is not an issue comment.
+    lines.push({
+      key: "notes",
+      text: `${row.notedBy.join(", ")} wrote notes on their review`,
       strong: true,
     });
   }
@@ -312,7 +324,7 @@ function Action({
         onClick={() => onWork(row)}
         className="whitespace-nowrap"
       >
-        {isStarting ? "Starting…" : actionSummary(row.flags, row.unresolvedThreads)}
+        {isStarting ? "Starting…" : actionSummary(row.flags, commentsToRead(row))}
       </Button>
     </span>
   );
