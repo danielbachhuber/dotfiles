@@ -1,0 +1,79 @@
+# Packages and applications installed on this machine.
+#
+# Curated by hand, not produced by `brew bundle dump`. A dump writes every
+# installed formula including transitive dependencies, so the file churns
+# whenever a dependency shifts and stops recording what was actually chosen.
+# Only roots belong here: `ffmpeg`, `pytorch`, and `numpy` arrive with
+# openai-whisper, `deno` with yt-dlp.
+#
+# Note that `brew leaves` is not a reliable source for this list. It omits
+# formulae from third-party taps, which on this machine hides ghui.
+#
+# Apply with ./setup.sh, which also installs the npm globals and agent CLIs.
+# Report on it with ./check.sh, which changes nothing.
+
+# --- Taps --------------------------------------------------------------------
+# Homebrew 6 refuses to load a formula from an untrusted third-party tap, and
+# there is no Brewfile directive for trusting one. setup.sh runs `brew trust`
+# before `brew bundle` for this reason.
+tap "kitlangton/tap"   # ghui
+
+# --- Command line ------------------------------------------------------------
+brew "autojump"
+brew "gh"
+brew "ghostscript"
+brew "ghui"
+brew "googleworkspace-cli"
+brew "hugo"
+brew "llm"
+brew "mas"                       # drives the App Store section below
+brew "mprocs"
+brew "openai-whisper"
+brew "pyenv"
+brew "qrtool"
+brew "ripgrep"
+brew "the_silver_searcher"
+brew "tig"
+brew "wget"
+brew "yt-dlp"
+
+# --- Applications ------------------------------------------------------------
+# Every one of these was installed by hand before this file existed. On a
+# machine that already has them, `brew install --cask --adopt <token>` takes
+# ownership of the existing bundle in place rather than reinstalling it.
+cask "1password"
+cask "alfred"
+cask "bb"
+cask "claude"
+cask "cleanshot"
+cask "codexbar"
+cask "gcloud-cli"
+cask "ghostty"
+cask "google-chrome"
+cask "keepingyouawake"
+cask "orbstack"
+cask "pocket-casts"
+cask "reflect"
+cask "spotify"
+cask "telegram"
+cask "todoist-app"
+cask "whatsapp"
+cask "wispr-flow"
+cask "zed"
+
+# --- App Store ---------------------------------------------------------------
+# Requires being signed in to the App Store first; `mas` cannot sign in for you.
+# Slack is here rather than in the cask list because the installed copy is the
+# App Store build. Pages, Numbers, Keynote, GarageBand, and iMovie are left out
+# deliberately -- see README.md.
+mas "1Password for Safari", id: 1569813296
+mas "Dato", id: 1470584107
+mas "Day One", id: 1055511498
+mas "Divvy", id: 413857545
+mas "Harvest", id: 506189836
+mas "Simplenote", id: 692867256
+mas "Slack", id: 803453959
+mas "Sticky Notepad", id: 1634804565
+mas "Tiny Ipsum", id: 1445179392
+mas "Webcam Settings", id: 533696630
+mas "Xcode", id: 497799835

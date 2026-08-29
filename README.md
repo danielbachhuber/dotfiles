@@ -21,5 +21,6 @@ state directories stay on the machine: nothing from `~/.bb`, and nothing from
 | `bb/` | [bb](https://getbb.app) plugins and skills, plus `bb/setup.sh`. See [bb/README.md](bb/README.md). |
 | `claude/` | Claude Code settings, skills, hooks, scripts, and `CLAUDE.md`. |
 | `agents/` | `AGENTS.md`, shared agent instructions. |
+| `apps/` | Installed packages and applications, plus `apps/setup.sh`. See [apps/README.md](apps/README.md). |
 | `environment` | Exported environment variables. Tracked, so no secrets. |
 | `environment.local` | Secrets and machine-local variables. Untracked. |

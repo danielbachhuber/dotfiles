@@ -1,0 +1,16 @@
+# Globally installed npm packages, one per line.
+#
+# These live under nvm's Node, not the npm that wins on PATH by default, which
+# belongs to another tool and has its own global root. setup.sh and check.sh
+# both select nvm's default Node first; see node.sh. npm and corepack ship with
+# Node and are deliberately absent.
+#
+# Regenerate with the same Node those scripts use:
+#   nvm use default && npm ls -g --depth=0 | sed -n 's/^[+`]-- //p'
+#
+# td is @doist/todoist-cli. Do not reach for the `td` formula in homebrew-core:
+# that is an unrelated terminal todo tool by a different author.
+@devcontainers/cli
+@doist/todoist-cli
+hrvst-cli
+tsx

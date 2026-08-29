@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>_respectNaturalScrolling</key>
+	<true/>
+	<key>calendarEventsDayCount</key>
+	<integer>1</integer>
+	<key>iconInMenuBar</key>
+	<string>none</string>
+	<key>menu_eventDetails_showTimeZones</key>
+	<true/>
+	<key>menu_positionedBelowMenuBarItem</key>
+	<true/>
+	<key>pinWindow</key>
+	<false/>
+	<key>resizableWindowHeight</key>
+	<false/>
+	<key>showDateInMenuBar</key>
+	<true/>
+	<key>showMonthInMenuBar</key>
+	<true/>
+	<key>showTimeInMenuBar</key>
+	<true/>
+	<key>showWeekDayInMenuBar</key>
+	<true/>
+	<key>timeZonesInMenu</key>
+	<array>
+		<string>{"hide":"never","id":"DEC44F2C-1BB0-4F40-A998-9DDD6C1F0BC5","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Portland","notes":"","originalName":"Portland","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"America\/Los_Angeles"}</string>
+		<string>{"hide":"never","id":"8914EC26-FFA3-4EA2-A1E0-67DFE4CB4A0F","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Denver","notes":"","originalName":"Denver","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"America\/Denver"}</string>
+		<string>{"hide":"never","id":"06418CA9-8187-4795-B3CC-0A49EC1D9A36","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Austin","notes":"","originalName":"Austin","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"America\/Chicago"}</string>
+		<string>{"hide":"never","id":"62AA80D6-4862-4977-846F-12459D98E7EA","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Philadelphia","notes":"","originalName":"Philadelphia","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"America\/New_York"}</string>
+		<string>{"hide":"never","id":"C76B9124-4AAD-494A-BC11-CA09347E3AF8","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"UTC","notes":"","originalName":"UTC","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Africa\/Abidjan"}</string>
+		<string>{"hide":"never","id":"3675E516-CB1E-4952-83FA-0D127D1777FA","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Dublin","notes":"","originalName":"Dublin","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Europe\/Dublin"}</string>
+		<string>{"hide":"never","id":"AFDAD2AA-C61A-4998-A69B-0E46CCD0422E","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Amsterdam","notes":"","originalName":"Amsterdam","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Europe\/Amsterdam"}</string>
+		<string>{"hide":"never","id":"43ED5B4B-2266-47C4-A3C5-EC2F7748FF8D","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Berlin","notes":"","originalName":"Berlin","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Europe\/Berlin"}</string>
+		<string>{"hide":"never","id":"E435A363-B447-465B-A283-E101DA34F68A","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Dubai","notes":"","originalName":"Dubai","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Asia\/Dubai"}</string>
+		<string>{"hide":"never","id":"CAA23C13-C012-4740-BA1F-4F17ACC39823","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Sydney","notes":"","originalName":"Sydney","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Australia\/Sydney"}</string>
+		<string>{"hide":"never","id":"0F70DE40-63C5-4522-9EA0-1F19CBDD2B32","isInMenuBar":false,"menuBarShowWeekdayWhenInDifferentDay":true,"menuBarTitle":"","menuBarTitleOnSeparateLine":false,"name":"Honolulu","notes":"","originalName":"Honolulu","showInMenu":true,"showMinutesInMenuBar":true,"timeFormat":"system","timeZone":"Pacific\/Honolulu"}</string>
+	</array>
+	<key>upcomingEventInMenuBar_onlyEventsWithStatus</key>
+	<string>acceptedAndTentativeAndPending</string>
+	<key>useGoogleMaps</key>
+	<true/>
+</dict>
+</plist>
