@@ -4,3 +4,7 @@ docs/superpowers/specs
 docs/superpowers/plans
 vim/tmp
 vim/.netrwhist
+
+# Every package here also carries its own ignore; this is the backstop for
+# the next one written by hand. gh-shared was, and 1,023 files went in.
+node_modules/
