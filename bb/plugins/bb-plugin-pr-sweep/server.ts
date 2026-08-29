@@ -256,17 +256,43 @@ export default async function plugin(bb: BbPluginApi) {
    * Creates the worktree on the pull request's branch, or reuses one already
    * there. Argument-array spawn, never a shell string.
    */
+  /**
+   * A branch can only be checked out in one worktree, so `git worktree add`
+   * fails while another holds it. Names that worktree, since git's own message
+   * buries the path in a sentence about preparing a checkout.
+   */
+  function describeBranchInUse(message: string, branch: string): string | null {
+    const held = /already used by worktree at '([^']+)'/.exec(message);
+    if (!held) return null;
+    return `${branch} is already checked out at ${held[1]}. Close or archive whatever is using it, then try again.`;
+  }
+
   async function addWorktree(repoPath: string, path: string, branch: string): Promise<void> {
-    const git = (args: string[]) =>
+    const git = (args: string[], allowFailure = false) =>
       new Promise<void>((resolve, reject) => {
         execFile("git", ["-C", repoPath, ...args], (error) =>
-          error ? reject(error) : resolve(),
+          error && !allowFailure ? reject(error) : resolve(),
         );
       });
 
     if (existsSync(path)) return;
+
+    // Prune first. Threads spawned from this panel are told to nest their own
+    // worktrees under the directory bb owns, and bb deletes that directory when
+    // the thread is archived — but the registration in this repository outlives
+    // it, and git keeps refusing the branch on behalf of a path that is no
+    // longer there. Pruning is safe: it only drops registrations whose
+    // directory has actually gone.
+    await git(["worktree", "prune"], true);
+
     await git(["fetch", "origin", branch]);
-    await git(["worktree", "add", path, branch]);
+    try {
+      await git(["worktree", "add", path, branch]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const inUse = describeBranchInUse(message, branch);
+      throw inUse ? new Error(inUse) : error;
+    }
   }
 
   /**
@@ -432,10 +458,15 @@ export default async function plugin(bb: BbPluginApi) {
       try {
         await addWorktree(project.path, path, pr.headRef);
       } catch (error) {
+        // addWorktree already explains the one failure with a useful answer;
+        // wrapping that in "Could not create a worktree at <path>" buries the
+        // sentence that tells you what to do.
+        const message = error instanceof Error ? error.message : String(error);
+        const explained = message.includes("already checked out at");
         return {
           threadId: null,
           worktree: null,
-          error: `Could not create a worktree at ${path}: ${String(error)}`,
+          error: explained ? message : `Could not create a worktree at ${path}: ${message}`,
         };
       }
 
