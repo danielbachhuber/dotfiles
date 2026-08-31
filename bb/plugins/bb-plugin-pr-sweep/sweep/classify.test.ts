@@ -179,6 +179,27 @@ describe("classifyOne merge readiness", () => {
     expect(row.group).toBe("needs-action");
   });
 
+  it("is not merge-blocked while a re-requested review is outstanding", () => {
+    // An approval from an earlier round still stands in latestReviews after
+    // the author answers the changes and re-requests review. GitHub holds
+    // mergeStateStatus at BLOCKED for the review it is still waiting on, so
+    // the row read "merge blocked · Unblock merge" on a pull request whose
+    // next move belongs to the reviewers.
+    const row = classifyOne(
+      makePr({
+        latestReviews: [review("APPROVED", "hubber")],
+        reviewDecision: "CHANGES_REQUESTED",
+        mergeStateStatus: "BLOCKED",
+        reviewRequests: [userRequest("octocat")],
+      }),
+      "acme/widgets",
+    );
+    expect(row.awaitingReReview).toBe(true);
+    expect(row.flags).not.toContain("merge-blocked");
+    expect(row.flags).not.toContain("merge-ready");
+    expect(row.group).toBe("clean");
+  });
+
   it("is not merge-ready with an empty rollup", () => {
     const row = classifyOne(makePr({ ...approved, statusCheckRollup: [] }), "acme/widgets");
     expect(row.flags).not.toContain("merge-ready");

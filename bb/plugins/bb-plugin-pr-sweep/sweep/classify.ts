@@ -241,9 +241,17 @@ export function classifyOne(
   const covered = pr.reviewRequests.length > 0 || pr.latestReviews.length > 0;
   if (!pr.isDraft && !covered) flags.add("no-reviewer");
 
+  const awaitingReReview = isAwaitingReReview(pr);
+
   // Merge readiness: everything the author controls is done. An empty rollup
   // is not green, and BLOCKED with an approval means a required review is
   // still missing, so GitHub would refuse the merge.
+  //
+  // A re-requested review is not merge readiness. The author answered the
+  // changes and put the ball back in the reviewers' court, so an older
+  // approval sitting alongside makes the row look finished when what it is
+  // doing is waiting. Flagging it read "merge blocked · Unblock merge" on a
+  // pull request with nothing to unblock.
   const green =
     checks.total > 0 && checks.fail === 0 && checks.pending === 0 && checks.cancelled === 0;
   const ready =
@@ -251,7 +259,8 @@ export function classifyOne(
     green &&
     pr.mergeable === "MERGEABLE" &&
     !pr.isDraft &&
-    !hasLiveFeedback(pr);
+    !hasLiveFeedback(pr) &&
+    !awaitingReReview;
 
   if (ready) {
     if (pr.mergeStateStatus === "BLOCKED") flags.add("merge-blocked");
@@ -276,7 +285,7 @@ export function classifyOne(
     lastCommentBy: lastCommentBy(pr),
     unresolvedThreads: 0,
     outdatedThreads: 0,
-    awaitingReReview: isAwaitingReReview(pr),
+    awaitingReReview,
   };
 }
 
