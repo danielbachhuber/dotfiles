@@ -12,6 +12,9 @@ type Resolved = {
   headRef: string;
   url: string;
   isDraft: boolean;
+  headRepo: string | null;
+  isFork: boolean;
+  maintainerCanModify: boolean;
 };
 
 /**
@@ -108,8 +111,16 @@ export function OpenPullRequestPage() {
               </UrlLink>
               <p className="mt-1 text-xs text-muted-foreground">
                 {resolved.repo} · branch <span className="font-mono">{resolved.headRef}</span>
+                {resolved.isFork ? ` · fork ${resolved.headRepo ?? "deleted"}` : ""}
                 {resolved.isDraft ? " · draft" : ""}
               </p>
+              {resolved.isFork && (!resolved.headRepo || !resolved.maintainerCanModify) ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {resolved.headRepo
+                    ? "The author has not allowed maintainer edits, so a push will be rejected."
+                    : "The fork has been deleted, so there is nowhere to push."}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -6,6 +6,8 @@ import {
   parsePullRequestInput,
   resolvePullRequest as resolvePr,
   worktreePath,
+  worktreePlan,
+  type WorktreePlan,
 } from "./sweep/open-pr.js";
 import { parseRemoteSlug } from "./sweep/spawn-target.js";
 import { rpcContract } from "./sweep/contract.js";
@@ -267,14 +269,98 @@ export default async function plugin(bb: BbPluginApi) {
     return `${branch} is already checked out at ${held[1]}. Close or archive whatever is using it, then try again.`;
   }
 
-  async function addWorktree(repoPath: string, path: string, branch: string): Promise<void> {
-    const git = (args: string[], allowFailure = false) =>
-      new Promise<void>((resolve, reject) => {
-        execFile("git", ["-C", repoPath, ...args], (error) =>
-          error && !allowFailure ? reject(error) : resolve(),
-        );
-      });
+  /** Runs git and reports the outcome, for the checks that expect to fail. */
+  function git(
+    repoPath: string,
+    args: string[],
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      execFile("git", ["-C", repoPath, ...args], (error, stdout, stderr) =>
+        resolve({
+          ok: !error,
+          stdout: stdout ?? "",
+          stderr: (stderr ?? "").trim() || (error ? error.message : ""),
+        }),
+      );
+    });
+  }
 
+  /** The same, for the steps whose failure is the end of the attempt. */
+  async function mustGit(repoPath: string, args: string[]): Promise<string> {
+    const result = await git(repoPath, args);
+    if (!result.ok) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+    return result.stdout;
+  }
+
+  async function remotesOf(repoPath: string): Promise<{ name: string; url: string }[]> {
+    const result = await git(repoPath, ["remote", "-v"]);
+    const remotes = new Map<string, string>();
+    for (const line of result.stdout.split("\n")) {
+      const match = /^(\S+)\s+(\S+)\s+\(fetch\)$/.exec(line.trim());
+      if (match) remotes.set(match[1]!, match[2]!);
+    }
+    return [...remotes].map(([name, url]) => ({ name, url }));
+  }
+
+  /**
+   * Brings a fork's branch into a local branch of the same name.
+   *
+   * A fork's branch is not on origin, so fetching it by name fails with
+   * "couldn't find remote ref" — the error this panel used to report for every
+   * cross-repository pull request. GitHub keeps every pull request's head at
+   * `refs/pull/<n>/head` on the base repository, which is reachable whatever
+   * the fork does, including after the fork is deleted.
+   */
+  async function fetchForkBranch(
+    repoPath: string,
+    plan: Extract<WorktreePlan, { kind: "fork" }>,
+  ): Promise<void> {
+    await mustGit(repoPath, ["fetch", "origin", plan.prRef]);
+    const head = (await mustGit(repoPath, ["rev-parse", "FETCH_HEAD"])).trim();
+
+    const existing = await git(repoPath, ["rev-parse", "--verify", `refs/heads/${plan.branch}`]);
+    if (!existing.ok) {
+      await mustGit(repoPath, ["branch", plan.branch, head]);
+      return;
+    }
+
+    const local = existing.stdout.trim();
+    if (local === head) return;
+    // Ahead of the pull request means an earlier thread committed here and has
+    // not pushed. Overwriting that would throw the work away.
+    if ((await git(repoPath, ["merge-base", "--is-ancestor", head, local])).ok) return;
+    if ((await git(repoPath, ["merge-base", "--is-ancestor", local, head])).ok) {
+      await mustGit(repoPath, ["branch", "--force", plan.branch, head]);
+      return;
+    }
+    throw new Error(
+      `A local branch ${plan.branch} already exists and has diverged from ${plan.repo}#${plan.number}. Rename or delete it, then try again.`,
+    );
+  }
+
+  /**
+   * Points the branch at the fork, so a push updates the pull request.
+   *
+   * This writes to the checkout's shared config rather than the worktree's,
+   * which is what makes it visible in the worktree at all. It is the same
+   * configuration `gh pr checkout` writes for a fork.
+   */
+  async function configurePush(
+    repoPath: string,
+    plan: Extract<WorktreePlan, { kind: "fork" }>,
+  ): Promise<void> {
+    if (!plan.pushTo) return;
+    for (const [key, value] of [
+      [`branch.${plan.branch}.remote`, plan.pushTo],
+      [`branch.${plan.branch}.pushRemote`, plan.pushTo],
+      [`branch.${plan.branch}.merge`, `refs/heads/${plan.branch}`],
+    ] as const) {
+      const result = await git(repoPath, ["config", key, value]);
+      if (!result.ok) bb.log.warn(`could not set ${key}: ${result.stderr}`);
+    }
+  }
+
+  async function addWorktree(repoPath: string, path: string, plan: WorktreePlan): Promise<void> {
     if (existsSync(path)) return;
 
     // Prune first. Threads spawned from this panel are told to nest their own
@@ -283,16 +369,20 @@ export default async function plugin(bb: BbPluginApi) {
     // it, and git keeps refusing the branch on behalf of a path that is no
     // longer there. Pruning is safe: it only drops registrations whose
     // directory has actually gone.
-    await git(["worktree", "prune"], true);
+    await git(repoPath, ["worktree", "prune"]);
 
-    await git(["fetch", "origin", branch]);
+    if (plan.kind === "fork") await fetchForkBranch(repoPath, plan);
+    else await mustGit(repoPath, ["fetch", "origin", plan.branch]);
+
     try {
-      await git(["worktree", "add", path, branch]);
+      await mustGit(repoPath, ["worktree", "add", path, plan.branch]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const inUse = describeBranchInUse(message, branch);
+      const inUse = describeBranchInUse(message, plan.branch);
       throw inUse ? new Error(inUse) : error;
     }
+
+    if (plan.kind === "fork") await configurePush(repoPath, plan);
   }
 
   /**
@@ -456,7 +546,7 @@ export default async function plugin(bb: BbPluginApi) {
 
       const path = worktreePath(project.path, pr.number);
       try {
-        await addWorktree(project.path, path, pr.headRef);
+        await addWorktree(project.path, path, worktreePlan(pr, await remotesOf(project.path)));
       } catch (error) {
         // addWorktree already explains the one failure with a useful answer;
         // wrapping that in "Could not create a worktree at <path>" buries the

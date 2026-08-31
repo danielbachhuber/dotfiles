@@ -64,6 +64,9 @@ export const rpcContract = defineRpcContract({
           headRef: z.string(),
           url: z.string(),
           isDraft: z.boolean(),
+          headRepo: z.string().nullable(),
+          isFork: z.boolean(),
+          maintainerCanModify: z.boolean(),
         })
         .nullable(),
       error: z.string().nullable(),
