@@ -76,14 +76,17 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("gh issue view 42 --repo acme/widgets --comments");
   });
 
-  it("authorises the commit the standing rules would otherwise block", () => {
-    // Clicking Start thread is the explicit request; without saying so the
-    // thread does the work and stops at an uncommitted tree.
-    expect(buildPrompt(row())).toMatch(/do not need to ask me before committing/i);
+  it("leaves the work uncommitted for review", () => {
+    // Starting a thread asks for the work, not for a commit: the first diff on
+    // an open-ended issue is often the wrong one.
+    const prompt = buildPrompt(row());
+    expect(prompt).toMatch(/do not commit unless i ask/i);
+    expect(prompt).not.toMatch(/do not need to ask me before committing/i);
   });
 
   it("still withholds what cannot be undone quietly", () => {
     const prompt = buildPrompt(row());
+    expect(prompt).toMatch(/committing/i);
     expect(prompt).toMatch(/pushing/i);
     expect(prompt).toMatch(/pull request/i);
     expect(prompt).toMatch(/closing the issue/i);

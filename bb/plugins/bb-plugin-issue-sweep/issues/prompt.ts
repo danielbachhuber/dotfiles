@@ -61,10 +61,11 @@ export function buildPrompt(row: IssueRow): string {
     `Read it first, including its comments: \`gh issue view ${row.number} --repo ${row.repo} --comments\`. The requirement has often moved since the description was written.`,
     ...blocked,
     "",
-    // Standing user instructions forbid committing without an explicit ask.
-    // Clicking Start thread is that ask, but only for this issue's own branch.
-    "I started this from the Issues panel, which is my explicit request for this work. You do not need to ask me before committing to this thread's own branch.",
-    "Ask me first before: pushing, opening a pull request, force-pushing, or closing the issue.",
+    // Starting the thread asks for the work, not for a commit. An issue is
+    // open-ended enough that the first diff is often the wrong one, so the
+    // standing rule against committing without an explicit ask stands here.
+    "Leave your changes in the working tree for me to review. Do not commit unless I ask.",
+    "Ask me first before: committing, pushing, opening a pull request, force-pushing, or closing the issue.",
     "",
     "Show me your plan before you write code. The issue names a problem, not a solution, and I would rather correct the approach than the diff.",
   ].join("\n");
