@@ -21,43 +21,55 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
 }
 
 describe("threadTitle", () => {
-  it("is the issue's own title, with no number in front", () => {
-    // The number spent six of thirty characters on something the row already
-    // shows, and six characters is a phrase versus a fragment at this width.
-    expect(threadTitle("Fix the widget")).toBe("Fix the widget");
-    expect(threadTitle("Fix the widget")).not.toMatch(/#/);
+  it("names the sweep, the issue number, and a few words of its title", () => {
+    expect(threadTitle(5718, "Port the last four Conversation Helper reads off the datastore")).toBe(
+      "Dev #5718: Port the last four…",
+    );
   });
 
   it("leaves out the repository, which the sidebar already shows", () => {
-    expect(threadTitle("Fix the widget")).not.toMatch(/\//);
+    expect(threadTitle(12, "Fix the widget")).not.toMatch(/\//);
+  });
+
+  it("keeps a short title whole", () => {
+    expect(threadTitle(12, "Fix the widget")).toBe("Dev #12: Fix the widget");
+  });
+
+  it("falls back to the bare label and number when there is no title", () => {
+    expect(threadTitle(12, "   ")).toBe("Dev #12");
+  });
+
+  it("keeps a leading word-and-colon, which on an issue is part of the sentence", () => {
+    // The two pull request sweeps strip "fix(sync): " because a commit subject
+    // repeats what the diff says. An issue title is prose.
+    expect(threadTitle(12, "Bug: login fails")).toBe("Dev #12: Bug: login fails");
   });
 
   it("fits the sidebar however long the title is", () => {
     const long = "Represent translated fields with a top-level translations attribute";
-    expect(threadTitle(long).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(threadTitle(5718, long).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
   });
 
   it("cuts at a word boundary rather than mid-word", () => {
-    expect(threadTitle("Move the silo-singleton config out of the instance")).toBe(
-      "Move the silo-singleton…",
+    expect(threadTitle(5837, "Move the silo-singleton config out of the instance")).toBe(
+      "Dev #5837: Move the silo-singleton…",
     );
   });
 
-  it("spends the whole budget on the title now the prefix is gone", () => {
-    // Exactly at the cap is not truncated at all.
-    const exact = "x".repeat(MAX_THREAD_TITLE);
-    expect(threadTitle(exact)).toBe(exact);
-  });
-
   it("cuts mid-word rather than to nothing when the first word is huge", () => {
-    const title = `${"x".repeat(40)} tail`;
-    const result = threadTitle(title);
+    const result = threadTitle(12, `${"x".repeat(60)} tail`);
     expect(result.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(result).toMatch(/^x+…$/);
+    expect(result).toMatch(/^Dev #12: x+…$/);
   });
 
   it("trims surrounding space rather than spending the budget on it", () => {
-    expect(threadTitle("  Fix the widget  ")).toBe("Fix the widget");
+    expect(threadTitle(12, "  Fix the widget  ")).toBe("Dev #12: Fix the widget");
+  });
+
+  it("keeps the whole number, whatever else has to go", () => {
+    const title = threadTitle(Number.MAX_SAFE_INTEGER, "Fix the widget");
+    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(title).toContain(`#${Number.MAX_SAFE_INTEGER}`);
   });
 });
 

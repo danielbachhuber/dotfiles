@@ -131,6 +131,43 @@ dependabot_package() {
   esac
 }
 
+# "Dep #5923: fallow", matching the shape the sweep plugins use for their own
+# threads: the label says which sweep started it, the number identifies the
+# pull request, and the rest is context.
+#
+# The sidebar clips past roughly forty characters. The number never gives way,
+# so it is the package that is cut, on a word boundary where there is one — a
+# group name like "the aws-sdk and friends group" is the only case that
+# realistically reaches the cap.
+MAX_THREAD_TITLE=40
+
+dependabot_title() {
+  local number="$1" package="$2"
+  local head="Dep #${number}"
+  local budget=$(( MAX_THREAD_TITLE - ${#head} - 2 ))
+
+  if [ "$budget" -lt 3 ] || [ -z "$package" ]; then
+    printf '%s' "$head"
+    return
+  fi
+  if [ "${#package}" -le "$budget" ]; then
+    printf '%s: %s' "$head" "$package"
+    return
+  fi
+
+  local kept="" word
+  for word in $package; do
+    local next
+    if [ -z "$kept" ]; then next="$word"; else next="${kept} ${word}"; fi
+    # One character of the budget belongs to the ellipsis that marks the cut.
+    [ "${#next}" -gt $(( budget - 1 )) ] && break
+    kept="$next"
+  done
+  # A first word longer than the budget still beats saying nothing, so cut it.
+  [ -z "$kept" ] && kept="${package:0:$(( budget - 1 ))}"
+  printf '%s: %s…' "$head" "$kept"
+}
+
 # A checkout of the pull request branch itself, so that bb shows the PR and its
 # CI state in the thread header.
 #
@@ -218,7 +255,7 @@ summary you have already written survives."
 
   if "$BB" thread spawn \
     --project "$PROJECT" \
-    --title "Dep: ${package} #${number}" \
+    --title "$(dependabot_title "$number" "$package")" \
     --prompt "$prompt" \
     --environment "$workspace" \
     --provider "$PROVIDER" \
