@@ -27,6 +27,25 @@ const rowSchema = z.object({
   unresolvedThreads: z.number(),
   outdatedThreads: z.number(),
   notedBy: z.array(z.string()),
+  /** Epoch ms of the last activity, or null when GitHub did not say. */
+  updatedAt: z.number().nullable(),
+  size: z.object({
+    additions: z.number(),
+    deletions: z.number(),
+    changedFiles: z.number(),
+  }),
+  failingChecks: z.array(z.string()),
+  notes: z.array(
+    z.object({ author: z.string(), approved: z.boolean(), body: z.string() }),
+  ),
+  threadComments: z.array(
+    z.object({
+      author: z.string(),
+      path: z.string(),
+      body: z.string(),
+      outdated: z.boolean(),
+    }),
+  ),
   canSpawn: z.boolean(),
   /** The newest thread for this PR, which its action opens. Null when it has none. */
   threadId: z.string().nullable(),

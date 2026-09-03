@@ -36,12 +36,16 @@ import {
 } from "@/components/ui/table";
 import {
   DISPLAY_SECTIONS,
+  EVIDENCE_SHOWN,
   SECTION_TITLES,
   actionSummary,
+  ageLabel,
   commentsToRead,
   displaySection,
   isCounted,
   isOnlyWaitingOnCi,
+  rowEvidence,
+  sizeLabel,
   statusTone,
   unflaggedStatus,
   type StatusTone,
@@ -75,6 +79,11 @@ type Row = {
   canSpawn: boolean;
   threadId: string | null;
   threadIds: string[];
+  updatedAt: number | null;
+  size: { additions: number; deletions: number; changedFiles: number };
+  failingChecks: string[];
+  notes: Array<{ author: string; approved: boolean; body: string }>;
+  threadComments: Array<{ author: string; path: string; body: string; outdated: boolean }>;
 };
 
 type Listing = {
@@ -136,7 +145,7 @@ function Review({ row }: { row: Row }) {
     lines.push({ key: "re-review", text: "awaiting re-review" });
   }
   if (row.unresolvedThreads > 0) {
-    // Inline threads are the case an approval hides: robennals can approve
+    // Inline threads are the case an approval hides: hubber can approve
     // #5801 and still have left three comments on the diff.
     const outdated = row.outdatedThreads > 0 ? `, ${row.outdatedThreads} outdated` : "";
     lines.push({
@@ -226,6 +235,71 @@ const TONE_CLASSES: Record<StatusTone, string> = {
 };
 
 const BADGE = "rounded-md px-1.5 py-0.5 text-xs font-medium";
+
+/**
+ * What the row is actually being asked for, in the words of whoever asked.
+ *
+ * The panel used to say "5 unresolved comments" and "hubber wrote notes on
+ * their review". Both are true of a typo nit and of a design objection, so the
+ * only way to tell was to open GitHub — and that trip was the missing step.
+ *
+ * Each line is clamped to two rather than cut in the classifier: where to stop
+ * is a question about the width of this column, which only CSS knows. A body
+ * commonly opens "A few minor comments." and puts the blocker in its second
+ * sentence, so a server-side excerpt would reliably keep the wrong half.
+ */
+function EvidenceList({ row }: { row: Row }) {
+  const evidence = rowEvidence(row);
+  if (evidence.length === 0) return null;
+
+  const shown = evidence.slice(0, EVIDENCE_SHOWN);
+  const rest = evidence.length - shown.length;
+
+  return (
+    <ul className="mt-1.5 space-y-1">
+      {shown.map((item, index) => (
+        <li key={`${item.kind}-${index}`} className="flex gap-1.5 text-xs">
+          {item.kind === "check" ? (
+            <span className="shrink-0 text-destructive" aria-label="failing check">
+              ✗
+            </span>
+          ) : (
+            <span className="shrink-0 text-muted-foreground">{item.who}</span>
+          )}
+          <span className="min-w-0">
+            {item.where ? (
+              <span className="text-muted-foreground">{shortPath(item.where)} </span>
+            ) : null}
+            <span className={item.kind === "check" ? "text-destructive" : undefined}>
+              {item.text}
+            </span>
+            {/*
+              An outdated comment is not one of N things to answer: #4043 had
+              33 unresolved threads and all 33 sat on code that had since been
+              rewritten, which is a different job entirely.
+            */}
+            {item.outdated ? (
+              <span className="ml-1 text-muted-foreground">(outdated)</span>
+            ) : null}
+          </span>
+        </li>
+      ))}
+      {rest > 0 ? (
+        <li className="text-xs text-muted-foreground">and {rest} more</li>
+      ) : null}
+    </ul>
+  );
+}
+
+/**
+ * The last two segments of a path. A full path is mostly directories shared
+ * with every other comment on the pull request, and the filename is the part
+ * that says where you are.
+ */
+function shortPath(path: string): string {
+  const parts = path.split("/");
+  return parts.length <= 2 ? path : parts.slice(-2).join("/");
+}
 
 function StatusCell({ row }: { row: Row }) {
   // Draft leads, then whatever else is true of the row.
@@ -389,6 +463,7 @@ const HEAD = "text-[0.6875rem] font-medium uppercase tracking-wider text-muted-f
 function PrTable({
   rows,
   showRepo,
+  now,
   starting,
   onWork,
   onOpen,
@@ -396,6 +471,8 @@ function PrTable({
 }: {
   rows: Row[];
   showRepo: boolean;
+  /** Sampled once per paint, so every age in one render shares an instant. */
+  now: number;
   starting: Set<string>;
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
@@ -412,10 +489,13 @@ function PrTable({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
-            <TableHead className={HEAD}>Title</TableHead>
-            <TableHead className={`w-[9rem] ${HEAD}`}>Status</TableHead>
-            <TableHead className={`hidden w-[9rem] lg:table-cell ${HEAD}`}>Checks</TableHead>
-            <TableHead className={`hidden w-[15rem] xl:table-cell ${HEAD}`}>Review</TableHead>
+            {/*
+              One content column rather than four. Status, Checks and Review
+              were each a summary of something, and reading a row meant
+              assembling them into a decision by eye; stacked under the title
+              they read as one statement of where the pull request stands.
+            */}
+            <TableHead className={HEAD}>Pull request</TableHead>
             {/*
               11.5rem, not 11: the cell padding went from px-2 to px-3 to match
               the bundled GitHub plugin, and the extra 0.5rem has to come from
@@ -435,20 +515,31 @@ function PrTable({
                   Below the title, not above it: the title is what you scan for,
                   and a repository line above pushed it down a row and made the
                   eye land on the least distinguishing part of the row first.
+
+                  Size and age join it because they are what size the job: a
+                  one-line deletion sitting for a week and a 60-file change
+                  opened this morning were the same row without them.
                 */}
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  {showRepo ? <span className="truncate">{row.repo}</span> : null}
+                  <span className="truncate">
+                    {[
+                      showRepo ? row.repo : null,
+                      sizeLabel(row.size),
+                      ageLabel(row.updatedAt, now) || null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
                   <CopyLink title={`${row.title} (#${row.number})`} url={row.url} />
                 </span>
-              </TableCell>
-              <TableCell className="align-top">
-                <StatusCell row={row} />
-              </TableCell>
-              <TableCell className="hidden align-top text-xs tabular-nums text-muted-foreground lg:table-cell">
-                {checksLabel(row.checks)}
-              </TableCell>
-              <TableCell className="hidden align-top text-xs xl:table-cell">
+                <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <StatusCell row={row} />
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {checksLabel(row.checks)}
+                  </span>
+                </span>
                 <Review row={row} />
+                <EvidenceList row={row} />
               </TableCell>
               <TableCell className="align-top text-right">
                 <Action
@@ -471,6 +562,7 @@ function Section({
   title,
   rows,
   showRepo,
+  now,
   starting,
   onWork,
   onOpen,
@@ -479,6 +571,7 @@ function Section({
   title: string;
   rows: Row[];
   showRepo: boolean;
+  now: number;
   starting: Set<string>;
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
@@ -493,6 +586,7 @@ function Section({
       <PrTable
         rows={rows}
         showRepo={showRepo}
+        now={now}
         starting={starting}
         onWork={onWork}
         onOpen={onOpen}
@@ -601,6 +695,10 @@ function Panel() {
     }
   }, [reload, rpc]);
 
+  // Sampled once per render rather than read inside each row, so every age in
+  // one paint is measured against the same instant.
+  const now = Date.now();
+
   if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
 
   const inSection = (section: string) =>
@@ -649,6 +747,7 @@ function Panel() {
             title={SECTION_TITLES[section]}
             rows={inSection(section)}
             showRepo={showRepo}
+            now={now}
             starting={starting}
             onWork={onWork}
             onOpen={onOpen}

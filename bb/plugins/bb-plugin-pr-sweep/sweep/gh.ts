@@ -17,6 +17,9 @@ import type { ClassifiedRow, RawPullRequest, SweepResult } from "./types.js";
 export const PR_LIST_FIELDS = [
   "number", "title", "url", "author", "isDraft", "mergeable", "mergeStateStatus",
   "reviewRequests", "latestReviews", "reviews", "reviewDecision", "statusCheckRollup",
+  // How long it has sat, and how big it is: a one-line deletion waiting a week
+  // and a 60-file change opened this morning are the same row without them.
+  "updatedAt", "additions", "deletions", "changedFiles",
   // Who spoke last: an approved PR whose newest comment is not the author's is
   // usually waiting on a reply, and that is invisible in the review states.
   "comments",
@@ -111,6 +114,7 @@ export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepRe
       if (!found) continue;
       row.unresolvedThreads = found.unresolved;
       row.outdatedThreads = found.outdated;
+      row.threadComments = found.comments;
     }
   } catch {
     // Leave the counts at zero.
