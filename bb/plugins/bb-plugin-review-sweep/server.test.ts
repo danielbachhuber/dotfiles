@@ -209,7 +209,7 @@ describe("reviewThis is one thread per review", () => {
 
     // callsTo returns each call's argument list, so [0] is spawn's only arg.
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[{ title: string }]];
-    expect(args.title).toBe("Re-review #42 · Add the widget endpoint");
+    expect(args.title).toBe("Re-review #42: Add the widget endpoint");
     expect(args.title.length).toBeLessThanOrEqual(40);
   });
 

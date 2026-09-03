@@ -49,7 +49,7 @@ export const MAX_THREAD_TITLE = 40;
 const TITLE_PREFIX = /^\s*(?:\[[^\]]+\]\s*|\([^)]+\)\s*|[A-Za-z]+!?(?:\([^)]*\))?!?:\s*)+/;
 
 /**
- * "Re-review #5622 · Retry sync on 429". The number identifies the pull
+ * "Re-review #5622: Retry sync on 429". The number identifies the pull
  * request, so if the pieces exceed the budget the gist gives way first, then
  * the label, and never the number.
  *
@@ -71,7 +71,7 @@ export function threadTitle(state: ReviewState, number: number, prTitle = ""): s
   return gist ? `${head}${SEPARATOR}${gist}` : head;
 }
 
-const SEPARATOR = " · ";
+const SEPARATOR = ": ";
 
 /**
  * The leading whole words of a pull request title that fit in `budget`.

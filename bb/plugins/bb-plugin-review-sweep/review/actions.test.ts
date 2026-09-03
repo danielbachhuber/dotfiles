@@ -26,7 +26,7 @@ describe("actionLabel", () => {
 describe("threadTitle", () => {
   it("carries a few words of the pull request title, so a queue of reviews is legible", () => {
     expect(threadTitle("re-review", 5622, "Retry sync on 429")).toBe(
-      "Re-review #5622 · Retry sync on 429",
+      "Re-review #5622: Retry sync on 429",
     );
   });
 
@@ -37,10 +37,10 @@ describe("threadTitle", () => {
 
   it("drops a conventional-commit prefix, which the number already covers", () => {
     expect(threadTitle("first-look", 12, "fix(sync): handle empty page")).toBe(
-      "Review #12 · handle empty page",
+      "Review #12: handle empty page",
     );
     expect(threadTitle("first-look", 12, "[ACME-4] Handle empty page")).toBe(
-      "Review #12 · Handle empty page",
+      "Review #12: Handle empty page",
     );
   });
 
@@ -51,7 +51,7 @@ describe("threadTitle", () => {
       "Add a retry with exponential backoff to the sync worker",
     );
     expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toBe("Review #5931 · Add a retry with…");
+    expect(title).toBe("Review #5931: Add a retry with…");
     expect(title).not.toContain("expon");
   });
 
