@@ -258,32 +258,22 @@ The three have to agree, and the trap is that they interact:
   1600x920 tells you nothing about whether those are real pixels or filler:
   `ffmpeg -i video.webm -ss <t> -frames:v 1 frame.png`, then look at it.
 
-Then convert, and crop to the part of the screen the change is actually about. In a
-two-column table each player displays at roughly half the body width, so cropping away
-chrome and whitespace buys more legibility than resolution does:
+Then convert, keeping the whole recorded window:
 
 ```bash
-ffmpeg -i video.webm -vf "crop=<w>:<h>:<x>:<y>,fps=24" \
+ffmpeg -i video.webm -vf "fps=24" \
   -c:v libx264 -pix_fmt yuv420p -crf 23 -movflags +faststart before.mp4
 ```
 
-Width and height both have to be even for h264.
+**Do not crop to a region of the window.** Ship the whole thing. A tighter frame looks
+like it buys legibility in a narrow table cell, but a screencast moves vertically as the app
+changes state, so a window framed on the moment that proves the point silently cuts the
+beats around it, and the reader loses the context that makes the moment legible at all.
+Resolution is the lever for legibility, not framing: `deviceScaleFactor` plus a matching
+viewport, and the reader expands the player if they need more.
 
-**A crop is a claim about every frame, not the one you sampled.** A screencast moves
-vertically as the app changes state, so a window framed on the moment that proves the point
-can cut the beats around it. Check the crop against the first frame, the last frame, and the
-moment itself, and measure rather than eyeball: sample frames at 1fps and take the union
-bounding box of the genuinely dark pixels, which is what a reader has to be able to read.
-
-```bash
-ffmpeg -i video.webm -vf "fps=1,format=rgb24" /tmp/f-%03d.ppm
-# then union the bbox of pixels with all channels < ~140 across those frames
-```
-
-When the ink runs outside the window only during a dead lead-in, trim the time range
-instead of loosening the crop: `-ss <seconds>` before `-i`. Widening to include a beat that
-does not matter spends the reader's pixels on it. Starting a few seconds in usually costs
-nothing, because page load and navigation are never the point.
+Trimming *time* is fine and often worth it: `-ss <seconds>` before `-i` drops a dead lead-in
+such as page load or login. That removes nothing from the frame.
 
 A before video usually means running the same recording twice against one dev stack, once
 with the change and once with it reverted. Revert by rewriting the lines, not by stashing:
@@ -335,4 +325,4 @@ result in with Edit.
 | Bare video URL inside a table cell | It renders as a plain link. `<video src="URL" controls></video>` in the cell, then confirm with a `<video` count against `body_html`. |
 | Trusting `--attach` order to label the assets | Download each asset with the gh token and compare hashes. A swapped before/after argues the opposite of the truth. |
 | Raising `video.size` alone to get a sharper recording | It scales down into that canvas, never up: you get the page in a corner surrounded by filler. Raise `deviceScaleFactor` *and* the viewport, and check a frame. |
-| Crop offsets picked from one frame | The layout moves as the app changes state. Union the ink bbox across frames, and trim a dead lead-in with `-ss` rather than widening the window. |
+| Cropping the screencast to the interesting region | Ship the whole window. The layout moves as the app changes state, so a frame chosen on one beat cuts the others. Trim time with `-ss` instead. |
