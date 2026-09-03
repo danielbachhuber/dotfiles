@@ -1,5 +1,3 @@
-import type { ReviewNote } from "./classify.js";
-import type { ThreadComment } from "./threads.js";
 /** Ordered worst-first. Index in this array IS the severity rank. */
 export const FLAG_SEVERITY = [
   "conflict",
@@ -21,13 +19,6 @@ export type RowGroup = "needs-action" | "ready-to-merge" | "clean";
 export function groupForFlags(flags: readonly Flag[]): RowGroup {
   if (flags.includes("merge-ready")) return "ready-to-merge";
   return flags.length > 0 ? "needs-action" : "clean";
-}
-
-/** How big the change is, which is half of how long it will take. */
-export interface ChangeSize {
-  additions: number;
-  deletions: number;
-  changedFiles: number;
 }
 
 export interface ChecksSummary {
@@ -79,36 +70,6 @@ export interface ClassifiedRow {
   notedBy: string[];
   /** Answered and re-requested: the ball is in the reviewer's court. */
   awaitingReReview: boolean;
-  /**
-   * When anything last happened, in epoch ms, or null when GitHub did not say.
-   *
-   * A one-line deletion waiting a week and one opened this morning are the
-   * same row without it, and they are not the same decision.
-   */
-  updatedAt: number | null;
-  /** The diff's shape. The other half of sizing the job. */
-  size: ChangeSize;
-  /**
-   * The checks that failed, by name. "1 fail of 15" is the same sentence
-   * whatever broke; the name is the difference between re-running it and
-   * opening the code.
-   */
-  failingChecks: string[];
-  /**
-   * What each reviewer wrote in their review body, as they wrote it.
-   *
-   * `notedBy` names them; this says what they said. An approval carrying "the
-   * biggest is that there is now no way to turn it on" is not an approval you
-   * act on the same way as a bare one.
-   */
-  notes: ReviewNote[];
-  /**
-   * The first comment of each unresolved inline thread.
-   *
-   * The count told you how many; these tell you whether they are nits or
-   * blockers, which is the question you were opening GitHub to answer.
-   */
-  threadComments: ThreadComment[];
 }
 
 /** The subset of `gh pr list --json` output this plugin reads. */
@@ -118,11 +79,6 @@ export interface RawPullRequest {
   url: string;
   author: { login: string } | null;
   isDraft: boolean;
-  /** ISO 8601. The last time anything happened, for "how long has this sat". */
-  updatedAt?: string | null;
-  additions?: number;
-  deletions?: number;
-  changedFiles?: number;
   mergeable: string;
   mergeStateStatus: string;
   reviewRequests: Array<{ __typename?: string; login?: string; slug?: string; name?: string }>;

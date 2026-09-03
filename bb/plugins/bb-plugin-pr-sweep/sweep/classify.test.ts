@@ -1,8 +1,7 @@
-import { failingChecks, latestChecks, reviewNoteDetails, reviewNotes } from "./classify.js";
+import { latestChecks, reviewNotes } from "./classify.js";
 import { describe, expect, it } from "vitest";
 import { classify, classifyOne, isBotLogin, repoRunsChecks, summarizeChecks } from "./classify.js";
 import { checkRun, makePr, review, statusContext, teamRequest, userRequest } from "./fixtures.js";
-import type { RawPullRequest } from "./types.js";
 
 describe("summarizeChecks", () => {
   it("counts SKIPPED as skipped, never as a failure", () => {
@@ -332,7 +331,7 @@ describe("bot comments", () => {
     expect(isBotLogin("some-app[bot]")).toBe(true);
     expect(isBotLogin("dependabot")).toBe(true);
     expect(isBotLogin("Github-Actions")).toBe(true);
-    expect(isBotLogin("hubber")).toBe(false);
+    expect(isBotLogin("robennals")).toBe(false);
   });
 
   it("says nothing when only bots have commented", () => {
@@ -464,10 +463,8 @@ describe("latestChecks", () => {
 });
 
 describe("reviewNotes", () => {
-  // The full review history, not just the latest per reviewer: a body that a
-  // later empty review would hide is exactly what this has to keep.
-  const pr = (reviews: unknown[], authorLogin = "octocat") =>
-    ({ author: { login: authorLogin }, reviews, latestReviews: reviews }) as never;
+  const pr = (latestReviews: unknown[], authorLogin = "octocat") =>
+    ({ author: { login: authorLogin }, latestReviews }) as never;
 
   it("reports an approval that came with prose", () => {
     // #5840: APPROVED, no unresolved thread, no issue comment, and 3,495
@@ -510,183 +507,14 @@ describe("reviewNotes", () => {
     expect(notes).toEqual(["hubber"]);
   });
 
-  it("lets a clean approval retire the round it answered", () => {
+  it("reads latestReviews, so an answered round does not resurface", () => {
     // An earlier round's notes were dealt with by the round that superseded
     // them; re-raising them would make the flag permanent.
-    // `reviews` is the whole history, so it carries both rounds. An empty
-    // approval is a sign-off and clears what the reviewer said before it; an
-    // empty COMMENTED review, as on #5886, resolves nothing and clears
-    // nothing.
     const raw = {
       author: { login: "octocat" },
-      reviews: [
-        { state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "fix this" },
-        { state: "APPROVED", author: { login: "hubber" }, body: "" },
-      ],
       latestReviews: [{ state: "APPROVED", author: { login: "hubber" }, body: "" }],
+      reviews: [{ state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "fix this" }],
     } as never;
     expect(reviewNotes(raw)).toEqual([]);
-  });
-});
-
-describe("failingChecks", () => {
-  it("names the checks that failed, so a flaky visual test reads differently from a type error", () => {
-    // "1 fail of 15" is the same sentence whatever broke. The name is the
-    // difference between re-running it and opening the code.
-    expect(
-      failingChecks([
-        { name: "Run Storybook tests and visual regression", conclusion: "FAILURE" },
-        { name: "typecheck", conclusion: "SUCCESS" },
-      ]),
-    ).toEqual(["Run Storybook tests and visual regression"]);
-  });
-
-  it("names a StatusContext, which puts its name in context rather than name", () => {
-    expect(failingChecks([{ context: "ci/circleci", state: "FAILURE" }])).toEqual(["ci/circleci"]);
-  });
-
-  it("reports a re-run check by its latest attempt only", () => {
-    // A re-run does not replace its predecessor in the rollup: GitHub returns
-    // both, and counting the older one had a green pull request reading as
-    // failing.
-    expect(
-      failingChecks([
-        { name: "e2e", conclusion: "FAILURE", startedAt: "2026-09-01T10:00:00Z" },
-        { name: "e2e", conclusion: "SUCCESS", startedAt: "2026-09-01T11:00:00Z" },
-      ]),
-    ).toEqual([]);
-  });
-
-  it("says nothing when the rollup is empty or everything passed", () => {
-    expect(failingChecks(null)).toEqual([]);
-    expect(failingChecks([{ name: "typecheck", conclusion: "SUCCESS" }])).toEqual([]);
-  });
-});
-
-describe("reviewNoteDetails", () => {
-  const pr = (overrides: Partial<RawPullRequest>) =>
-    ({
-      // `reviews` mirrors `latestReviews` unless a case sets both: the full
-      // history is what this reads, and most cases have only one round.
-      reviews: overrides.reviews ?? overrides.latestReviews ?? [],
-      number: 1,
-      title: "t",
-      url: "u",
-      author: { login: "octocat" },
-      isDraft: false,
-      mergeable: "MERGEABLE",
-      mergeStateStatus: "CLEAN",
-      reviewRequests: [],
-      latestReviews: [],
-      reviewDecision: null,
-      statusCheckRollup: [],
-      ...overrides,
-    }) as RawPullRequest;
-
-  it("carries what the reviewer actually wrote, not just that they wrote something", () => {
-    // The row said "hubber wrote notes on their review", which is true of a
-    // typo nit and of a blocking objection alike.
-    expect(
-      reviewNoteDetails(
-        pr({
-          latestReviews: [
-            {
-              state: "APPROVED",
-              author: { login: "hubber" },
-              body: "A few minor comments.\n\nThe biggest is that there is now no way to turn it on.",
-            },
-          ],
-        }),
-      ),
-    ).toEqual([
-      {
-        author: "hubber",
-        approved: true,
-        body: "A few minor comments. The biggest is that there is now no way to turn it on.",
-      },
-    ]);
-  });
-
-  it("flattens the body to one line and lets the panel decide where to clip", () => {
-    // Not truncated here: the first line of this body is "A few minor
-    // comments", the least useful sentence in it. Flattening and clamping in
-    // CSS keeps the sentence that matters visible.
-    const notes = reviewNoteDetails(
-      pr({
-        latestReviews: [
-          { state: "COMMENTED", author: { login: "hubber" }, body: "one\n\n  two   three\n" },
-        ],
-      }),
-    );
-    expect(notes[0]!.body).toBe("one two three");
-  });
-
-  it("marks an approval, since a note on one reads differently from a rejection", () => {
-    const notes = reviewNoteDetails(
-      pr({
-        latestReviews: [
-          { state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "no" },
-          { state: "APPROVED", author: { login: "acmebot" }, body: "yes" },
-        ],
-      }),
-    );
-    expect(notes.map((note) => [note.author, note.approved])).toEqual([
-      ["hubber", false],
-      ["acmebot", true],
-    ]);
-  });
-
-  it("ignores an empty body and the author's own review", () => {
-    expect(
-      reviewNoteDetails(
-        pr({
-          latestReviews: [
-            { state: "APPROVED", author: { login: "hubber" }, body: "   " },
-            { state: "COMMENTED", author: { login: "octocat" }, body: "my own note" },
-          ],
-        }),
-      ),
-    ).toEqual([]);
-  });
-
-  it("keeps a body a later empty review would have hidden", () => {
-    // Live on #5886: a reviewer approved with 189 characters of caveats, then
-    // left a second, empty COMMENTED review. `latestReviews` returns only the
-    // last review per reviewer, so the substance vanished — from this and from
-    // `notedBy`, which had the same bug.
-    const subject = pr({
-      reviews: [
-        { state: "APPROVED", author: { login: "hubber" }, body: "The biggest is that it cannot be enabled." },
-        { state: "COMMENTED", author: { login: "hubber" }, body: "" },
-      ],
-      latestReviews: [{ state: "COMMENTED", author: { login: "hubber" }, body: "" }],
-    });
-    expect(reviewNoteDetails(subject)).toEqual([
-      { author: "hubber", approved: true, body: "The biggest is that it cannot be enabled." },
-    ]);
-    expect(reviewNotes(subject)).toEqual(["hubber"]);
-  });
-
-  it("takes the most recent body when a reviewer wrote more than one", () => {
-    const subject = pr({
-      reviews: [
-        { state: "COMMENTED", author: { login: "hubber" }, body: "first pass" },
-        { state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "second pass" },
-      ],
-      latestReviews: [{ state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "second pass" }],
-    });
-    expect(reviewNoteDetails(subject)).toEqual([
-      { author: "hubber", approved: false, body: "second pass" },
-    ]);
-  });
-
-  it("agrees with notedBy, which names the same reviewers", () => {
-    const subject = pr({
-      latestReviews: [
-        { state: "APPROVED", author: { login: "hubber" }, body: "caveats" },
-        { state: "APPROVED", author: { login: "acmebot" }, body: "" },
-      ],
-    });
-    expect(reviewNoteDetails(subject).map((note) => note.author)).toEqual(reviewNotes(subject));
   });
 });

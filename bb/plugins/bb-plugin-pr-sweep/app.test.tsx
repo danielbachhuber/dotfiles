@@ -24,11 +24,6 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     unresolvedThreads: 0,
     outdatedThreads: 0,
     notedBy: [],
-    updatedAt: Date.now() - 3 * 86_400_000,
-    size: { additions: 156, deletions: 68, changedFiles: 21 },
-    failingChecks: [],
-    notes: [],
-    threadComments: [],
     canSpawn: true,
     threadId: null,
     threadIds: [],
@@ -297,14 +292,16 @@ describe("panel", () => {
     expect(slot.inspection.rpcCalls.some((call) => call.method === "archiveThread")).toBe(true);
   });
 
-  it("renders one content column, not four summaries to reassemble", async () => {
-    // Status, Checks and Review were each a summary of something, and reading
-    // a row meant assembling them into a decision by eye.
+  it("renders column headers", async () => {
     const slot = render(listing());
-    await slot.findByText("Pull request");
-    for (const gone of ["Title", "Status", "Checks", "Review"]) {
-      expect(slot.queryByRole("columnheader", { name: gone })).toBeNull();
-    }
+    await slot.findByText("Title");
+    // No number column: the number rides the title so the table has one less
+    // thing to align.
+    expect(slot.queryByText("PR")).toBeNull();
+    // "Status" rather than "Needs": the same header sits above Clean and
+    // Ready to merge, where "needs" would be wrong.
+    await slot.findByText("Status");
+    expect(slot.queryByText("Needs")).toBeNull();
   });
 
   it("uses one fixed column layout so every section table lines up", async () => {
@@ -347,9 +344,8 @@ describe("panel", () => {
         ],
       }),
     );
-    // The repository shares the meta line with size and age now.
-    await slot.findByText(/acme\/widgets/);
-    await slot.findByText(/acme\/gadgets/);
+    await slot.findByText("acme/widgets");
+    await slot.findByText("acme/gadgets");
   });
 
   it("leads the checks column with the counts that matter", async () => {
@@ -384,9 +380,8 @@ describe("panel", () => {
     const line = await slot.findByText("waiting on acme/reviewers");
     // Wrapped, not truncated: a team slug clipped at the column edge hides the
     // only part that says which team, and there is no link to click through.
-    // The wrapping sits on the line's container now that the lines share one.
     expect(line.className).not.toMatch(/truncate/);
-    expect(line.parentElement!.className).toMatch(/break-words/);
+    expect(line.className).toMatch(/break-words/);
   });
 
   it("emphasizes the approval over the pending request", async () => {
@@ -755,59 +750,34 @@ describe("the Open pull request page", () => {
 });
 
 describe("unresolved review threads", () => {
-  const comment = (body: string, outdated = false) => ({
-    author: "hubber",
-    path: "server/widgets.ts",
-    body,
-    outdated,
-  });
-
-  it("quotes them even on a pull request that is otherwise ready", async () => {
-    // #5801's shape: approved, green, and inline comments still to address.
+  it("reports them even on a pull request that is otherwise ready", async () => {
+    // #5801's shape: approved, green, and three inline comments to address.
     const slot = render(
       listing({
         rows: [
           rowFixture({
             flags: ["merge-ready"],
             group: "ready-to-merge",
-            approvedBy: ["hubber"],
-            unresolvedThreads: 1,
-            threadComments: [comment("This drops the null case.")],
+            approvedBy: ["robennals"],
+            unresolvedThreads: 3,
           }),
         ],
       }),
     );
-    await slot.findByText("approved by hubber");
-    await slot.findByText(/This drops the null case\./);
+    await slot.findByText("approved by robennals");
+    await slot.findByText("3 unresolved comments");
   });
 
-  it("does not also count what it is quoting", async () => {
-    // "1 unresolved comment" printed directly above that comment was the row
-    // telling you the same thing twice, and cost a line of height to do it.
+  it("names how many sit on code that has since changed", async () => {
     const slot = render(
-      listing({
-        rows: [
-          rowFixture({ unresolvedThreads: 1, threadComments: [comment("This drops the null case.")] }),
-        ],
-      }),
+      listing({ rows: [rowFixture({ unresolvedThreads: 3, outdatedThreads: 1 })] }),
     );
-    await slot.findByText(/This drops the null case\./);
-    expect(slot.queryByText(/unresolved comment/)).toBeNull();
+    await slot.findByText("3 unresolved comments, 1 outdated");
   });
 
-  it("marks one left behind by a rewrite", async () => {
-    const slot = render(
-      listing({
-        rows: [
-          rowFixture({
-            unresolvedThreads: 1,
-            outdatedThreads: 1,
-            threadComments: [comment("This drops the null case.", true)],
-          }),
-        ],
-      }),
-    );
-    await slot.findByText(/\(outdated\)/);
+  it("uses the singular for one", async () => {
+    const slot = render(listing({ rows: [rowFixture({ unresolvedThreads: 1 })] }));
+    await slot.findByText("1 unresolved comment");
   });
 
   it("says nothing when every thread is resolved", async () => {
@@ -1120,146 +1090,5 @@ describe("a pull request with more than one thread", () => {
         threadId: "thr_1",
       }),
     );
-  });
-});
-
-describe("what the row says is outstanding", () => {
-  it("quotes what the reviewer wrote, not that they wrote something", async () => {
-    // The row said "hubber wrote notes on their review" for an APPROVED review
-    // whose body named a blocker.
-    const slot = render(
-      listing({
-        rows: [
-          rowFixture({
-            notes: [
-              {
-                author: "hubber",
-                approved: true,
-                body: "A few minor comments. The biggest is that there is now no way to turn it on.",
-              },
-            ],
-          }),
-        ],
-      }),
-    );
-    await slot.findByText(/The biggest is that there is now no way to turn it on\./);
-  });
-
-  it("names the check that failed, so a flaky visual test reads differently", async () => {
-    const slot = render(
-      listing({
-        rows: [rowFixture({ failingChecks: ["Run Storybook tests and visual regression"] })],
-      }),
-    );
-    await slot.findByText("Run Storybook tests and visual regression");
-  });
-
-  it("quotes the inline comments, with the file each sits on", async () => {
-    const slot = render(
-      listing({
-        rows: [
-          rowFixture({
-            threadComments: [
-              {
-                author: "hubber",
-                path: "client/feature/editorial-dash/stories.tsx",
-                body: "There is no setting card to turn it on.",
-                outdated: false,
-              },
-            ],
-          }),
-        ],
-      }),
-    );
-    await slot.findByText(/There is no setting card to turn it on\./);
-    // The last two segments: the leading directories are shared with every
-    // other comment on the pull request and say nothing.
-    await slot.findByText(/editorial-dash\/stories\.tsx/);
-  });
-
-  it("marks a comment left behind by a rewrite", async () => {
-    const slot = render(
-      listing({
-        rows: [
-          rowFixture({
-            threadComments: [
-              { author: "hubber", path: "a.ts", body: "stale point", outdated: true },
-            ],
-          }),
-        ],
-      }),
-    );
-    await slot.findByText("(outdated)");
-  });
-
-  it("caps the list rather than rendering a row of 33 comments", async () => {
-    // #4043 carries 33 unresolved threads. A row that renders all of them
-    // stops being a row.
-    const slot = render(
-      listing({
-        rows: [
-          rowFixture({
-            threadComments: Array.from({ length: 33 }, (_, index) => ({
-              author: "hubber",
-              path: "a.ts",
-              body: `point ${index}`,
-              outdated: true,
-            })),
-          }),
-        ],
-      }),
-    );
-    await slot.findByText("and 31 more");
-    expect(slot.queryByText("point 2")).toBeNull();
-  });
-
-  it("holds each quotation to one line, so a row stays a row", async () => {
-    // This shipped without the clamp the comment beside it claimed, and a
-    // two-paragraph review body rendered in full: four pull requests filled
-    // the window and the table stopped being one.
-    const paragraph =
-      "Are we sure this is the broad approach we want to take to porting features on the client? " +
-      "It seems ugly to still have the hook on the client, and have the client still mostly think " +
-      "in terms of the original model, but then shim that onto a data model that works another way.";
-    const slot = render(
-      listing({
-        rows: [rowFixture({ notes: [{ author: "hubber", approved: false, body: paragraph }] })],
-      }),
-    );
-
-    const line = await slot.findByText(new RegExp(paragraph.slice(0, 40)));
-    // truncate needs min-w-0 on the flex child too, or it silently does
-    // nothing — which is exactly how this shipped.
-    expect(line.className).toMatch(/truncate/);
-    expect(line.className).toMatch(/min-w-0/);
-    // The whole sentence stays reachable on hover rather than being cut away.
-    expect(line).toHaveAttribute("title", paragraph);
-  });
-
-  it("says nothing extra on a row with nothing outstanding", async () => {
-    // waitingOn empty and no flags is genuinely clean, not merely quiet.
-    const slot = render(listing({ rows: [rowFixture({ flags: [], group: "clean" })] }));
-    await slot.findByText("clean");
-    expect(slot.queryByText(/and \d+ more/)).toBeNull();
-  });
-
-  it("states the size and age, which is what sizes the job", async () => {
-    const slot = render(
-      listing({
-        rows: [
-          rowFixture({
-            size: { additions: 0, deletions: 1, changedFiles: 1 },
-            updatedAt: Date.now() - 3 * 86_400_000,
-          }),
-        ],
-      }),
-    );
-    // A one-line deletion sitting three days is a nudge, not a work item.
-    await slot.findByText(/\+0 −1, 1 file · 3d/);
-  });
-
-  it("leaves the age out rather than inventing one when GitHub gave no timestamp", async () => {
-    const slot = render(listing({ rows: [rowFixture({ updatedAt: null })] }));
-    await slot.findByText(/\+156 −68, 21 files$/);
   });
 });

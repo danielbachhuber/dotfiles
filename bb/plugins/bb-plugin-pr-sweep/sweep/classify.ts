@@ -136,84 +136,16 @@ function commenters(pr: RawPullRequest): string[] {
  * answered by the round that superseded them, and re-raising them would make
  * the flag permanent.
  */
-/**
- * The names of the checks that failed, from the latest attempt of each.
- *
- * "1 fail of 15" is the same sentence whatever broke. "Run Storybook tests and
- * visual regression" is a re-run; a type error is not. The rollup already
- * carries the name, and the row was throwing it away.
- */
-export function failingChecks(rollup: RawPullRequest["statusCheckRollup"]): string[] {
-  const failed: string[] = [];
-  for (const entry of latestChecks(rollup)) {
-    // StatusContext reports through `state`; CheckRun through `conclusion`.
-    const outcome = (
-      entry.state !== undefined && entry.status === undefined ? entry.state : (entry.conclusion ?? "")
-    ).toUpperCase();
-    if (outcome === "FAILURE" || outcome === "TIMED_OUT" || outcome === "ERROR") {
-      failed.push((entry.name ?? entry.context ?? "").trim());
-    }
-  }
-  return failed.filter((name) => name !== "");
-}
-
-/** A reviewer's written verdict, as they wrote it. */
-export interface ReviewNote {
-  author: string;
-  /** Their review was an approval — a note on one reads as a caveat, not a block. */
-  approved: boolean;
-  /** The whole body on one line. The panel clamps it; nothing is dropped here. */
-  body: string;
-}
-
-/**
- * What each reviewer actually wrote, rather than merely that they wrote it.
- *
- * `notedBy` reports the logins, which is true of a typo nit and of a blocking
- * objection alike. The bodies are already in the payload and were discarded.
- *
- * Flattened to one line rather than cut to the first: a body commonly opens
- * "A few minor comments." and puts the blocker in its second paragraph, so a
- * first-line excerpt reliably keeps the least useful sentence. The panel
- * clamps the line, which is a display decision, not this function's.
- */
-export function reviewNoteDetails(pr: RawPullRequest): ReviewNote[] {
+export function reviewNotes(pr: RawPullRequest): string[] {
   const authorLogin = pr.author?.login ?? null;
-  // The full history, not `latestReviews`. That field keeps only the most
-  // recent review per reviewer, and on #5886 a reviewer approved with 189
-  // characters naming the blocker and then left a second, empty COMMENTED
-  // review — which hid the paragraph that mattered.
-  //
-  // But an earlier round that was *answered* must not resurface either, or the
-  // note becomes permanent. What separates the two is the state of the empty
-  // review that follows: an empty approval is a sign-off, and supersedes
-  // whatever the reviewer said before it. An empty comment says nothing and
-  // resolves nothing, so it supersedes nothing.
-  const byAuthor = new Map<string, ReviewNote>();
-  for (const entry of pr.reviews) {
+  const seen = new Set<string>();
+  for (const entry of pr.latestReviews) {
     const login = entry.author?.login;
     if (!login || login === authorLogin) continue;
-
-    const body = (entry.body ?? "").replace(/\s+/g, " ").trim();
-    const approved = entry.state.toUpperCase() === "APPROVED";
-    if (body === "") {
-      if (approved) byAuthor.delete(login);
-      continue;
-    }
-    byAuthor.set(login, { author: login, approved, body });
+    if ((entry.body ?? "").trim() === "") continue;
+    seen.add(login);
   }
-  return [...byAuthor.values()];
-}
-
-/**
- * The reviewers who wrote something in a review body.
- *
- * Derived from `reviewNoteDetails` rather than walking the reviews again, so
- * the two cannot disagree about who said something — they did, and the row
- * named a reviewer whose words it had already lost.
- */
-export function reviewNotes(pr: RawPullRequest): string[] {
-  return reviewNoteDetails(pr).map((note) => note.author);
+  return [...seen];
 }
 
 /**
@@ -354,18 +286,6 @@ export function classifyOne(
     unresolvedThreads: 0,
     outdatedThreads: 0,
     awaitingReReview,
-    // Epoch ms, or null: a missing timestamp must read as "unknown" rather
-    // than as the epoch, which would sort as the oldest thing in the list.
-    updatedAt: pr.updatedAt ? (Number.isNaN(Date.parse(pr.updatedAt)) ? null : Date.parse(pr.updatedAt)) : null,
-    size: {
-      additions: pr.additions ?? 0,
-      deletions: pr.deletions ?? 0,
-      changedFiles: pr.changedFiles ?? 0,
-    },
-    failingChecks: failingChecks(pr.statusCheckRollup),
-    notes: reviewNoteDetails(pr),
-    // Filled by the thread query, the same way the counts above are.
-    threadComments: [],
   };
 }
 

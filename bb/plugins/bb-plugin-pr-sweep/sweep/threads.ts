@@ -1,29 +1,10 @@
 import type { GhRunner } from "@danielb/gh-shared/gh";
 
-/** One unresolved inline review thread, as its first comment left it. */
-export interface ThreadComment {
-  author: string;
-  /** The file it sits on. Half of knowing whether a comment is yours to act on. */
-  path: string;
-  /** The comment on one line. The panel clamps it; nothing is dropped here. */
-  body: string;
-  /** It sits on code that has since changed, so it may no longer apply. */
-  outdated: boolean;
-}
-
 /** Unresolved inline review threads on one pull request. */
 export interface ThreadCounts {
   unresolved: number;
   /** Of the unresolved ones, how many sit on code that has since changed. */
   outdated: number;
-  /**
-   * What those threads say, oldest first.
-   *
-   * A count cannot tell a typo nit from a design objection, and the row was
-   * asking you to open GitHub to find out. Capped at the first comment of each
-   * thread: the reply chain is the conversation, the first comment is the ask.
-   */
-  comments: ThreadComment[];
 }
 
 export const THREADS_QUERY = `
@@ -34,12 +15,7 @@ query($q: String!) {
         number
         repository { nameWithOwner }
         reviewThreads(first: 100) {
-          nodes {
-            isResolved
-            isOutdated
-            path
-            comments(first: 1) { nodes { body author { login } } }
-          }
+          nodes { isResolved isOutdated }
         }
       }
     }
@@ -56,14 +32,7 @@ export function threadKey(repo: string, number: number): string {
 interface RawNode {
   number?: number;
   repository?: { nameWithOwner?: string };
-  reviewThreads?: {
-    nodes?: Array<{
-      isResolved?: boolean;
-      isOutdated?: boolean;
-      path?: string;
-      comments?: { nodes?: Array<{ body?: string; author?: { login?: string } | null } | null> | null };
-    } | null> | null;
-  };
+  reviewThreads?: { nodes?: Array<{ isResolved?: boolean; isOutdated?: boolean } | null> | null };
 }
 
 export function parseThreadCounts(raw: string): Map<string, ThreadCounts> {
@@ -76,23 +45,12 @@ export function parseThreadCounts(raw: string): Map<string, ThreadCounts> {
 
     let unresolved = 0;
     let outdated = 0;
-    const comments: ThreadComment[] = [];
     for (const thread of node.reviewThreads?.nodes ?? []) {
       if (!thread || thread.isResolved) continue;
       unresolved += 1;
       if (thread.isOutdated) outdated += 1;
-
-      const first = thread.comments?.nodes?.[0];
-      const body = (first?.body ?? "").replace(/\s+/g, " ").trim();
-      if (body === "") continue;
-      comments.push({
-        author: first?.author?.login ?? "",
-        path: thread.path ?? "",
-        body,
-        outdated: thread.isOutdated === true,
-      });
     }
-    counts.set(threadKey(repo, node.number), { unresolved, outdated, comments });
+    counts.set(threadKey(repo, node.number), { unresolved, outdated });
   }
 
   return counts;

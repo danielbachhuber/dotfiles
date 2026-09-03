@@ -20,10 +20,7 @@ import {
   skillFor,
   statusTone,
   skillOwnsWorkflow,
-  ageLabel,
-  rowEvidence,
   scopedThreadTitle,
-  sizeLabel,
   threadTitle,
   unflaggedStatus,
 } from "./actions.js";
@@ -598,81 +595,5 @@ describe("scopedThreadTitle", () => {
       const expected = scope.charAt(0).toLowerCase() + scope.slice(1);
       expect(scopedThreadTitle(5840, scope)).toBe(`Refine #5840: ${expected}`);
     }
-  });
-});
-
-describe("ageLabel", () => {
-  const NOW = Date.parse("2026-09-03T12:00:00Z");
-
-  it("counts minutes, then hours, then days", () => {
-    expect(ageLabel(NOW - 20 * 60_000, NOW)).toBe("20m");
-    expect(ageLabel(NOW - 6 * 3_600_000, NOW)).toBe("6h");
-    expect(ageLabel(NOW - 3 * 86_400_000, NOW)).toBe("3d");
-  });
-
-  it("switches to days at the point an hour count stops meaning anything", () => {
-    expect(ageLabel(NOW - 47 * 3_600_000, NOW)).toBe("47h");
-    expect(ageLabel(NOW - 48 * 3_600_000, NOW)).toBe("2d");
-  });
-
-  it("says nothing when GitHub gave no timestamp", () => {
-    // Empty rather than "0m": a missing timestamp is unknown, and a row that
-    // claims to have just changed is worse than one that says nothing.
-    expect(ageLabel(null, NOW)).toBe("");
-  });
-
-  it("never goes negative for a clock skewed forward", () => {
-    expect(ageLabel(NOW + 86_400_000, NOW)).toBe("0m");
-  });
-});
-
-describe("sizeLabel", () => {
-  it("states the diff, so a one-line deletion is not mistaken for a rewrite", () => {
-    expect(sizeLabel({ additions: 156, deletions: 68, changedFiles: 21 })).toBe(
-      "+156 −68, 21 files",
-    );
-    expect(sizeLabel({ additions: 0, deletions: 1, changedFiles: 1 })).toBe("+0 −1, 1 file");
-  });
-});
-
-describe("rowEvidence", () => {
-  const row = {
-    failingChecks: ["Run Storybook tests and visual regression"],
-    notes: [{ author: "hubber", approved: true, body: "The biggest is that it cannot be enabled." }],
-    threadComments: [
-      { author: "hubber", path: "client/stories.tsx", body: "No way to turn it on.", outdated: false },
-    ],
-  };
-
-  it("orders it the way you would act on it: check, verdict, then detail", () => {
-    expect(rowEvidence(row).map((item) => item.kind)).toEqual(["check", "note", "comment"]);
-  });
-
-  it("carries who said it and where, which is half of whether it is yours", () => {
-    expect(rowEvidence(row)[2]).toEqual({
-      kind: "comment",
-      who: "hubber",
-      where: "client/stories.tsx",
-      text: "No way to turn it on.",
-      outdated: false,
-    });
-  });
-
-  it("attributes a check to nobody, because nobody said it", () => {
-    expect(rowEvidence(row)[0]).toMatchObject({ kind: "check", who: "", where: "" });
-  });
-
-  it("keeps the outdated mark, which changes what the comment means", () => {
-    // #4043 had 33 unresolved threads and all 33 outdated: not 33 things to
-    // answer, but a rewrite that left them behind.
-    const stale = rowEvidence({
-      ...row,
-      threadComments: [{ author: "hubber", path: "a.ts", body: "x", outdated: true }],
-    });
-    expect(stale.at(-1)!.outdated).toBe(true);
-  });
-
-  it("is empty for a row with nothing outstanding", () => {
-    expect(rowEvidence({ failingChecks: [], notes: [], threadComments: [] })).toEqual([]);
   });
 });

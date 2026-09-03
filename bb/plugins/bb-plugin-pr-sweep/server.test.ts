@@ -111,11 +111,6 @@ function seedRow() {
     unresolvedThreads: 0,
     outdatedThreads: 0,
     notedBy: [],
-    updatedAt: Date.parse("2026-09-01T12:00:00Z"),
-    size: { additions: 40, deletions: 6, changedFiles: 3 },
-    failingChecks: [],
-    notes: [],
-    threadComments: [],
   };
 }
 
