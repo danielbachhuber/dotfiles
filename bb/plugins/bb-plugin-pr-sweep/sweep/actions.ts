@@ -124,6 +124,27 @@ export function threadTitle(number: number, prTitle = ""): string {
 }
 
 /**
+ * "Refine #5840: fix failing CI" — the same shape, but naming what this thread
+ * is for rather than what the pull request is about.
+ *
+ * For a pull request's second thread. One pull request has several threads
+ * over its life, and the pull request's own words are the same in all of them:
+ * #5840 ended up with three unarchived threads reading "Refine #5840: hide SRG
+ * profile toggles…", which is three ways of saying nothing. What differs is
+ * the work each was started for, and that is what the title should carry.
+ *
+ * Lower-cased, because it follows a colon and completes a phrase rather than
+ * starting a sentence.
+ */
+export function scopedThreadTitle(number: number, scope: string): string {
+  const trimmed = scope.trim();
+  if (!trimmed) return threadTitle(number);
+
+  const lowered = trimmed.charAt(0).toLowerCase() + trimmed.slice(1);
+  return threadTitle(number, lowered);
+}
+
+/**
  * The leading whole words of a pull request title that fit in `budget`.
  *
  * Returns "" rather than a single truncated word when nothing fits, so the

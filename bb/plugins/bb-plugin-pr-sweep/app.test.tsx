@@ -26,8 +26,17 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     notedBy: [],
     canSpawn: true,
     threadId: null,
+    threadIds: [],
     ...overrides,
   };
+}
+
+/**
+ * A row with several threads, the way the server stamps one: `threadId` is the
+ * newest and `threadIds` lists every one, newest first, including it.
+ */
+function rowWithThreads(threadIds: string[], overrides: Record<string, unknown> = {}) {
+  return rowFixture({ threadId: threadIds[0] ?? null, threadIds, ...overrides });
 }
 
 function listing(overrides: Record<string, unknown> = {}) {
@@ -1020,3 +1029,66 @@ describe("sidebar count", () => {
   });
 });
 
+
+describe("a pull request with more than one thread", () => {
+  /**
+   * Radix opens a dropdown on pointerdown, not click, and jsdom synthesizes
+   * neither from `.click()` — both leave the menu shut and every item query
+   * times out. Enter on the trigger is a real way a user opens this menu.
+   */
+  async function openEarlierThreads(slot: {
+    findByRole: (role: string, options?: Record<string, unknown>) => Promise<HTMLElement>;
+  }) {
+    const trigger = await slot.findByRole("button", { name: /earlier thread/i });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    return trigger;
+  }
+
+  it("offers nothing extra on the common single-thread row", async () => {
+    const slot = render(listing({ rows: [rowWithThreads(["thr_2"])] }));
+    await slot.findByRole("button", { name: /open thread/i });
+    expect(slot.queryByRole("button", { name: /earlier thread/i })).toBeNull();
+  });
+
+  it("opens the newest thread from the button", async () => {
+    // Newest first, so the button acts on the work in progress rather than on
+    // whichever thread happened to be started first.
+    const slot = render(listing({ rows: [rowWithThreads(["thr_3", "thr_2", "thr_1"])] }));
+    (await slot.findByRole("button", { name: /open thread/i })).click();
+    await waitFor(() => expect(slot.inspection.navigateCalls.length).toBeGreaterThan(0));
+  });
+
+  it("counts the earlier threads on the trigger, so the row says there are more", async () => {
+    const slot = render(listing({ rows: [rowWithThreads(["thr_3", "thr_2", "thr_1"])] }));
+    await slot.findByRole("button", { name: "2 earlier threads" });
+  });
+
+  it("says one thread in the singular", async () => {
+    const slot = render(listing({ rows: [rowWithThreads(["thr_2", "thr_1"])] }));
+    await slot.findByRole("button", { name: "1 earlier thread" });
+  });
+
+  it("lists the earlier threads, newest of them first", async () => {
+    const slot = render(listing({ rows: [rowWithThreads(["thr_3", "thr_2", "thr_1"])] }));
+    await openEarlierThreads(slot);
+
+    const items = await slot.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Earlier thread 1",
+      "Earlier thread 2",
+    ]);
+  });
+
+  it("opens the earlier thread that was chosen, not the newest", async () => {
+    const slot = render(listing({ rows: [rowWithThreads(["thr_3", "thr_2", "thr_1"])] }));
+    await openEarlierThreads(slot);
+    (await slot.findByRole("menuitem", { name: "Earlier thread 2" })).click();
+
+    await waitFor(() =>
+      expect(slot.inspection.navigateCalls).toContainEqual({
+        method: "toThread",
+        threadId: "thr_1",
+      }),
+    );
+  });
+});

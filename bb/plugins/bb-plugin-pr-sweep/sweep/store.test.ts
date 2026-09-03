@@ -117,12 +117,42 @@ describe("thread links", () => {
     expect(freshStore().threadFor("acme/widgets", 42)).toBeNull();
   });
 
-  it("keeps one thread per PR, replacing on re-link", () => {
+  it("keeps every thread a pull request has had, newest first", () => {
+    // One pull request genuinely has several threads over its life: a conflict
+    // thread, then a CI thread, then a merge thread. Keyed by pull request,
+    // the store could only remember the newest and quietly forgot the rest.
     const store = freshStore();
     store.linkThread("acme/widgets", 42, "thr_1", 1);
     store.linkThread("acme/widgets", 42, "thr_2", 2);
+
+    expect(store.allThreadLinks().get("acme/widgets#42")).toEqual(["thr_2", "thr_1"]);
+  });
+
+  it("acts on the newest thread, which is the work in progress", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1);
+    store.linkThread("acme/widgets", 42, "thr_2", 2);
+
     expect(store.threadFor("acme/widgets", 42)).toBe("thr_2");
-    expect(store.threadLinks().size).toBe(1);
+    expect(store.threadLinks().get("acme/widgets#42")).toBe("thr_2");
+  });
+
+  it("updates a thread rather than duplicating it when it is re-linked", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1);
+    store.linkThread("acme/widgets", 42, "thr_1", 5);
+
+    expect(store.allThreadLinks().get("acme/widgets#42")).toEqual(["thr_1"]);
+  });
+
+  it("drops one thread of several without disturbing the others", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1);
+    store.linkThread("acme/widgets", 42, "thr_2", 2);
+    store.unlinkThread("thr_2");
+
+    expect(store.allThreadLinks().get("acme/widgets#42")).toEqual(["thr_1"]);
+    expect(store.threadFor("acme/widgets", 42)).toBe("thr_1");
   });
 
   it("keys links by repo and number together", () => {
@@ -175,12 +205,29 @@ describe("thread reasons", () => {
     expect(store.threadReasons()[0]?.reason).toBeNull();
   });
 
-  it("replaces the reason when a pull request is re-linked", () => {
+  it("keeps a reason per thread, since each was started for its own flag", () => {
+    // The archive sweep asks "is the flag this thread was started for gone
+    // yet", one thread at a time. Collapsing two threads into one reason meant
+    // the conflict thread was judged by the CI thread's flag.
     const store = freshStore();
     store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
     store.linkThread("acme/widgets", 42, "thr_2", 2, "ci-failing");
+
+    expect(store.threadReasons()).toEqual(
+      expect.arrayContaining([
+        { repo: "acme/widgets", number: 42, threadId: "thr_1", reason: "conflict" },
+        { repo: "acme/widgets", number: 42, threadId: "thr_2", reason: "ci-failing" },
+      ]),
+    );
+  });
+
+  it("updates a thread's reason rather than adding a second row for it", () => {
+    const store = freshStore();
+    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
+    store.linkThread("acme/widgets", 42, "thr_1", 2, "ci-failing");
+
     expect(store.threadReasons()).toEqual([
-      { repo: "acme/widgets", number: 42, threadId: "thr_2", reason: "ci-failing" },
+      { repo: "acme/widgets", number: 42, threadId: "thr_1", reason: "ci-failing" },
     ]);
   });
 

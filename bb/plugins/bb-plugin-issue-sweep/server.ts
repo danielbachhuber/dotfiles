@@ -370,10 +370,15 @@ export default async function plugin(bb: BbPluginApi) {
     if (enabled !== "on" || rows.length === 0) return false;
 
     const scanned = store.scannedThreads();
-    const linked = new Set(store.threadLinks().values());
+    const linked = new Set([...store.allThreadLinks().values()].flat());
+    const threads = await everyThread();
+    // Every title currently in the sidebar, so a rename cannot manufacture a
+    // duplicate. Mutated as titles are assigned, so two adoptions in one pass
+    // cannot collide with each other either.
+    const titlesInUse = new Set(threads.map((thread) => thread.title));
     let adopted = 0;
 
-    for (const thread of await everyThread()) {
+    for (const thread of threads) {
       if (scanned.has(thread.id) || linked.has(thread.id) || !isAdoptable(thread)) continue;
 
       const reference = soleIssueReference(await firstPromptText(thread.id));
@@ -389,29 +394,35 @@ export default async function plugin(bb: BbPluginApi) {
       // else's issue, or one already closed. Not this plugin's business.
       if (!row) continue;
 
-      // Renaming and linking are separate decisions, because they can fail
-      // separately. Identifying the issue is enough to name the thread after
-      // it; taking over as *the* thread for that issue is only right when the
-      // issue does not already have one. An issue with two threads is a
-      // situation to leave as it is rather than resolve by reassignment.
-      const wanted = threadTitle(row.number, row.title);
-      if (thread.title !== wanted) {
-        await bb.sdk.threads.update({ threadId: thread.id, title: wanted });
-      }
+      // Linked either way, because an issue may have several threads and the
+      // store now keeps them all. The board move is guarded by its own
+      // record, so a second thread on one issue does not move it twice.
+      store.linkThread(row.repo, row.number, thread.id, Date.now());
+      await autoSetStatus(row, statusOnStart);
+      adopted += 1;
 
-      const taken = store.threadFor(row.repo, row.number);
-      if (taken && taken !== thread.id) {
+      const canonical = threadTitle(row.number, row.title);
+      // Unlike pr-sweep there is no scope to fall back on: an issue carries no
+      // flag saying what a particular thread is for. So when the canonical
+      // title is already in the sidebar, the thread keeps its own. bb derived
+      // that title from this thread's prompt, which makes it a description of
+      // this thread's scope — the very thing the canonical title cannot
+      // express twice.
+      if (thread.title === canonical) {
+        bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number}, already titled`);
+        continue;
+      }
+      if (titlesInUse.has(canonical)) {
         bb.log.info(
-          `renamed ${thread.id} to "${wanted}"; ${row.repo}#${row.number} keeps ${taken} as its thread`,
+          `adopted ${thread.id} for ${row.repo}#${row.number}; kept "${thread.title}", ` +
+            `since another thread is already "${canonical}"`,
         );
-        adopted += 1;
         continue;
       }
 
-      store.linkThread(row.repo, row.number, thread.id, Date.now());
-      await autoSetStatus(row, statusOnStart);
-      bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number} as "${wanted}"`);
-      adopted += 1;
+      await bb.sdk.threads.update({ threadId: thread.id, title: canonical });
+      titlesInUse.add(canonical);
+      bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number} as "${canonical}"`);
     }
 
     return adopted > 0;

@@ -33,6 +33,24 @@ export const MIGRATIONS = [
      thread_id TEXT PRIMARY KEY,
      scanned_at INTEGER NOT NULL
    )`,
+  // Keyed by thread, not by pull request: one pull request genuinely has
+  // several threads over its life — a conflict thread, then a CI thread, then
+  // a merge thread — and `pr_threads`, keyed (repo, number), could only ever
+  // remember the newest. Every earlier thread silently stopped being linked
+  // to anything, which is how three unarchived threads ended up on #5840 with
+  // nothing recording what any of them was for.
+  `CREATE TABLE IF NOT EXISTS pr_thread_links (
+     thread_id TEXT PRIMARY KEY,
+     repo TEXT NOT NULL,
+     number INTEGER NOT NULL,
+     created_at INTEGER NOT NULL,
+     reason TEXT
+   )`,
+  // Carries over whatever the old table still held. `pr_threads` is left in
+  // place: these statements are append-only, and a dropped table cannot be
+  // consulted if this migration turns out to have lost something.
+  `INSERT OR IGNORE INTO pr_thread_links (thread_id, repo, number, created_at, reason)
+     SELECT thread_id, repo, number, created_at, reason FROM pr_threads`,
 ];
 
 export interface SweepMeta {
@@ -60,7 +78,11 @@ export interface Store {
   readRows(): ClassifiedRow[];
   readMeta(): SweepMeta;
   recordFailure(message: string): void;
-  /** Records the thread started for a PR. Re-linking the same PR replaces it. */
+  /**
+   * Records a thread started for a pull request. Keyed by thread, so a second
+   * thread on the same pull request is added rather than replacing the first.
+   * Re-linking the same thread updates it.
+   */
   linkThread(
     repo: string,
     number: number,
@@ -70,9 +92,17 @@ export interface Store {
   ): void;
   /** Every link with the flag it was started for, for the archive sweep. */
   threadReasons(): Array<{ repo: string; number: number; threadId: string; reason: string | null }>;
+  /**
+   * The pull request's newest thread, which is the one its row acts on.
+   *
+   * Newest rather than first: the older threads are the finished work, and the
+   * one you want to open is the one started most recently.
+   */
   threadFor(repo: string, number: number): string | null;
-  /** repo#number -> threadId, for stamping the whole listing in one read. */
+  /** repo#number -> newest threadId, for stamping the whole listing in one read. */
   threadLinks(): Map<string, string>;
+  /** repo#number -> every threadId, newest first. */
+  allThreadLinks(): Map<string, string[]>;
   /** Drops the link when its thread is archived or deleted. */
   unlinkThread(threadId: string): void;
   /** The pull request a thread was started for, or null if it is not ours. */
@@ -106,30 +136,53 @@ export function createStore(db: DatabaseLike): Store {
        last_error = NULL`,
   );
   const insertLink = db.prepare(
-    `INSERT INTO pr_threads (repo, number, thread_id, created_at, reason)
+    `INSERT INTO pr_thread_links (repo, number, thread_id, created_at, reason)
      VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(repo, number) DO UPDATE SET
-       thread_id = excluded.thread_id,
+     ON CONFLICT(thread_id) DO UPDATE SET
+       repo = excluded.repo,
+       number = excluded.number,
        reason = excluded.reason,
        created_at = excluded.created_at`,
   );
-  const selectLink = db.prepare(`SELECT thread_id FROM pr_threads WHERE repo = ? AND number = ?`);
-  const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM pr_threads`);
-  const selectReasons = db.prepare(`SELECT repo, number, thread_id, reason FROM pr_threads`);
-  const deleteLink = db.prepare(`DELETE FROM pr_threads WHERE thread_id = ?`);
+  // Newest first, and by thread_id after that so a tie is at least stable
+  // rather than left to SQLite's scan order.
+  const selectLink = db.prepare(
+    `SELECT thread_id FROM pr_thread_links WHERE repo = ? AND number = ?
+     ORDER BY created_at DESC, thread_id DESC LIMIT 1`,
+  );
+  const selectLinks = db.prepare(
+    `SELECT repo, number, thread_id FROM pr_thread_links
+     ORDER BY created_at DESC, thread_id DESC`,
+  );
+  const selectReasons = db.prepare(`SELECT repo, number, thread_id, reason FROM pr_thread_links`);
+  const deleteLink = db.prepare(`DELETE FROM pr_thread_links WHERE thread_id = ?`);
   const selectScans = db.prepare(`SELECT thread_id FROM thread_scan`);
   const insertScan = db.prepare(
     `INSERT INTO thread_scan (thread_id, scanned_at) VALUES (?, ?)
      ON CONFLICT(thread_id) DO UPDATE SET scanned_at = excluded.scanned_at`,
   );
   const selectByThread = db.prepare(
-    `SELECT repo, number FROM pr_threads WHERE thread_id = ?`,
+    `SELECT repo, number FROM pr_thread_links WHERE thread_id = ?`,
   );
   const upsertFailure = db.prepare(
     `INSERT INTO meta (id, swept_at, failed_repos, truncated, last_error)
      VALUES (1, NULL, '[]', 0, ?)
      ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error`,
   );
+
+  /** Every link, grouped by pull request, newest thread first. */
+  function groupedLinks(): Map<string, string[]> {
+    const links = selectLinks.all() as Array<{ repo: string; number: number; thread_id: string }>;
+    const byItem = new Map<string, string[]>();
+    // The query is already newest-first, so pushing preserves that order.
+    for (const link of links) {
+      const key = `${link.repo}#${link.number}`;
+      const existing = byItem.get(key);
+      if (existing) existing.push(link.thread_id);
+      else byItem.set(key, [link.thread_id]);
+    }
+    return byItem;
+  }
 
   const writeRepo = db.transaction(((repo: string, rows: ClassifiedRow[]) => {
     deleteRepo.run(repo);
@@ -221,8 +274,13 @@ export function createStore(db: DatabaseLike): Store {
     },
 
     threadLinks() {
-      const links = selectLinks.all() as Array<{ repo: string; number: number; thread_id: string }>;
-      return new Map(links.map((link) => [`${link.repo}#${link.number}`, link.thread_id]));
+      // Not `this.allThreadLinks()`: a store method taken off the object and
+      // called bare would lose `this`, and nothing stops a caller doing that.
+      return new Map([...groupedLinks()].map(([key, threadIds]) => [key, threadIds[0]!]));
+    },
+
+    allThreadLinks() {
+      return groupedLinks();
     },
 
     unlinkThread(threadId) {

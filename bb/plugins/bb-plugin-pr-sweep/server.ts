@@ -15,6 +15,7 @@ import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
 import {
+  actionSummary,
   commentsToRead,
   isWorkFinished,
   worstFlag,
@@ -22,6 +23,7 @@ import {
   parseAutoArchiveActions,
   parseModelByAction,
   parsePermissionMode,
+  scopedThreadTitle,
   threadTitle,
 } from "./sweep/actions.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./sweep/spawn-target.js";
@@ -177,6 +179,35 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
+   * The title for a new thread on `row`, avoiding one a live thread already has.
+   *
+   * Checked against the world rather than against the link table, because the
+   * link table is not the whole story: a thread whose link was dropped — by
+   * the archive sweep, or by an archive later undone — is still in the
+   * sidebar, still carrying its title, and still something a new thread can
+   * collide with. That is exactly how #5840 came to have three unarchived
+   * threads reading the same thing.
+   *
+   * Falls back to the canonical title if the threads cannot be listed. A
+   * duplicate title is a much smaller problem than a thread that fails to
+   * start.
+   */
+  async function titleForNewThread(
+    row: { number: number; title: string; flags: readonly string[] },
+    scope: string,
+  ): Promise<string> {
+    const canonical = threadTitle(row.number, row.title);
+    try {
+      const taken = new Set((await everyThread({ includeHidden: true })).map((t) => t.title));
+      if (!taken.has(canonical)) return canonical;
+      return scopedThreadTitle(row.number, scope);
+    } catch (error) {
+      bb.log.warn(`could not check existing thread titles: ${String(error)}`);
+      return canonical;
+    }
+  }
+
+  /**
    * Adopts threads started from the composer for a pull request this sweep
    * knows.
    *
@@ -193,9 +224,14 @@ export default async function plugin(bb: BbPluginApi) {
     if (rows.length === 0) return;
 
     const scanned = store.scannedThreads();
-    const linked = new Set(store.threadLinks().values());
+    const linked = new Set([...store.allThreadLinks().values()].flat());
+    const threads = await everyThread();
+    // Every title currently in the sidebar, so a rename cannot manufacture a
+    // duplicate. Mutated as titles are assigned, so two adoptions in one pass
+    // cannot collide with each other either.
+    const titlesInUse = new Set(threads.map((thread) => thread.title));
 
-    for (const thread of await everyThread()) {
+    for (const thread of threads) {
       if (scanned.has(thread.id) || linked.has(thread.id) || !isAdoptable(thread)) continue;
 
       const reference = solePullRequestReference(await firstPromptText(thread.id));
@@ -212,26 +248,34 @@ export default async function plugin(bb: BbPluginApi) {
       // plugin's business.
       if (!row) continue;
 
-      // Renaming and linking are separate decisions. Identifying the pull
-      // request is enough to name the thread after it; taking over as *the*
-      // thread for it is only right when it does not already have one.
-      const wanted = threadTitle(row.number, row.title);
-      if (thread.title !== wanted) {
-        await bb.sdk.threads.update({ threadId: thread.id, title: wanted });
-      }
+      // Linked either way, because a pull request may have several threads and
+      // the store now keeps them all. Renaming is the conditional part.
+      //
+      // No reason recorded: auto-archive fires when the flag a thread was
+      // started for disappears, and this thread was not started for a flag.
+      store.linkThread(row.repo, row.number, thread.id, Date.now(), null);
 
-      const taken = store.threadFor(row.repo, row.number);
-      if (taken && taken !== thread.id) {
+      const canonical = threadTitle(row.number, row.title);
+      // The scope-based alternative needs a flag, and a thread started from
+      // the composer has none — so when the canonical title is already in the
+      // sidebar, the thread keeps its own. bb derived that title from this
+      // thread's prompt, which makes it a description of this thread's scope:
+      // the very thing the canonical title cannot express twice.
+      if (thread.title === canonical) {
+        bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number}, already titled`);
+        continue;
+      }
+      if (titlesInUse.has(canonical)) {
         bb.log.info(
-          `renamed ${thread.id} to "${wanted}"; ${row.repo}#${row.number} keeps ${taken}`,
+          `adopted ${thread.id} for ${row.repo}#${row.number}; kept "${thread.title}", ` +
+            `since another thread is already "${canonical}"`,
         );
         continue;
       }
 
-      // No reason recorded: auto-archive fires when the flag a thread was
-      // started for disappears, and this thread was not started for a flag.
-      store.linkThread(row.repo, row.number, thread.id, Date.now(), null);
-      bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number} as "${wanted}"`);
+      await bb.sdk.threads.update({ threadId: thread.id, title: canonical });
+      titlesInUse.add(canonical);
+      bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number} as "${canonical}"`);
     }
   }
 
@@ -569,14 +613,18 @@ export default async function plugin(bb: BbPluginApi) {
       const spawnable = new Set(
         rows.map((row) => row.repo).filter((repo) => matchProjectForRepo(repo, candidates)),
       );
-      const links = store.threadLinks();
+      const links = store.allThreadLinks();
 
       return {
-        rows: rows.map((row) => ({
-          ...row,
-          canSpawn: spawnable.has(row.repo),
-          threadId: links.get(`${row.repo}#${row.number}`) ?? null,
-        })),
+        rows: rows.map((row) => {
+          const threadIds = links.get(`${row.repo}#${row.number}`) ?? [];
+          return {
+            ...row,
+            canSpawn: spawnable.has(row.repo),
+            threadId: threadIds[0] ?? null,
+            threadIds,
+          };
+        }),
         sweptAt: meta.sweptAt,
         failedRepos: meta.failedRepos,
         truncated: meta.truncated,
@@ -792,7 +840,9 @@ export default async function plugin(bb: BbPluginApi) {
           ...(model ? { model } : {}),
           permissionMode: mode,
           prompt: buildPrompt(row),
-          title: threadTitle(number, row.title),
+          // The pull request's own words for its first thread; what this
+          // thread is for once another thread already carries them.
+          title: await titleForNewThread(row, actionSummary(row.flags, commentsToRead(row))),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +

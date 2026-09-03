@@ -28,8 +28,14 @@ const rowSchema = z.object({
   outdatedThreads: z.number(),
   notedBy: z.array(z.string()),
   canSpawn: z.boolean(),
-  /** The thread already started for this PR, if any. */
+  /** The newest thread for this PR, which its action opens. Null when it has none. */
   threadId: z.string().nullable(),
+  /**
+   * Every thread for this PR, newest first, so the row can offer the older
+   * ones rather than pretending the newest is the only one. Includes
+   * `threadId` as its first entry.
+   */
+  threadIds: z.array(z.string()),
 });
 
 export const rpcContract = defineRpcContract({

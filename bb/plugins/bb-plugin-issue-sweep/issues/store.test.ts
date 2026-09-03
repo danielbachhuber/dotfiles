@@ -177,3 +177,47 @@ describe("scannedThreads", () => {
     expect(store.scannedThreads()).toEqual(new Set(["thr_1"]));
   });
 });
+
+describe("an issue with more than one thread", () => {
+  it("keeps every thread it has had, newest first", () => {
+    // Keyed by issue, the store could only remember the newest and quietly
+    // forgot the rest — which is how two unarchived threads ended up on one
+    // issue with nothing recording either of them.
+    store.linkThread("acme/widgets", 12, "thr_1", 1);
+    store.linkThread("acme/widgets", 12, "thr_2", 2);
+
+    expect(store.allThreadLinks().get("acme/widgets#12")).toEqual(["thr_2", "thr_1"]);
+  });
+
+  it("acts on the newest thread, which is the work in progress", () => {
+    store.linkThread("acme/widgets", 12, "thr_1", 1);
+    store.linkThread("acme/widgets", 12, "thr_2", 2);
+
+    expect(store.threadFor("acme/widgets", 12)).toBe("thr_2");
+    expect(store.threadLinks().get("acme/widgets#12")).toBe("thr_2");
+  });
+
+  it("updates a thread rather than duplicating it when it is re-linked", () => {
+    store.linkThread("acme/widgets", 12, "thr_1", 1);
+    store.linkThread("acme/widgets", 12, "thr_1", 5);
+
+    expect(store.allThreadLinks().get("acme/widgets#12")).toEqual(["thr_1"]);
+  });
+
+  it("drops one thread of several without disturbing the others", () => {
+    store.linkThread("acme/widgets", 12, "thr_1", 1);
+    store.linkThread("acme/widgets", 12, "thr_2", 2);
+    store.unlinkThread("thr_2");
+
+    expect(store.allThreadLinks().get("acme/widgets#12")).toEqual(["thr_1"]);
+    expect(store.threadFor("acme/widgets", 12)).toBe("thr_1");
+  });
+
+  it("keeps issues apart even at the same number", () => {
+    store.linkThread("acme/widgets", 12, "thr_1", 1);
+    store.linkThread("acme/gadgets", 12, "thr_2", 1);
+
+    expect(store.allThreadLinks().get("acme/widgets#12")).toEqual(["thr_1"]);
+    expect(store.allThreadLinks().get("acme/gadgets#12")).toEqual(["thr_2"]);
+  });
+});

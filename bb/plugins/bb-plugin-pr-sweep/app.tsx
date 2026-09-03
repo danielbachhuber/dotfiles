@@ -9,6 +9,12 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CopyLink } from "@/components/ui/copy-link";
 import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
@@ -68,6 +74,7 @@ type Row = {
   notedBy: string[];
   canSpawn: boolean;
   threadId: string | null;
+  threadIds: string[];
 };
 
 type Listing = {
@@ -254,6 +261,50 @@ function StatusCell({ row }: { row: Row }) {
 }
 
 /**
+ * The pull request's earlier threads, when it has any.
+ *
+ * One pull request has several threads over its life — a conflict thread, then
+ * a CI thread, then a merge thread — and the row's button can only open one of
+ * them. It opens the newest, which is the work in progress; this is how the
+ * finished ones stay reachable instead of being visible only in the sidebar.
+ *
+ * Renders nothing on the common single-thread row, so the cell keeps its shape
+ * unless there is genuinely something more to offer.
+ */
+function OlderThreads({ row, onOpen }: { row: Row; onOpen: (threadId: string) => void }) {
+  const older = row.threadIds.slice(1);
+  if (older.length === 0) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="size-8 shrink-0 p-0"
+          aria-label={`${older.length} earlier thread${older.length === 1 ? "" : "s"}`}
+        >
+          {/* Upright, matching review-sweep: the registry has no vertical
+              twin and components/ui is vendored byte-identical from bb, so the
+              glyph is turned rather than swapped. */}
+          <Icon name="MoreHorizontal" className="size-4 rotate-90" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {older.map((threadId, index) => (
+          <DropdownMenuItem key={threadId} onSelect={() => onOpen(threadId)}>
+            {/* Numbered from the newest backwards, because "earlier thread 1"
+                is the one before the one the button opens. The thread's own
+                title is not on the row, so a position is all this can say. */}
+            Earlier thread {index + 1}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
  * Three states, because a click that looks like nothing happened is what makes
  * someone click again: the action, an immediate "Starting…" while the thread is
  * being created, then a link to the thread once one exists.
@@ -303,6 +354,7 @@ function Action({
             <TooltipContent>Archive thread</TooltipContent>
           </Tooltip>
         ) : null}
+        <OlderThreads row={row} onOpen={onOpen} />
       </span>
     );
   }

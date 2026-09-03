@@ -21,6 +21,7 @@ import {
   skillFor,
   statusTone,
   skillOwnsWorkflow,
+  scopedThreadTitle,
   threadTitle,
   titleGist,
   unflaggedStatus,
@@ -577,5 +578,46 @@ describe("isCounted", () => {
       expect(typeof isCounted(section)).toBe("boolean");
     }
     expect(COUNTED_SECTIONS.every((section) => DISPLAY_SECTIONS.includes(section))).toBe(true);
+  });
+});
+
+describe("scopedThreadTitle", () => {
+  it("names the work the thread was started for, not the pull request", () => {
+    // #5840's three threads all read "Refine #5840: hide SRG profile toggles…"
+    // — three ways of saying nothing. What differs is what each is for.
+    expect(scopedThreadTitle(5840, actionSummary(["conflict"]))).toBe("Refine #5840: resolve conflict");
+    expect(scopedThreadTitle(5840, actionSummary(["ci-failing"]))).toBe(
+      "Refine #5840: fix failing CI",
+    );
+    expect(scopedThreadTitle(5840, actionSummary(["merge-ready"], 3))).toBe(
+      "Refine #5840: review and merge",
+    );
+  });
+
+  it("tells a pull request's threads apart, which the gist could not", () => {
+    const titles = new Set(
+      [["conflict"], ["ci-failing"], ["feedback"]].map((flags) =>
+        scopedThreadTitle(5840, actionSummary(flags)),
+      ),
+    );
+    expect(titles.size).toBe(3);
+  });
+
+  it("lower-cases the scope, since it completes a phrase after a colon", () => {
+    expect(scopedThreadTitle(12, "Fix failing CI")).toBe("Refine #12: fix failing CI");
+    // Only the first character: "CI" is not an accident of capitalisation.
+    expect(scopedThreadTitle(12, "Fix failing CI")).toContain("CI");
+  });
+
+  it("falls back to the bare label and number when there is no scope", () => {
+    expect(scopedThreadTitle(12, "")).toBe("Refine #12");
+    expect(scopedThreadTitle(12, "   ")).toBe("Refine #12");
+  });
+
+  it("stays inside the sidebar budget for every flag", () => {
+    for (const flag of FLAG_SEVERITY) {
+      const title = scopedThreadTitle(5840, actionSummary([flag]));
+      expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    }
   });
 });
