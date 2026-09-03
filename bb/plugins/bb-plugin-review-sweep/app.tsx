@@ -14,6 +14,12 @@ import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
 import { Icon } from "@/components/ui/icon";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -30,10 +36,13 @@ import {
 import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
+  SNOOZE_LABEL,
   START_THREAD_LABEL,
+  UNSNOOZE_LABEL,
   ageLabel,
   ageTone,
   displaySection,
+  returnsInLabel,
   reviewersLabel,
   sizeLabel,
 } from "./review/actions.js";
@@ -53,6 +62,7 @@ type Row = {
   size: { additions: number; deletions: number; changedFiles: number };
   canSpawn: boolean;
   threadId: string | null;
+  snoozedUntil: number | null;
 };
 
 type Listing = {
@@ -104,6 +114,11 @@ function useListing() {
  * Three states, because a click that looks like nothing happened is what makes
  * someone click again: the action, an immediate "Starting…" while the thread is
  * created, then a link to the thread once one exists.
+ *
+ * Whichever it is, a kebab menu sits beside it holding the row's secondary
+ * actions. One shape for every row: the labelled thing you usually want, then
+ * everything else behind the same affordance, rather than an icon button that
+ * appears only on rows with a thread.
  */
 function Action({
   row,
@@ -111,18 +126,20 @@ function Action({
   onReview,
   onOpen,
   onArchive,
+  onSnooze,
+  onUnsnooze,
 }: {
   row: Row;
   isStarting: boolean;
   onReview: (row: Row) => void;
   onOpen: (threadId: string) => void;
   onArchive: (row: Row) => void;
+  onSnooze: (row: Row) => void;
+  onUnsnooze: (row: Row) => void;
 }) {
-  if (row.threadId) {
-    // Open thread stays the labelled action; archiving is the tidy-up, inline
-    // as an icon rather than a second full-width button stacked below.
-    return (
-      <span className="flex items-center justify-end gap-1">
+  return (
+    <span className="flex items-center justify-end gap-1">
+      {row.threadId ? (
         <Button
           size="sm"
           variant="outline"
@@ -131,41 +148,78 @@ function Action({
         >
           Open thread
         </Button>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="size-8 shrink-0 p-0"
-              aria-label="Archive thread"
-              onClick={() => onArchive(row)}
-            >
-              <Icon name="Archive" className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Archive thread</TooltipContent>
-        </Tooltip>
-      </span>
-    );
-  }
-
-  return (
-    // The title sits on the wrapper, not the Button: a disabled button fires no
-    // pointer events, so a tooltip on it would never show.
-    <span
-      title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
-      className="inline-block"
-    >
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!row.canSpawn || isStarting}
-        onClick={() => onReview(row)}
-        className="whitespace-nowrap"
-      >
-        {isStarting ? "Starting…" : START_THREAD_LABEL}
-      </Button>
+      ) : (
+        // The title sits on the wrapper, not the Button: a disabled button
+        // fires no pointer events, so a tooltip on it would never show.
+        <span
+          title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
+          className="inline-block"
+        >
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!row.canSpawn || isStarting}
+            onClick={() => onReview(row)}
+            className="whitespace-nowrap"
+          >
+            {isStarting ? "Starting…" : START_THREAD_LABEL}
+          </Button>
+        </span>
+      )}
+      <RowMenu
+        row={row}
+        onArchive={onArchive}
+        onSnooze={onSnooze}
+        onUnsnooze={onUnsnooze}
+      />
     </span>
+  );
+}
+
+/**
+ * The row's secondary actions.
+ *
+ * What it offers follows what the row is, so the menu never lists something
+ * that cannot happen: a thread can be archived, an ignored review can be taken
+ * back, and anything else can be put off.
+ */
+function RowMenu({
+  row,
+  onArchive,
+  onSnooze,
+  onUnsnooze,
+}: {
+  row: Row;
+  onArchive: (row: Row) => void;
+  onSnooze: (row: Row) => void;
+  onUnsnooze: (row: Row) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="size-8 shrink-0 p-0" aria-label="More actions">
+          <Icon name="MoreHorizontal" className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {row.threadId ? (
+          <DropdownMenuItem onSelect={() => onArchive(row)}>
+            <Icon name="Archive" className="size-4" />
+            Archive thread
+          </DropdownMenuItem>
+        ) : row.snoozedUntil ? (
+          <DropdownMenuItem onSelect={() => onUnsnooze(row)}>
+            <Icon name="RotateCcw" className="size-4" />
+            {UNSNOOZE_LABEL}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => onSnooze(row)}>
+            <Icon name="Clock" className="size-4" />
+            {SNOOZE_LABEL}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -181,6 +235,8 @@ function ReviewTable({
   onReview,
   onOpen,
   onArchive,
+  onSnooze,
+  onUnsnooze,
 }: {
   rows: Row[];
   showRepo: boolean;
@@ -190,6 +246,8 @@ function ReviewTable({
   onReview: (row: Row) => void;
   onOpen: (threadId: string) => void;
   onArchive: (row: Row) => void;
+  onSnooze: (row: Row) => void;
+  onUnsnooze: (row: Row) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border">
@@ -231,7 +289,17 @@ function ReviewTable({
                   */}
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span className="truncate">
-                      {[showRepo ? row.repo : null, row.author, row.isDraft ? "draft" : null]
+                      {[
+                        showRepo ? row.repo : null,
+                        row.author,
+                        row.isDraft ? "draft" : null,
+                        // Only in the Ignored section, where the section title
+                        // says what happened and this says when it undoes
+                        // itself.
+                        row.snoozedUntil && !row.threadId
+                          ? returnsInLabel(row.snoozedUntil, now)
+                          : null,
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
@@ -273,6 +341,8 @@ function ReviewTable({
                     onReview={onReview}
                     onOpen={onOpen}
                     onArchive={onArchive}
+                    onSnooze={onSnooze}
+                    onUnsnooze={onUnsnooze}
                   />
                 </TableCell>
               </TableRow>
@@ -298,6 +368,8 @@ function Section({
   onReview: (row: Row) => void;
   onOpen: (threadId: string) => void;
   onArchive: (row: Row) => void;
+  onSnooze: (row: Row) => void;
+  onUnsnooze: (row: Row) => void;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -438,6 +510,28 @@ function Panel() {
     [reload, rpc],
   );
 
+  const onSnooze = useCallback(
+    (row: Row) => {
+      void (async () => {
+        const { until } = await rpc.call("snooze", { repo: row.repo, number: row.number });
+        toast.success(`Ignoring ${row.repo}#${row.number}, ${returnsInLabel(until, Date.now())}`);
+        await reload();
+      })();
+    },
+    [reload, rpc],
+  );
+
+  const onUnsnooze = useCallback(
+    (row: Row) => {
+      void (async () => {
+        await rpc.call("unsnooze", { repo: row.repo, number: row.number });
+        toast.success(`${row.repo}#${row.number} is back in the queue`);
+        await reload();
+      })();
+    },
+    [reload, rpc],
+  );
+
   const onRefresh = useCallback(async () => {
     setBusy(true);
     try {
@@ -452,7 +546,10 @@ function Panel() {
   if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
 
   const inSection = (section: string) =>
-    listing.rows.filter((row) => displaySection(Boolean(row.threadId), row.isDraft) === section);
+    listing.rows.filter(
+      (row) =>
+        displaySection(Boolean(row.threadId), row.isDraft, Boolean(row.snoozedUntil)) === section,
+    );
 
   // The repository only earns a column when it actually varies.
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;
@@ -487,6 +584,8 @@ function Panel() {
               onReview={onReview}
               onOpen={onOpen}
               onArchive={onArchive}
+              onSnooze={onSnooze}
+              onUnsnooze={onUnsnooze}
             />
           ))}
         </div>
@@ -499,7 +598,9 @@ function NeedsReviewCount() {
   const { listing } = useListing();
   const count =
     listing?.rows.filter(
-      (row) => displaySection(Boolean(row.threadId), row.isDraft) === "needs-review",
+      (row) =>
+        displaySection(Boolean(row.threadId), row.isDraft, Boolean(row.snoozedUntil)) ===
+        "needs-review",
     ).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;

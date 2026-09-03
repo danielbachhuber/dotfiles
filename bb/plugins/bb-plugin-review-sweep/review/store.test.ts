@@ -136,4 +136,49 @@ describe("store", () => {
       });
     });
   });
+
+  it("hides a review until its deadline, then stops", () => {
+    const store = freshStore();
+    store.snooze("acme/widgets", 1, NOW + 3_600_000, NOW);
+
+    expect(store.snoozesUntil(NOW).get("acme/widgets#1")).toBe(NOW + 3_600_000);
+    // Read at the deadline, not before it: a snooze that has run out is not a
+    // snooze, whatever is still on disk.
+    expect(store.snoozesUntil(NOW + 3_600_000).size).toBe(0);
+  });
+
+  it("replaces a deadline rather than extending it, so a second click is idempotent", () => {
+    const store = freshStore();
+    store.snooze("acme/widgets", 1, NOW + 3_600_000, NOW);
+    store.snooze("acme/widgets", 1, NOW + 7_200_000, NOW);
+
+    expect(store.snoozesUntil(NOW).size).toBe(1);
+    expect(store.snoozesUntil(NOW).get("acme/widgets#1")).toBe(NOW + 7_200_000);
+  });
+
+  it("takes a review back before its deadline", () => {
+    const store = freshStore();
+    store.snooze("acme/widgets", 1, NOW + 3_600_000, NOW);
+    store.unsnooze("acme/widgets", 1);
+
+    expect(store.snoozesUntil(NOW).size).toBe(0);
+  });
+
+  it("keeps a snooze across a sweep, which replaces every row", () => {
+    const store = freshStore();
+    store.snooze("acme/widgets", 1, NOW + 3_600_000, NOW);
+    store.replaceAll(result([row()]));
+
+    expect(store.snoozesUntil(NOW).get("acme/widgets#1")).toBe(NOW + 3_600_000);
+  });
+
+  it("prunes only the deadlines that have passed", () => {
+    const store = freshStore();
+    store.snooze("acme/widgets", 1, NOW - 1, NOW);
+    store.snooze("acme/widgets", 2, NOW + 3_600_000, NOW);
+
+    expect(store.pruneSnoozes(NOW)).toBe(1);
+    expect(store.pruneSnoozes(NOW)).toBe(0);
+    expect(store.snoozesUntil(NOW).get("acme/widgets#2")).toBe(NOW + 3_600_000);
+  });
 });

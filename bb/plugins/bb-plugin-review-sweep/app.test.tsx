@@ -28,6 +28,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     size: { additions: 120, deletions: 8, changedFiles: 6 },
     canSpawn: true,
     threadId: null,
+    snoozedUntil: null,
     ...overrides,
   };
 }
@@ -41,6 +42,22 @@ function listing(overrides: Record<string, unknown> = {}) {
     staleAfterDays: 2,
     ...overrides,
   };
+}
+
+/**
+ * Opens a row's kebab menu.
+ *
+ * Opened from the keyboard. Radix drives a dropdown from pointerdown, not
+ * click, and jsdom synthesizes neither from `.click()` — both leave the menu
+ * shut and every item query times out. Enter on the trigger is a real way a
+ * user opens this menu, so the test exercises a path rather than faking one.
+ */
+async function openRowMenu(slot: {
+  findByRole: (role: string, options?: Record<string, unknown>) => Promise<HTMLElement>;
+}) {
+  const trigger = await slot.findByRole("button", { name: /more actions/i });
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  return trigger;
 }
 
 let mounted: { lifecycle: { unmount: () => void } } | null = null;
@@ -337,28 +354,34 @@ describe("action", () => {
     expect(slot.inspection.navigateCalls.length).toBeGreaterThan(0);
   });
 
-  it("offers Archive thread alongside Open thread", async () => {
+  it("puts Archive thread in the row menu, alongside Open thread", async () => {
     // Unlike pr-sweep there is no flag to clear, so the tidy-up is always
-    // available on an in-progress row.
+    // available on an in-progress row. It lives in the menu rather than as its
+    // own icon button, so every row's action cell has the same shape.
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    const archive = await slot.findByRole("button", { name: /archive thread/i });
-    // An icon button carrying its label as an accessible name, not visible
-    // text. Asserting the name rather than opening the tooltip, which Radix
-    // drives from events jsdom does not synthesize.
-    expect(archive.textContent).toBe("");
-    expect(archive).toHaveAttribute("aria-label", "Archive thread");
     expect((await slot.findByRole("button", { name: /open thread/i })).textContent).toContain(
       "Open thread",
     );
+    await openRowMenu(slot);
+    await slot.findByRole("menuitem", { name: /archive thread/i });
   });
 
-  it("calls archiveThread when Archive thread is clicked", async () => {
+  it("calls archiveThread when Archive thread is chosen", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }), {
       archiveThread: () => ({ ok: true, reason: null }),
     });
-    (await slot.findByRole("button", { name: /archive thread/i })).click();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(slot.inspection.rpcCalls.some((call) => call.method === "archiveThread")).toBe(true);
+    await openRowMenu(slot);
+    (await slot.findByRole("menuitem", { name: /archive thread/i })).click();
+    await waitFor(() =>
+      expect(slot.inspection.rpcCalls.some((call) => call.method === "archiveThread")).toBe(true),
+    );
+  });
+
+  it("offers no way to ignore a review already being worked on", async () => {
+    const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
+    await openRowMenu(slot);
+    await slot.findByRole("menuitem", { name: /archive thread/i });
+    expect(slot.queryByRole("menuitem", { name: /ignore/i })).toBeNull();
   });
 
   it("calls reviewThis when the action is clicked", async () => {
@@ -408,6 +431,83 @@ describe("action", () => {
     expect(slot.inspection.rpcCalls.filter((call) => call.method === "reviewThis")).toHaveLength(1);
 
     release?.();
+  });
+});
+
+describe("ignoring a review", () => {
+  it("offers Ignore for 48 hours in the row menu", async () => {
+    const slot = render(listing());
+    await openRowMenu(slot);
+    await slot.findByRole("menuitem", { name: /^Ignore for 48 hours$/ });
+  });
+
+  it("calls snooze when Ignore is chosen", async () => {
+    const slot = render(listing(), { snooze: () => ({ until: Date.now() + 48 * 3_600_000 }) });
+    await openRowMenu(slot);
+    (await slot.findByRole("menuitem", { name: /^Ignore for 48 hours$/ })).click();
+    await waitFor(() => {
+      const call = slot.inspection.rpcCalls.find((entry) => entry.method === "snooze");
+      expect(call?.input).toEqual({ repo: "acme/widgets", number: 42 });
+    });
+  });
+
+  it("moves an ignored review out of the queue and into its own section", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ snoozedUntil: Date.now() + 41 * 3_600_000 })] }),
+    );
+    await slot.findByText("Ignored (1)");
+    expect(slot.queryByText(/^Needs Review/)).toBeNull();
+  });
+
+  it("says when an ignored review comes back", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ snoozedUntil: Date.now() + 41 * 3_600_000 })] }),
+    );
+    expect(await slot.findByText(/returns in 41 hours/)).toBeInTheDocument();
+  });
+
+  it("offers to take back an ignored review rather than ignoring it again", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ snoozedUntil: Date.now() + 41 * 3_600_000 })] }),
+    );
+    await openRowMenu(slot);
+    await slot.findByRole("menuitem", { name: /^Stop ignoring$/ });
+    expect(slot.queryByRole("menuitem", { name: /^Ignore for 48 hours$/ })).toBeNull();
+  });
+
+  it("calls unsnooze when Stop ignoring is chosen", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ snoozedUntil: Date.now() + 41 * 3_600_000 })] }),
+      { unsnooze: () => ({ ok: true }) },
+    );
+    await openRowMenu(slot);
+    (await slot.findByRole("menuitem", { name: /^Stop ignoring$/ })).click();
+    await waitFor(() => {
+      const call = slot.inspection.rpcCalls.find((entry) => entry.method === "unsnooze");
+      expect(call?.input).toEqual({ repo: "acme/widgets", number: 42 });
+    });
+  });
+
+  function renderCount(result: Record<string, unknown>) {
+    const slot = renderSlot(
+      { component: app.navPanels[0]!.experimental_sidebarAccessory! },
+      { subPath: "" },
+      { rpc: { listRows: () => result } },
+    );
+    mounted = slot;
+    return slot;
+  }
+
+  it("counts a review that is waiting", async () => {
+    const slot = renderCount(listing());
+    await waitFor(() => expect(slot.container.textContent).toBe("1"));
+  });
+
+  it("keeps an ignored review out of the sidebar count", async () => {
+    // The count is what says the queue is not empty, so an ignored review that
+    // still counted would undo the point of ignoring it.
+    const slot = renderCount(listing({ rows: [rowFixture({ snoozedUntil: Date.now() + DAY })] }));
+    await waitFor(() => expect(slot.container.textContent).toBe(""));
   });
 });
 

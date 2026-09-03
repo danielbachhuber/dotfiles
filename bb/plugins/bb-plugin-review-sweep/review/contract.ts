@@ -20,6 +20,8 @@ const rowSchema = z.object({
   canSpawn: z.boolean(),
   /** The thread already started for this review, if any. */
   threadId: z.string().nullable(),
+  /** When an ignored review comes back, or null when it is not ignored. */
+  snoozedUntil: z.number().nullable(),
 });
 
 export const rpcContract = defineRpcContract({
@@ -47,6 +49,14 @@ export const rpcContract = defineRpcContract({
   archiveThread: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
     output: z.object({ ok: z.boolean(), reason: z.string().nullable() }),
+  },
+  snooze: {
+    input: z.object({ repo: z.string(), number: z.number() }).strict(),
+    output: z.object({ until: z.number() }),
+  },
+  unsnooze: {
+    input: z.object({ repo: z.string(), number: z.number() }).strict(),
+    output: z.object({ ok: z.boolean() }),
   },
   reviewThis: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),

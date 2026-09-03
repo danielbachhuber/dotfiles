@@ -2,7 +2,12 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { rpcContract } from "./review/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./review/gh.js";
 import { buildPrompt } from "./review/prompt.js";
-import { parsePermissionMode, parseStaleAfterDays, threadTitle } from "./review/actions.js";
+import {
+  parsePermissionMode,
+  parseStaleAfterDays,
+  snoozeUntil,
+  threadTitle,
+} from "./review/actions.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./review/spawn-target.js";
 import { MIGRATIONS, createStore } from "./review/store.js";
 
@@ -126,6 +131,11 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.warn(`could not reconcile thread links: ${String(error)}`);
     }
 
+    // Expired deadlines are already ignored on read; this is only so the table
+    // does not accumulate a row per review ever deferred.
+    const pruned = store.pruneSnoozes(Date.now());
+    if (pruned > 0) bb.log.info(`${pruned} ignored review(s) came back`);
+
     return outcome;
   }
 
@@ -196,12 +206,14 @@ export default async function plugin(bb: BbPluginApi) {
         rows.map((row) => row.repo).filter((repo) => matchProjectForRepo(repo, candidates)),
       );
       const links = store.threadLinks();
+      const snoozes = store.snoozesUntil(Date.now());
 
       return {
         rows: rows.map((row) => ({
           ...row,
           canSpawn: spawnable.has(row.repo),
           threadId: links.get(`${row.repo}#${row.number}`) ?? null,
+          snoozedUntil: snoozes.get(`${row.repo}#${row.number}`) ?? null,
         })),
         sweptAt: meta.sweptAt,
         truncated: meta.truncated,
@@ -251,6 +263,22 @@ export default async function plugin(bb: BbPluginApi) {
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
       bb.log.info(`archived ${threadId} for ${repo}#${number}`);
       return { ok: true, reason: null };
+    },
+
+    async snooze({ repo, number }) {
+      const now = Date.now();
+      const until = snoozeUntil(now);
+      store.snooze(repo, number, until, now);
+      bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+      bb.log.info(`ignoring ${repo}#${number} until ${new Date(until).toISOString()}`);
+      return { until };
+    },
+
+    async unsnooze({ repo, number }) {
+      store.unsnooze(repo, number);
+      bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+      bb.log.info(`no longer ignoring ${repo}#${number}`);
+      return { ok: true };
     },
 
     async reviewThis({ repo, number }) {

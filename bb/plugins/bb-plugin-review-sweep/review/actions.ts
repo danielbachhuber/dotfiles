@@ -128,7 +128,40 @@ export function parseStaleAfterDays(raw: string | undefined): number {
   return Math.floor(parsed);
 }
 
-export const DISPLAY_SECTIONS = ["needs-review", "in-progress", "draft"] as const;
+/**
+ * How long "Ignore" ignores for. One duration, not a menu of them: the useful
+ * question is "not today", and two days answers it without asking a second
+ * question at the moment you are trying to clear the queue.
+ *
+ * A fixed timer, deliberately. Waking a snoozed row on the author's next push
+ * would let a chatty pull request undo the deferral within minutes, which is
+ * the opposite of what the click asked for.
+ */
+export const SNOOZE_HOURS = 48;
+
+export const SNOOZE_LABEL = `Ignore for ${SNOOZE_HOURS} hours`;
+
+export const UNSNOOZE_LABEL = "Stop ignoring";
+
+export function snoozeUntil(now: number): number {
+  return now + SNOOZE_HOURS * 3_600_000;
+}
+
+/**
+ * "returns in 41 hours". Counts up from the same clock as `ageLabel`, and
+ * rounds up rather than down: a deadline 30 minutes out is "returns in 1 hour",
+ * never "returns in 0 hours".
+ */
+export function returnsInLabel(until: number, now: number): string {
+  const hours = Math.ceil(Math.max(0, until - now) / 3_600_000);
+  if (hours <= 0) return "returning";
+  if (hours < HOURS_BEFORE_DAYS)
+    return hours === 1 ? "returns in 1 hour" : `returns in ${hours} hours`;
+  const days = Math.ceil(hours / 24);
+  return days === 1 ? "returns in 1 day" : `returns in ${days} days`;
+}
+
+export const DISPLAY_SECTIONS = ["needs-review", "in-progress", "draft", "snoozed"] as const;
 
 export type DisplaySection = (typeof DISPLAY_SECTIONS)[number];
 
@@ -136,6 +169,7 @@ export const SECTION_TITLES: Record<DisplaySection, string> = {
   "needs-review": "Needs Review",
   "in-progress": "In Progress",
   draft: "Draft",
+  snoozed: "Ignored",
 };
 
 /**
@@ -147,9 +181,19 @@ export const SECTION_TITLES: Record<DisplaySection, string> = {
  *
  * A draft requested of you is a real request, but it is not offered for review
  * yet, so it sits apart rather than aging in the main queue.
+ *
+ * An ignored review still shows, in its own section at the bottom: hiding it
+ * outright would leave no way to see what you deferred, or to take it back
+ * before the deadline. A thread outranks the deferral, because a review being
+ * worked on is stronger evidence than a click from two days ago.
  */
-export function displaySection(hasThread: boolean, isDraft: boolean): DisplaySection {
+export function displaySection(
+  hasThread: boolean,
+  isDraft: boolean,
+  isSnoozed = false,
+): DisplaySection {
   if (hasThread) return "in-progress";
+  if (isSnoozed) return "snoozed";
   return isDraft ? "draft" : "needs-review";
 }
 

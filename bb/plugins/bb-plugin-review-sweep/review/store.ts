@@ -24,6 +24,13 @@ export const MIGRATIONS = [
      created_at INTEGER NOT NULL,
      PRIMARY KEY (repo, number)
    )`,
+  `CREATE TABLE IF NOT EXISTS snoozes (
+     repo TEXT NOT NULL,
+     number INTEGER NOT NULL,
+     until INTEGER NOT NULL,
+     created_at INTEGER NOT NULL,
+     PRIMARY KEY (repo, number)
+   )`,
 ];
 
 export interface SweepMeta {
@@ -62,6 +69,23 @@ export interface Store {
   unlinkThread(threadId: string): void;
   /** The pull request a thread was started for, or null if it is not ours. */
   pullRequestForThread(threadId: string): { repo: string; number: number } | null;
+  /**
+   * Hides a review until `until`. Snoozing an already-snoozed review replaces
+   * the old deadline rather than extending it, so a second click is idempotent
+   * from the same instant rather than compounding.
+   */
+  snooze(repo: string, number: number, until: number, now: number): void;
+  unsnooze(repo: string, number: number): void;
+  /**
+   * repo#number -> deadline, for stamping the whole listing in one read.
+   *
+   * Filtered by `now` rather than trusted wholesale: a deadline that has passed
+   * is not a snooze, and reading is the moment that matters. Expired rows are
+   * left on disk for `pruneSnoozes` to clear, because a read must not write.
+   */
+  snoozesUntil(now: number): Map<string, number>;
+  /** Drops deadlines already in the past. Returns how many went. */
+  pruneSnoozes(now: number): number;
 }
 
 export function createStore(db: DatabaseLike): Store {
@@ -95,6 +119,19 @@ export function createStore(db: DatabaseLike): Store {
   const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM review_threads`);
   const deleteLink = db.prepare(`DELETE FROM review_threads WHERE thread_id = ?`);
   const selectByThread = db.prepare(`SELECT repo, number FROM review_threads WHERE thread_id = ?`);
+  const insertSnooze = db.prepare(
+    `INSERT INTO snoozes (repo, number, until, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(repo, number) DO UPDATE SET
+       until = excluded.until,
+       created_at = excluded.created_at`,
+  );
+  const deleteSnooze = db.prepare(`DELETE FROM snoozes WHERE repo = ? AND number = ?`);
+  const selectSnoozes = db.prepare(`SELECT repo, number, until FROM snoozes WHERE until > ?`);
+  const deleteExpiredSnoozes = db.prepare(`DELETE FROM snoozes WHERE until <= ?`);
+  const countExpiredSnoozes = db.prepare(
+    `SELECT COUNT(*) AS expired FROM snoozes WHERE until <= ?`,
+  );
 
   const writeAll = db.transaction(((rows: ClassifiedRow[], sweptAt: number, truncated: number) => {
     deleteAllRows.run();
@@ -154,6 +191,29 @@ export function createStore(db: DatabaseLike): Store {
     pullRequestForThread(threadId) {
       const link = selectByThread.get(threadId) as { repo: string; number: number } | undefined;
       return link ?? null;
+    },
+
+    snooze(repo, number, until, now) {
+      insertSnooze.run(repo, number, until, now);
+    },
+
+    unsnooze(repo, number) {
+      deleteSnooze.run(repo, number);
+    },
+
+    snoozesUntil(now) {
+      const snoozes = selectSnoozes.all(now) as Array<{
+        repo: string;
+        number: number;
+        until: number;
+      }>;
+      return new Map(snoozes.map((entry) => [`${entry.repo}#${entry.number}`, entry.until]));
+    },
+
+    pruneSnoozes(now) {
+      const { expired } = countExpiredSnoozes.get(now) as { expired: number };
+      if (expired > 0) deleteExpiredSnoozes.run(now);
+      return expired;
     },
   };
 }
