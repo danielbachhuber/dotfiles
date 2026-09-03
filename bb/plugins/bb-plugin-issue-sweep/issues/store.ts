@@ -74,12 +74,26 @@ export interface Store {
    */
   autoAppliedStatus(repo: string, number: number): string | null;
   recordAutoStatus(repo: string, number: number, status: string, appliedAt: number): void;
+  /**
+   * Patches one row's board status in place, without a sweep.
+   *
+   * The board stays the source of truth; this only stops the panel from
+   * contradicting a move it just made. A card dragged to "In Progress" that
+   * still reads "Ready" until the next five-minute sweep looks like the click
+   * failed, and invites a second one.
+   *
+   * Returns false when the row is not in the listing, which is how the caller
+   * learns the patch went nowhere.
+   */
+  setRowStatus(repo: string, number: number, status: string): boolean;
 }
 
 export function createStore(db: DatabaseLike): Store {
   const deleteRows = db.prepare(`DELETE FROM rows`);
   const insertRow = db.prepare(`INSERT INTO rows (repo, number, payload) VALUES (?, ?, ?)`);
   const selectRows = db.prepare(`SELECT payload FROM rows`);
+  const selectRow = db.prepare(`SELECT payload FROM rows WHERE repo = ? AND number = ?`);
+  const updateRow = db.prepare(`UPDATE rows SET payload = ? WHERE repo = ? AND number = ?`);
   const selectMeta = db.prepare(`SELECT swept_at, truncated, last_error FROM meta WHERE id = 1`);
   const upsertMeta = db.prepare(
     `INSERT INTO meta (id, swept_at, truncated, last_error)
@@ -171,6 +185,15 @@ export function createStore(db: DatabaseLike): Store {
     autoAppliedStatus(repo, number) {
       const row = selectAuto.get(repo, number) as { status: string } | undefined;
       return row?.status ?? null;
+    },
+
+    setRowStatus(repo, number, status) {
+      const stored = selectRow.get(repo, number) as { payload: string } | undefined;
+      if (!stored) return false;
+      const row = JSON.parse(stored.payload) as IssueRow;
+      if (row.boardStatus === status) return false;
+      updateRow.run(JSON.stringify({ ...row, boardStatus: status }), repo, number);
+      return true;
     },
 
     recordAutoStatus(repo, number, status, appliedAt) {

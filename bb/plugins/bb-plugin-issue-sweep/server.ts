@@ -164,9 +164,9 @@ export default async function plugin(bb: BbPluginApi) {
       // Before the publish, so the panel's reload finds the options already
       // there and renders pickers on its first paint rather than its second.
       await warmBoards(result.rows);
-      // Also before the publish, but the rows it moves are stale by then, so
-      // the moved cards show their new status on the next sweep rather than
-      // this one. Worth it to avoid a second full listing call per promotion.
+      // Also before the publish. The rows it works from are the ones just
+      // stored, so a promotion patches the stored row too and the moved cards
+      // show their new status on this sweep rather than the next one.
       await promoteIssuesInReview(result.rows);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
       bb.log.info(`swept ${result.rows.length} open issue(s)`);
@@ -279,6 +279,10 @@ export default async function plugin(bb: BbPluginApi) {
         option,
       });
       store.recordAutoStatus(row.repo, row.number, option.name, Date.now());
+      // The board has the move; the stored row does not until the next sweep.
+      // Patching it here is what lets a card show its new status on the paint
+      // that follows the click, rather than up to five minutes later.
+      store.setRowStatus(row.repo, row.number, option.name);
       bb.log.info(`moved ${row.repo}#${row.number} to ${option.name}`);
       return true;
     } catch (error) {
@@ -432,8 +436,14 @@ export default async function plugin(bb: BbPluginApi) {
           option,
         });
 
-        // The board is the source of truth and a status change can trip its own
-        // automations, so the row is re-read rather than patched in place.
+        // Shown first, reconciled second. The board is the source of truth and
+        // a status change can trip its own automations, so the sweep still
+        // runs and still wins — but it is a full gh round trip, and making the
+        // panel sit on the old status for its duration reads as a failed
+        // click.
+        if (store.setRowStatus(repo, number, option.name)) {
+          bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+        }
         await sweepNow();
         bb.log.info(`${repo}#${number} -> ${option.name}${added ? " (added)" : ""}`);
         return { ok: true, added, error: null };

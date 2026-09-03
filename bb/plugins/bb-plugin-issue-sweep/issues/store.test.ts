@@ -115,3 +115,40 @@ describe("auto-applied board status", () => {
     expect(store.autoAppliedStatus("acme/widgets", 12)).toBe("In Review");
   });
 });
+
+describe("setRowStatus", () => {
+  it("moves a stored row to its new status without a sweep", () => {
+    store.replaceAll(result({ rows: [row({ boardStatus: "Ready" })] }));
+
+    expect(store.setRowStatus("acme/widgets", 12, "In Progress")).toBe(true);
+    expect(store.readRows()[0]!.boardStatus).toBe("In Progress");
+  });
+
+  it("leaves every other field of the row alone", () => {
+    store.replaceAll(result({ rows: [row({ boardStatus: "Ready", onBoard: true })] }));
+    store.setRowStatus("acme/widgets", 12, "In Progress");
+
+    expect(store.readRows()[0]).toEqual(row({ boardStatus: "In Progress", onBoard: true }));
+  });
+
+  it("reports nothing done when the row already reads that way", () => {
+    store.replaceAll(result({ rows: [row({ boardStatus: "In Progress" })] }));
+
+    expect(store.setRowStatus("acme/widgets", 12, "In Progress")).toBe(false);
+  });
+
+  it("reports nothing done when the row is not in the listing", () => {
+    store.replaceAll(result());
+
+    expect(store.setRowStatus("acme/widgets", 999, "In Progress")).toBe(false);
+    expect(store.setRowStatus("acme/gadgets", 12, "In Progress")).toBe(false);
+  });
+
+  it("gives way to the next sweep, which is the board's own answer", () => {
+    store.replaceAll(result({ rows: [row({ boardStatus: "Ready" })] }));
+    store.setRowStatus("acme/widgets", 12, "In Progress");
+    store.replaceAll(result({ rows: [row({ boardStatus: "Backlog" })] }));
+
+    expect(store.readRows()[0]!.boardStatus).toBe("Backlog");
+  });
+});
