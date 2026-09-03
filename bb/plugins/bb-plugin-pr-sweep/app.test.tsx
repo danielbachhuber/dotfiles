@@ -384,8 +384,9 @@ describe("panel", () => {
     const line = await slot.findByText("waiting on acme/reviewers");
     // Wrapped, not truncated: a team slug clipped at the column edge hides the
     // only part that says which team, and there is no link to click through.
+    // The wrapping sits on the line's container now that the lines share one.
     expect(line.className).not.toMatch(/truncate/);
-    expect(line.className).toMatch(/break-words/);
+    expect(line.parentElement!.className).toMatch(/break-words/);
   });
 
   it("emphasizes the approval over the pending request", async () => {
@@ -754,8 +755,15 @@ describe("the Open pull request page", () => {
 });
 
 describe("unresolved review threads", () => {
-  it("reports them even on a pull request that is otherwise ready", async () => {
-    // #5801's shape: approved, green, and three inline comments to address.
+  const comment = (body: string, outdated = false) => ({
+    author: "hubber",
+    path: "server/widgets.ts",
+    body,
+    outdated,
+  });
+
+  it("quotes them even on a pull request that is otherwise ready", async () => {
+    // #5801's shape: approved, green, and inline comments still to address.
     const slot = render(
       listing({
         rows: [
@@ -763,25 +771,43 @@ describe("unresolved review threads", () => {
             flags: ["merge-ready"],
             group: "ready-to-merge",
             approvedBy: ["hubber"],
-            unresolvedThreads: 3,
+            unresolvedThreads: 1,
+            threadComments: [comment("This drops the null case.")],
           }),
         ],
       }),
     );
     await slot.findByText("approved by hubber");
-    await slot.findByText("3 unresolved comments");
+    await slot.findByText(/This drops the null case\./);
   });
 
-  it("names how many sit on code that has since changed", async () => {
+  it("does not also count what it is quoting", async () => {
+    // "1 unresolved comment" printed directly above that comment was the row
+    // telling you the same thing twice, and cost a line of height to do it.
     const slot = render(
-      listing({ rows: [rowFixture({ unresolvedThreads: 3, outdatedThreads: 1 })] }),
+      listing({
+        rows: [
+          rowFixture({ unresolvedThreads: 1, threadComments: [comment("This drops the null case.")] }),
+        ],
+      }),
     );
-    await slot.findByText("3 unresolved comments, 1 outdated");
+    await slot.findByText(/This drops the null case\./);
+    expect(slot.queryByText(/unresolved comment/)).toBeNull();
   });
 
-  it("uses the singular for one", async () => {
-    const slot = render(listing({ rows: [rowFixture({ unresolvedThreads: 1 })] }));
-    await slot.findByText("1 unresolved comment");
+  it("marks one left behind by a rewrite", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({
+            unresolvedThreads: 1,
+            outdatedThreads: 1,
+            threadComments: [comment("This drops the null case.", true)],
+          }),
+        ],
+      }),
+    );
+    await slot.findByText(/\(outdated\)/);
   });
 
   it("says nothing when every thread is resolved", async () => {
@@ -1183,8 +1209,31 @@ describe("what the row says is outstanding", () => {
         ],
       }),
     );
-    await slot.findByText("and 30 more");
-    expect(slot.queryByText("point 3")).toBeNull();
+    await slot.findByText("and 31 more");
+    expect(slot.queryByText("point 2")).toBeNull();
+  });
+
+  it("holds each quotation to one line, so a row stays a row", async () => {
+    // This shipped without the clamp the comment beside it claimed, and a
+    // two-paragraph review body rendered in full: four pull requests filled
+    // the window and the table stopped being one.
+    const paragraph =
+      "Are we sure this is the broad approach we want to take to porting features on the client? " +
+      "It seems ugly to still have the hook on the client, and have the client still mostly think " +
+      "in terms of the original model, but then shim that onto a data model that works another way.";
+    const slot = render(
+      listing({
+        rows: [rowFixture({ notes: [{ author: "hubber", approved: false, body: paragraph }] })],
+      }),
+    );
+
+    const line = await slot.findByText(new RegExp(paragraph.slice(0, 40)));
+    // truncate needs min-w-0 on the flex child too, or it silently does
+    // nothing — which is exactly how this shipped.
+    expect(line.className).toMatch(/truncate/);
+    expect(line.className).toMatch(/min-w-0/);
+    // The whole sentence stays reachable on hover rather than being cut away.
+    expect(line).toHaveAttribute("title", paragraph);
   });
 
   it("says nothing extra on a row with nothing outstanding", async () => {

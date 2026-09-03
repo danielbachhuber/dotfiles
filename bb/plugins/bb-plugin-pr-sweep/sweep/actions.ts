@@ -519,7 +519,8 @@ export function rowEvidence(row: {
 /**
  * How many pieces of evidence a row shows before it says "and N more".
  *
- * Three, because the list has to stay scannable: #4043 carries 33 unresolved
- * threads, and a row that renders all of them stops being a row.
+ * Two. Three plus a "more" line made a five-line row, and four of those filled
+ * the window — at which point the table has stopped being one. Two is enough
+ * to tell a pair of nits from a blocker and a nit.
  */
-export const EVIDENCE_SHOWN = 3;
+export const EVIDENCE_SHOWN = 2;

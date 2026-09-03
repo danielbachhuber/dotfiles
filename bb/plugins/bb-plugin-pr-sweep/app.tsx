@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -144,26 +144,10 @@ function Review({ row }: { row: Row }) {
   if (row.awaitingReReview) {
     lines.push({ key: "re-review", text: "awaiting re-review" });
   }
-  if (row.unresolvedThreads > 0) {
-    // Inline threads are the case an approval hides: hubber can approve
-    // #5801 and still have left three comments on the diff.
-    const outdated = row.outdatedThreads > 0 ? `, ${row.outdatedThreads} outdated` : "";
-    lines.push({
-      key: "threads",
-      text: `${row.unresolvedThreads} unresolved comment${row.unresolvedThreads === 1 ? "" : "s"}${outdated}`,
-      strong: true,
-    });
-  }
-  if (row.notedBy.length) {
-    // An approval with a written body reads as unqualified agreement
-    // everywhere else on the row: it is APPROVED, it leaves no unresolved
-    // thread, and it is not an issue comment.
-    lines.push({
-      key: "notes",
-      text: `${row.notedBy.join(", ")} wrote notes on their review`,
-      strong: true,
-    });
-  }
+  // No line for the unresolved count and none for "wrote notes on their
+  // review". Both used to be the only hint that something was written; the
+  // evidence below now quotes it, and saying "1 unresolved comment" directly
+  // above that comment is the row telling you twice.
   if (row.lastCommentBy) {
     // Last word belongs to someone else, so the pull request is probably
     // waiting on a reply even when every review has approved.
@@ -176,20 +160,23 @@ function Review({ row }: { row: Row }) {
 
   if (lines.length === 0) return <span className="text-muted-foreground">no reviews yet</span>;
 
+  // One line, joined, rather than a stack. Each of these is a few words about
+  // who is involved; stacked they cost a row of height each and turned four
+  // pull requests into a page you had to scroll.
+  //
+  // break-words because a team slug is one unbroken token to the browser, and
+  // "waiting on wearenewpublic/psi-co…" hides the part that says which team.
   return (
-    <span className="flex flex-col gap-0.5">
-      {lines.map((line) => (
-        // Wraps rather than truncates. A team slug is long enough that
-        // "waiting on wearenewpublic/psi-co…" hid the only part that
-        // distinguishes one team from another, and unlike a title there is no
-        // link to click through to. break-words because a slug is one
-        // unbroken token to the browser, so wrapping alone would not fit it.
-        <span
-          key={line.key}
-          className={`break-words ${line.strong ? "text-foreground" : "text-muted-foreground"}`}
-        >
-          {line.text}
-        </span>
+    <span className="break-words">
+      {lines.map((line, index) => (
+        <Fragment key={line.key}>
+          {/* The separator sits outside the span so each line stays one text
+              node — joined into it, the node reads " · waiting on mona". */}
+          {index > 0 ? <span className="text-muted-foreground"> · </span> : null}
+          <span className={line.strong ? "text-foreground" : "text-muted-foreground"}>
+            {line.text}
+          </span>
+        </Fragment>
       ))}
     </span>
   );
@@ -243,10 +230,11 @@ const BADGE = "rounded-md px-1.5 py-0.5 text-xs font-medium";
  * their review". Both are true of a typo nit and of a design objection, so the
  * only way to tell was to open GitHub — and that trip was the missing step.
  *
- * Each line is clamped to two rather than cut in the classifier: where to stop
- * is a question about the width of this column, which only CSS knows. A body
- * commonly opens "A few minor comments." and puts the blocker in its second
- * sentence, so a server-side excerpt would reliably keep the wrong half.
+ * One line each, truncated by CSS rather than cut in the classifier: where to
+ * stop is a question about the width of this column, which only the browser
+ * knows. The first draft of this rendered whole paragraphs and turned a table
+ * of four pull requests into a page — a row has to stay a row, and the point
+ * of the quotation is to recognise the comment, not to read it here.
  */
 function EvidenceList({ row }: { row: Row }) {
   const evidence = rowEvidence(row);
@@ -256,9 +244,12 @@ function EvidenceList({ row }: { row: Row }) {
   const rest = evidence.length - shown.length;
 
   return (
-    <ul className="mt-1.5 space-y-1">
+    <ul className="mt-1 space-y-0.5">
       {shown.map((item, index) => (
-        <li key={`${item.kind}-${index}`} className="flex gap-1.5 text-xs">
+        // min-w-0 on both the row and the text: a flex child will not shrink
+        // below its content without it, so truncate silently does nothing and
+        // the paragraph renders in full. That is what happened here.
+        <li key={`${item.kind}-${index}`} className="flex min-w-0 gap-1.5 text-xs">
           {item.kind === "check" ? (
             <span className="shrink-0 text-destructive" aria-label="failing check">
               ✗
@@ -266,27 +257,24 @@ function EvidenceList({ row }: { row: Row }) {
           ) : (
             <span className="shrink-0 text-muted-foreground">{item.who}</span>
           )}
-          <span className="min-w-0">
+          <span
+            className={`min-w-0 truncate ${item.kind === "check" ? "text-destructive" : ""}`}
+            title={item.text}
+          >
             {item.where ? (
               <span className="text-muted-foreground">{shortPath(item.where)} </span>
             ) : null}
-            <span className={item.kind === "check" ? "text-destructive" : undefined}>
-              {item.text}
-            </span>
+            {item.text}
             {/*
-              An outdated comment is not one of N things to answer: #4043 had
-              33 unresolved threads and all 33 sat on code that had since been
-              rewritten, which is a different job entirely.
+              An outdated comment is not one of N things to answer: one pull
+              request here has 33 unresolved threads and all 33 sit on code
+              that has since been rewritten, which is a different job.
             */}
-            {item.outdated ? (
-              <span className="ml-1 text-muted-foreground">(outdated)</span>
-            ) : null}
+            {item.outdated ? <span className="text-muted-foreground"> (outdated)</span> : null}
           </span>
         </li>
       ))}
-      {rest > 0 ? (
-        <li className="text-xs text-muted-foreground">and {rest} more</li>
-      ) : null}
+      {rest > 0 ? <li className="text-xs text-muted-foreground">and {rest} more</li> : null}
     </ul>
   );
 }
