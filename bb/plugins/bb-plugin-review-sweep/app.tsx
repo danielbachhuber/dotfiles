@@ -198,7 +198,15 @@ function RowMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button size="sm" variant="ghost" className="size-8 shrink-0 p-0" aria-label="More actions">
-          <Icon name="MoreHorizontal" className="size-4" />
+          {/*
+            A vertical kebab, turned rather than swapped. The registry that
+            ships MoreHorizontal has no vertical twin, and components/ui is
+            vendored byte-identical from bb, so adding one here would drift
+            from the copy the other sweeps carry and be lost on the next sync.
+            The glyph is three dots on the box's centre line, so a quarter turn
+            is the same icon rather than an approximation of a different one.
+          */}
+          <Icon name="MoreHorizontal" className="size-4 rotate-90" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
