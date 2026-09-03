@@ -576,7 +576,11 @@ export default async function plugin(bb: BbPluginApi) {
           ...(providerId ? { providerId } : {}),
           permissionMode: parsePermissionMode(permissionMode),
           prompt: buildOpenPrompt(pr, instructions),
-          title: `PR #${pr.number}`,
+          // The same title the panel's own action produces. A thread opened
+          // here does the same kind of work on the same pull request, so the
+          // sidebar should not tell them apart by accident of which button
+          // started them.
+          title: threadTitle(pr.number, pr.title),
         });
       } catch (error) {
         // Reported rather than thrown: an unhandled rejection here reaches the
