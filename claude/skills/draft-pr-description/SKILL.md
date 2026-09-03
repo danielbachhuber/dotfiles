@@ -269,6 +269,22 @@ ffmpeg -i video.webm -vf "crop=<w>:<h>:<x>:<y>,fps=24" \
 
 Width and height both have to be even for h264.
 
+**A crop is a claim about every frame, not the one you sampled.** A screencast moves
+vertically as the app changes state, so a window framed on the moment that proves the point
+can cut the beats around it. Check the crop against the first frame, the last frame, and the
+moment itself, and measure rather than eyeball: sample frames at 1fps and take the union
+bounding box of the genuinely dark pixels, which is what a reader has to be able to read.
+
+```bash
+ffmpeg -i video.webm -vf "fps=1,format=rgb24" /tmp/f-%03d.ppm
+# then union the bbox of pixels with all channels < ~140 across those frames
+```
+
+When the ink runs outside the window only during a dead lead-in, trim the time range
+instead of loosening the crop: `-ss <seconds>` before `-i`. Widening to include a beat that
+does not matter spends the reader's pixels on it. Starting a few seconds in usually costs
+nothing, because page load and navigation are never the point.
+
 A before video usually means running the same recording twice against one dev stack, once
 with the change and once with it reverted. Revert by rewriting the lines, not by stashing:
 the stash stack is shared across worktrees.
@@ -319,3 +335,4 @@ result in with Edit.
 | Bare video URL inside a table cell | It renders as a plain link. `<video src="URL" controls></video>` in the cell, then confirm with a `<video` count against `body_html`. |
 | Trusting `--attach` order to label the assets | Download each asset with the gh token and compare hashes. A swapped before/after argues the opposite of the truth. |
 | Raising `video.size` alone to get a sharper recording | It scales down into that canvas, never up: you get the page in a corner surrounded by filler. Raise `deviceScaleFactor` *and* the viewport, and check a frame. |
+| Crop offsets picked from one frame | The layout moves as the app changes state. Union the ink bbox across frames, and trim a dead lead-in with `-ss` rather than widening the window. |
