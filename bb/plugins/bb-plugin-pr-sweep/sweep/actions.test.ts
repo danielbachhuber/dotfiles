@@ -4,7 +4,6 @@ import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
   PERMISSION_MODES,
-  MAX_THREAD_TITLE,
   actionLabel,
   actionSummary,
   commentsToRead,
@@ -23,7 +22,6 @@ import {
   skillOwnsWorkflow,
   scopedThreadTitle,
   threadTitle,
-  titleGist,
   unflaggedStatus,
 } from "./actions.js";
 import { FLAG_SEVERITY } from "./types.js";
@@ -153,37 +151,17 @@ describe("threadTitle", () => {
     expect(threadTitle(5687, "Fix the widget endpoint")).not.toMatch(/\//);
   });
 
-  it("cuts the gist on a word boundary and stays inside the budget", () => {
-    const title = threadTitle(5931, "Add a retry with exponential backoff to the sync worker");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toBe("Refine #5931: Add a retry with…");
-    expect(title).not.toContain("expon");
+  it("does not truncate, because bb clips a title and adds its own ellipsis", () => {
+    // Cutting to a guessed budget here produced "Retire the last…...", cut
+    // twice, and threw away the tail the thread list and hover would have
+    // shown in full.
+    const long = "Add a retry with exponential backoff to the sync worker";
+    expect(threadTitle(5931, long)).toBe(`Refine #5931: ${long}`);
+    expect(threadTitle(5931, long)).not.toContain("…");
   });
 
-  it("fits the sidebar even for an implausibly long number", () => {
-    const title = threadTitle(999_999_999, "Add a retry to the sync worker");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toContain("999999999");
-  });
-
-  it("keeps the whole number, whatever else has to go", () => {
-    // The largest integer JavaScript represents exactly. Anything longer would
-    // be a rounded literal, so this is as far as the invariant can be tested;
-    // the branch that clips the label itself is unreachable at this budget and
-    // stands as a guard for a smaller one.
-    const title = threadTitle(Number.MAX_SAFE_INTEGER, "Add a retry to the sync worker");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toContain(`#${Number.MAX_SAFE_INTEGER}`);
-  });
-});
-
-describe("titleGist", () => {
-  it("says nothing rather than a stub when the budget is tiny", () => {
-    expect(titleGist("Add the widget endpoint", 2)).toBe("");
-  });
-
-  it("cuts a single over-long word rather than returning empty", () => {
-    expect(titleGist("Supercalifragilistic", 10)).toBe("Supercali…");
+  it("collapses the whitespace a wrapped title arrives with", () => {
+    expect(threadTitle(12, "handle\n  empty   page")).toBe("Refine #12: handle empty page");
   });
 });
 
@@ -444,13 +422,10 @@ describe("every button label fits its column", () => {
     expect(actionSummary([]).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
   });
 
-  it("keeps a thread title inside the sidebar budget however long the PR title", () => {
-    expect(
-      threadTitle(5801, "a".repeat(200)).length,
-    ).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(
-      threadTitle(5801, "word ".repeat(60)).length,
-    ).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+  it("does not constrain the thread title, which bb clips for itself", () => {
+    // The button's cap is about a fixed-width table column. A sidebar entry is
+    // clipped by CSS, so the title carries the whole sentence.
+    expect(threadTitle(5801, "a".repeat(200))).toHaveLength(200 + "Refine #5801: ".length);
   });
 });
 
@@ -614,10 +589,11 @@ describe("scopedThreadTitle", () => {
     expect(scopedThreadTitle(12, "   ")).toBe("Refine #12");
   });
 
-  it("stays inside the sidebar budget for every flag", () => {
+  it("names every flag in full, since nothing here is truncated", () => {
     for (const flag of FLAG_SEVERITY) {
-      const title = scopedThreadTitle(5840, actionSummary([flag]));
-      expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+      const scope = actionSummary([flag]);
+      const expected = scope.charAt(0).toLowerCase() + scope.slice(1);
+      expect(scopedThreadTitle(5840, scope)).toBe(`Refine #5840: ${expected}`);
     }
   });
 });

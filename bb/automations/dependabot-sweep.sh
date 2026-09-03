@@ -135,71 +135,17 @@ dependabot_package() {
 # threads: the label says which sweep started it, the number identifies the
 # pull request, and the rest is context.
 #
-# The sidebar clips past roughly forty characters. The number never gives way,
-# so it is the package that is cut, on a word boundary where there is one — a
-# group name like "the aws-sdk and friends group" is the only case that
-# realistically reaches the cap.
-MAX_THREAD_TITLE=40
-
+# Not truncated. bb clips a thread title to the sidebar's width and appends its
+# own ellipsis, so cutting to a guessed budget here read as "…..." — cut twice,
+# once by us and once for real — and threw away the tail that the thread list,
+# search, and hover show in full.
 dependabot_title() {
   local number="$1" package="$2"
-  local head="Dep #${number}"
-  local budget=$(( MAX_THREAD_TITLE - ${#head} - 2 ))
-
-  if [ "$budget" -lt 3 ] || [ -z "$package" ]; then
-    printf '%s' "$head"
-    return
+  if [ -z "$package" ]; then
+    printf 'Dep #%s' "$number"
+  else
+    printf 'Dep #%s: %s' "$number" "$package"
   fi
-  if [ "${#package}" -le "$budget" ]; then
-    printf '%s: %s' "$head" "$package"
-    return
-  fi
-
-  local kept="" word
-  for word in $package; do
-    local next
-    if [ -z "$kept" ]; then next="$word"; else next="${kept} ${word}"; fi
-    # One character of the budget belongs to the ellipsis that marks the cut.
-    [ "${#next}" -gt $(( budget - 1 )) ] && break
-    kept="$next"
-  done
-  # A first word longer than the budget still beats saying nothing, so cut it.
-  [ -z "$kept" ] && kept="${package:0:$(( budget - 1 ))}"
-  printf '%s: %s…' "$head" "$kept"
-}
-
-# A checkout of the pull request branch itself, so that bb shows the PR and its
-# CI state in the thread header.
-#
-# bb reads a thread's pull request by running bare `gh pr view` in the
-# environment's working directory, and that resolves the *local* branch name.
-# Only a checkout whose local branch is named after the PR head qualifies: the
-# shared workspace sits on main, and a bb-managed worktree branched from the
-# head gets a `bb/thr_...` branch that matches no pull request. So the sweep
-# creates the worktree itself and hands the thread an unmanaged workspace.
-#
-# Prints the path on success and nothing on failure; the caller falls back to
-# the shared workspace so a sweep still produces threads when, say, the branch
-# is already checked out somewhere else.
-ensure_pr_worktree() {
-  local number="$1" head="$2"
-  local dir="${WORKTREE_ROOT}/pr-${number}"
-
-  if [ -d "$dir" ]; then
-    printf '%s' "$dir"
-    return 0
-  fi
-  mkdir -p "$WORKTREE_ROOT" || return 1
-
-  # Stale metadata from a directory removed by hand would block `worktree add`.
-  "$GIT" -C "$WORKSPACE" worktree prune >/dev/null 2>&1 || true
-
-  "$GIT" -C "$WORKSPACE" fetch --quiet origin \
-    "+refs/heads/${head}:refs/remotes/origin/${head}" >/dev/null 2>&1 || return 1
-  "$GIT" -C "$WORKSPACE" worktree add --quiet -B "$head" "$dir" \
-    "origin/${head}" >/dev/null 2>&1 || return 1
-
-  printf '%s' "$dir"
 }
 
 spawned=0

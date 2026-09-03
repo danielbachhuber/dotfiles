@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_THREAD_TITLE, buildPrompt, threadTitle } from "./prompt.js";
+import { buildPrompt, threadTitle } from "./prompt.js";
 import type { IssueRow } from "./types.js";
 
 function row(overrides: Partial<IssueRow> = {}): IssueRow {
@@ -21,18 +21,23 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
 }
 
 describe("threadTitle", () => {
-  it("names the sweep, the issue number, and a few words of its title", () => {
-    expect(threadTitle(5718, "Port the last four Conversation Helper reads off the datastore")).toBe(
-      "Dev #5718: Port the last four…",
+  it("names the sweep, the issue number, and the issue's own title", () => {
+    expect(threadTitle(5718, "Port the last four Conversation Helper reads")).toBe(
+      "Dev #5718: Port the last four Conversation Helper reads",
     );
+  });
+
+  it("does not truncate, because bb clips a title and adds its own ellipsis", () => {
+    // Cutting to a guessed budget here produced "Retire the last…...", cut
+    // twice, and threw away the tail the thread list and hover would have
+    // shown in full.
+    const long = "Represent translated fields with a top-level translations attribute";
+    expect(threadTitle(5718, long)).toBe(`Dev #5718: ${long}`);
+    expect(threadTitle(5718, long)).not.toContain("…");
   });
 
   it("leaves out the repository, which the sidebar already shows", () => {
     expect(threadTitle(12, "Fix the widget")).not.toMatch(/\//);
-  });
-
-  it("keeps a short title whole", () => {
-    expect(threadTitle(12, "Fix the widget")).toBe("Dev #12: Fix the widget");
   });
 
   it("falls back to the bare label and number when there is no title", () => {
@@ -45,31 +50,8 @@ describe("threadTitle", () => {
     expect(threadTitle(12, "Bug: login fails")).toBe("Dev #12: Bug: login fails");
   });
 
-  it("fits the sidebar however long the title is", () => {
-    const long = "Represent translated fields with a top-level translations attribute";
-    expect(threadTitle(5718, long).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-  });
-
-  it("cuts at a word boundary rather than mid-word", () => {
-    expect(threadTitle(5837, "Move the silo-singleton config out of the instance")).toBe(
-      "Dev #5837: Move the silo-singleton…",
-    );
-  });
-
-  it("cuts mid-word rather than to nothing when the first word is huge", () => {
-    const result = threadTitle(12, `${"x".repeat(60)} tail`);
-    expect(result.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(result).toMatch(/^Dev #12: x+…$/);
-  });
-
-  it("trims surrounding space rather than spending the budget on it", () => {
-    expect(threadTitle(12, "  Fix the widget  ")).toBe("Dev #12: Fix the widget");
-  });
-
-  it("keeps the whole number, whatever else has to go", () => {
-    const title = threadTitle(Number.MAX_SAFE_INTEGER, "Fix the widget");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toContain(`#${Number.MAX_SAFE_INTEGER}`);
+  it("collapses the whitespace a wrapped title arrives with", () => {
+    expect(threadTitle(12, "  Fix   the\n widget  ")).toBe("Dev #12: Fix the widget");
   });
 });
 

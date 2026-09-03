@@ -73,53 +73,39 @@ export function skillOwnsWorkflow(flags: readonly string[], commentsToRead = 0):
 }
 
 /**
- * The sidebar clips a thread title past roughly this width, and the row above
- * it already names the project, so the repository is wasted characters here.
- *
- * It is deliberately longer than what the sidebar shows in full: a clipped
- * tail still reads in the thread list, in search, and on hover, and four
- * threads reading "Resolve conflict #…" gave no way to tell them apart.
- */
-export const MAX_THREAD_TITLE = 40;
-
-/**
  * One label for every thread this panel starts.
  *
  * The button still names the specific work, because the panel shows it beside
  * a Status column that spells the problem out. A sidebar entry has neither, and
- * the specific label was the expensive part: "Resolve conflict" spends over
- * half the budget saying something the pull request's own title says better.
+ * the specific label was the expensive part: "Resolve conflict" spent over
+ * half the line saying something the pull request's own title says better.
  */
 export const THREAD_LABEL = "Refine";
 
 /**
  * Conventional-commit and ticket prefixes carry no information once the number
- * is already in the title, and they eat the few characters that do.
+ * is already in the title, and they push the words that do carry it past where
+ * the sidebar clips.
  */
 const TITLE_PREFIX = /^\s*(?:\[[^\]]+\]\s*|\([^)]+\)\s*|[A-Za-z]+!?(?:\([^)]*\))?!?:\s*)+/;
 
 const SEPARATOR = ": ";
 
 /**
- * "Refine #5879: propose exact API replay". The number identifies the pull
- * request, so if the pieces exceed the budget the gist gives way, never the
- * number.
+ * "Refine #5879: propose exact API replay for server parity".
+ *
+ * The whole title, uncut. bb clips a thread title to the sidebar's width and
+ * appends its own ellipsis, so a title cut to a guessed budget here read as
+ * "Retire the last…..." — truncated twice, once by us and once for real. It
+ * also threw away the tail that the thread list, search, and hover would have
+ * shown in full.
  *
  * Deliberately the same shape as review-sweep's, and deliberately its own copy:
- * these plugins share `gh-shared` for reaching GitHub, not their phrasing, and
- * a shared helper here would be one more thing to rebuild three plugins for.
+ * these plugins share `gh-shared` for reaching GitHub, not their phrasing.
  */
 export function threadTitle(number: number, prTitle = ""): string {
-  const suffix = ` #${number}`;
-  const head = `${THREAD_LABEL}${suffix}`;
-
-  if (head.length > MAX_THREAD_TITLE) {
-    const room = MAX_THREAD_TITLE - suffix.length;
-    if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
-    return `${THREAD_LABEL.slice(0, room - 1).trimEnd()}…${suffix}`;
-  }
-
-  const gist = titleGist(prTitle, MAX_THREAD_TITLE - head.length - SEPARATOR.length);
+  const head = `${THREAD_LABEL} #${number}`;
+  const gist = prTitle.replace(TITLE_PREFIX, "").replace(/\s+/g, " ").trim();
   return gist ? `${head}${SEPARATOR}${gist}` : head;
 }
 
@@ -130,8 +116,8 @@ export function threadTitle(number: number, prTitle = ""): string {
  * For a pull request's second thread. One pull request has several threads
  * over its life, and the pull request's own words are the same in all of them:
  * #5840 ended up with three unarchived threads reading "Refine #5840: hide the
- * profile toggles…", which is three ways of saying nothing. What differs is
- * the work each was started for, and that is what the title should carry.
+ * profile toggles", which is three ways of saying nothing. What differs is the
+ * work each was started for, and that is what the title should carry.
  *
  * Lower-cased, because it follows a colon and completes a phrase rather than
  * starting a sentence.
@@ -140,33 +126,7 @@ export function scopedThreadTitle(number: number, scope: string): string {
   const trimmed = scope.trim();
   if (!trimmed) return threadTitle(number);
 
-  const lowered = trimmed.charAt(0).toLowerCase() + trimmed.slice(1);
-  return threadTitle(number, lowered);
-}
-
-/**
- * The leading whole words of a pull request title that fit in `budget`.
- *
- * Returns "" rather than a single truncated word when nothing fits, so the
- * title falls back to the bare "Refine #5879" instead of trailing a stub.
- */
-export function titleGist(prTitle: string, budget: number): string {
-  if (budget < 3) return "";
-  const cleaned = prTitle.replace(TITLE_PREFIX, "").replace(/\s+/g, " ").trim();
-  if (!cleaned) return "";
-  if (cleaned.length <= budget) return cleaned;
-
-  const words = cleaned.split(" ");
-  let out = "";
-  for (const word of words) {
-    const next = out ? `${out} ${word}` : word;
-    // One character of the budget belongs to the ellipsis that marks the cut.
-    if (next.length > budget - 1) break;
-    out = next;
-  }
-  // A first word longer than the budget still beats saying nothing, so cut it.
-  if (!out) return `${cleaned.slice(0, budget - 1).trimEnd()}…`;
-  return `${out}…`;
+  return threadTitle(number, trimmed.charAt(0).toLowerCase() + trimmed.slice(1));
 }
 
 /**

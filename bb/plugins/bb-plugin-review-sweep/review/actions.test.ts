@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_STALE_AFTER_DAYS,
-  MAX_THREAD_TITLE,
   actionLabel,
   ageLabel,
   ageTone,
@@ -13,7 +12,6 @@ import {
   snoozeUntil,
   sizeLabel,
   threadTitle,
-  titleGist,
 } from "./actions.js";
 import { ageInDays, sizeBucket } from "./types.js";
 import { NOW } from "./fixtures.js";
@@ -26,10 +24,19 @@ describe("actionLabel", () => {
 });
 
 describe("threadTitle", () => {
-  it("carries a few words of the pull request title, so a queue of reviews is legible", () => {
+  it("carries the whole pull request title, so a queue of reviews is legible", () => {
     expect(threadTitle("re-review", 5622, "Retry sync on 429")).toBe(
       "Re-review #5622: Retry sync on 429",
     );
+  });
+
+  it("does not truncate, because bb clips a title and adds its own ellipsis", () => {
+    // Cutting to a guessed budget here produced "Retire the last…...", cut
+    // twice, and threw away the tail the thread list and hover would have
+    // shown in full.
+    const long = "Add a retry with exponential backoff to the sync worker and its tests";
+    expect(threadTitle("first-look", 5931, long)).toBe(`Review #5931: ${long}`);
+    expect(threadTitle("first-look", 5931, long)).not.toContain("…");
   });
 
   it("falls back to the bare label and number when there is no title", () => {
@@ -44,37 +51,15 @@ describe("threadTitle", () => {
     expect(threadTitle("first-look", 12, "[ACME-4] Handle empty page")).toBe(
       "Review #12: Handle empty page",
     );
-  });
-
-  it("cuts the gist on a word boundary and stays inside the budget", () => {
-    const title = threadTitle(
-      "first-look",
-      5931,
-      "Add a retry with exponential backoff to the sync worker",
+    expect(threadTitle("first-look", 12, "feat!(orpc): carry translations")).toBe(
+      "Review #12: carry translations",
     );
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toBe("Review #5931: Add a retry with…");
-    expect(title).not.toContain("expon");
   });
 
-  it("keeps the whole number, whatever else has to go", () => {
-    // The largest integer JavaScript represents exactly. Anything longer would
-    // be a rounded literal, so this is as far as the invariant can be tested;
-    // the branch that clips the label itself is unreachable at this budget and
-    // stands as a guard for a smaller one.
-    const title = threadTitle("re-review", Number.MAX_SAFE_INTEGER, "Add the widget endpoint");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toContain(`#${Number.MAX_SAFE_INTEGER}`);
-  });
-});
-
-describe("titleGist", () => {
-  it("says nothing rather than a stub when the budget is tiny", () => {
-    expect(titleGist("Add the widget endpoint", 2)).toBe("");
-  });
-
-  it("cuts a single over-long word rather than returning empty", () => {
-    expect(titleGist("Supercalifragilistic", 10)).toBe("Supercali…");
+  it("collapses the whitespace a wrapped title arrives with", () => {
+    expect(threadTitle("first-look", 12, "handle\n  empty   page")).toBe(
+      "Review #12: handle empty page",
+    );
   });
 });
 
