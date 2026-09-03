@@ -203,14 +203,14 @@ describe("reviewThis is one thread per review", () => {
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(1);
   });
 
-  it("titles the thread with the action and number, not the repository", async () => {
+  it("titles the thread with the action, number and PR gist, not the repository", async () => {
     const { harness } = await seededHost({ row: { state: "re-review" } });
     await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
 
     // callsTo returns each call's argument list, so [0] is spawn's only arg.
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[{ title: string }]];
-    expect(args.title).toBe("Re-review #42");
-    expect(args.title.length).toBeLessThanOrEqual(30);
+    expect(args.title).toBe("Re-review #42 · Add the widget endpoint");
+    expect(args.title.length).toBeLessThanOrEqual(40);
   });
 
   it("pins the provider that can actually see the code-review skill", async () => {

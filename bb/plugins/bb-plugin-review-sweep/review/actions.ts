@@ -35,22 +35,67 @@ export const START_THREAD_LABEL = "Start thread";
 /**
  * The sidebar clips a thread title past roughly this width, and the row above
  * it already names the project, so the repository is wasted characters here.
+ *
+ * It is deliberately longer than what the sidebar shows in full: a clipped
+ * tail still reads in the thread list, in search, and on hover, and a title of
+ * "Review #5931" alone gave no way to tell four queued reviews apart.
  */
-export const MAX_THREAD_TITLE = 30;
+export const MAX_THREAD_TITLE = 40;
 
 /**
- * "Review #4821". The number identifies the pull request, so if the pair
- * somehow exceeds the budget the label gives way, never the number.
+ * Conventional-commit and ticket prefixes carry no information once the number
+ * is already in the title, and they eat the few characters that do.
  */
-export function threadTitle(state: ReviewState, number: number): string {
+const TITLE_PREFIX = /^\s*(?:\[[^\]]+\]\s*|\([^)]+\)\s*|[A-Za-z]+!?(?:\([^)]*\))?!?:\s*)+/;
+
+/**
+ * "Re-review #5622 · Retry sync on 429". The number identifies the pull
+ * request, so if the pieces exceed the budget the gist gives way first, then
+ * the label, and never the number.
+ *
+ * The gist is cut on word boundaries rather than mid-word: three whole words
+ * say more than three and a half, and a trailing fragment reads like a bug.
+ */
+export function threadTitle(state: ReviewState, number: number, prTitle = ""): string {
   const suffix = ` #${number}`;
   const label = actionLabel(state);
-  const full = `${label}${suffix}`;
-  if (full.length <= MAX_THREAD_TITLE) return full;
+  const head = `${label}${suffix}`;
 
-  const room = MAX_THREAD_TITLE - suffix.length;
-  if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
-  return `${label.slice(0, room - 1).trimEnd()}…${suffix}`;
+  if (head.length > MAX_THREAD_TITLE) {
+    const room = MAX_THREAD_TITLE - suffix.length;
+    if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
+    return `${label.slice(0, room - 1).trimEnd()}…${suffix}`;
+  }
+
+  const gist = titleGist(prTitle, MAX_THREAD_TITLE - head.length - SEPARATOR.length);
+  return gist ? `${head}${SEPARATOR}${gist}` : head;
+}
+
+const SEPARATOR = " · ";
+
+/**
+ * The leading whole words of a pull request title that fit in `budget`.
+ *
+ * Returns "" rather than a single truncated word when nothing fits, so the
+ * title falls back to the bare "Review #5931" instead of trailing a stub.
+ */
+export function titleGist(prTitle: string, budget: number): string {
+  if (budget < 3) return "";
+  const cleaned = prTitle.replace(TITLE_PREFIX, "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  if (cleaned.length <= budget) return cleaned;
+
+  const words = cleaned.split(" ");
+  let out = "";
+  for (const word of words) {
+    const next = out ? `${out} ${word}` : word;
+    // One character of the budget belongs to the ellipsis that marks the cut.
+    if (next.length > budget - 1) break;
+    out = next;
+  }
+  // A first word longer than the budget still beats saying nothing, so cut it.
+  if (!out) return `${cleaned.slice(0, budget - 1).trimEnd()}…`;
+  return `${out}…`;
 }
 
 export const PERMISSION_MODES = ["accept-edits", "auto", "full"] as const;

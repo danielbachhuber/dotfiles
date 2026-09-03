@@ -11,6 +11,7 @@ import {
   reviewersLabel,
   sizeLabel,
   threadTitle,
+  titleGist,
 } from "./actions.js";
 import { ageInDays, sizeBucket } from "./types.js";
 import { NOW } from "./fixtures.js";
@@ -23,14 +24,51 @@ describe("actionLabel", () => {
 });
 
 describe("threadTitle", () => {
-  it("reads as the button that started it, plus the number", () => {
-    expect(threadTitle("re-review", 4821)).toBe("Re-review #4821");
+  it("carries a few words of the pull request title, so a queue of reviews is legible", () => {
+    expect(threadTitle("re-review", 5622, "Retry sync on 429")).toBe(
+      "Re-review #5622 · Retry sync on 429",
+    );
   });
 
-  it("keeps the number when the pair would overflow", () => {
-    const title = threadTitle("re-review", 1234567890123456789);
+  it("falls back to the bare label and number when there is no title", () => {
+    expect(threadTitle("re-review", 4821)).toBe("Re-review #4821");
+    expect(threadTitle("first-look", 4821, "   ")).toBe("Review #4821");
+  });
+
+  it("drops a conventional-commit prefix, which the number already covers", () => {
+    expect(threadTitle("first-look", 12, "fix(sync): handle empty page")).toBe(
+      "Review #12 · handle empty page",
+    );
+    expect(threadTitle("first-look", 12, "[ACME-4] Handle empty page")).toBe(
+      "Review #12 · Handle empty page",
+    );
+  });
+
+  it("cuts the gist on a word boundary and stays inside the budget", () => {
+    const title = threadTitle(
+      "first-look",
+      5931,
+      "Add a retry with exponential backoff to the sync worker",
+    );
+    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(title).toBe("Review #5931 · Add a retry with…");
+    expect(title).not.toContain("expon");
+  });
+
+  it("keeps the number when the label and number alone would overflow", () => {
+    const title = threadTitle("re-review", 1234567890123456789, "Add the widget endpoint");
     expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
     expect(title).toContain("1234567890123456");
+  });
+});
+
+describe("titleGist", () => {
+  it("says nothing rather than a stub when the budget is tiny", () => {
+    expect(titleGist("Add the widget endpoint", 2)).toBe("");
+  });
+
+  it("cuts a single over-long word rather than returning empty", () => {
+    expect(titleGist("Supercalifragilistic", 10)).toBe("Supercali…");
   });
 });
 

@@ -300,7 +300,7 @@ export default async function plugin(bb: BbPluginApi) {
           ...(chosenModel ? { model: chosenModel } : {}),
           permissionMode: mode,
           prompt: buildPrompt(row, Date.now()),
-          title: threadTitle(row.state, number),
+          title: threadTitle(row.state, number, row.title),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +
