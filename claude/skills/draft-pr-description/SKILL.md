@@ -169,7 +169,111 @@ lands on the hunk rather than the whole file:
 Link the one or two files that need real review, not every path in the body. Splice them in
 with Edit.
 
-## 6. Show, then apply
+## 6. Lay out before/after media
+
+Anything visual, a screenshot or a screencast, goes in a two-column table with `Before` and
+`After` as the headers: one media cell per column, and an optional caption row beneath it.
+Not a stack of labelled paragraphs. The reviewer's whole question is what changed, and
+side by side is the only layout that answers it at a glance.
+
+```markdown
+| Before | After |
+|:------:|:-----:|
+| ![before](./before.png) | ![after](./after.png) |
+| Keystrokes land in the field mid-post. | The field is locked until the post completes. |
+```
+
+`gh pr create` and `gh pr edit` upload the files themselves via `--attach` (gh 2.99+), so
+nothing needs to be committed to the repo or hosted anywhere:
+
+```bash
+gh pr create --repo <owner>/<repo> --title "<title>" \
+  --body-file ~/projects/drafts/pr-<slug>.md \
+  --attach ./before.png --attach ./after.png
+```
+
+Three properties of that upload decide whether the table renders:
+
+- **Reference rewriting is path-literal.** `--attach ./before.png` substitutes a body
+  reference written exactly `./before.png`. Attach an absolute path against a `./before.png`
+  reference and nothing is substituted: gh appends the asset to the end of the body instead.
+  Either `cd` to the media directory and attach relative paths, or plan on the splice below.
+  gh resolves the branch from the working directory, so that `cd` has to stay inside the
+  repo.
+- **A video is appended, never substituted.** For a screencast the flow is always: attach,
+  read the appended `https://github.com/user-attachments/assets/<id>` URLs back out of the
+  body, splice them into the table, then `gh pr edit --body-file` again.
+- **A bare video URL becomes a player only when it is alone on its own line.** In a table
+  cell it degrades to a plain link, which is exactly the thing you were trying to avoid. Use
+  the HTML element in the cell instead:
+
+  ```markdown
+  | <video src="https://github.com/user-attachments/assets/<id>" controls></video> | <video src="https://github.com/user-attachments/assets/<id>" controls></video> |
+  ```
+
+  Images are the easy case: `![alt](URL)` works in a cell as written.
+
+Never trust attach order to tell you which uploaded asset is which. The labels are the
+entire point of the table, and a swapped pair argues the opposite of the truth. Confirm by
+hash:
+
+```bash
+T=$(gh auth token)
+curl -sL -H "Authorization: Bearer $T" -o /tmp/check.mp4 \
+  "https://github.com/user-attachments/assets/<id>"
+md5 /tmp/check.mp4 ./before.mp4
+```
+
+Then check what GitHub rendered, not what you wrote:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/<n> -H "Accept: application/vnd.github.html+json" \
+  --jq .body_html | grep -c '<video'
+```
+
+Two hits means two players. Zero, with the table present, means a bare URL in a cell
+quietly became a link.
+
+Playwright records webm, which GitHub will not play, and records at CSS-pixel resolution by
+default, which looks soft once GitHub scales it into a table cell. Record at 2x and convert:
+
+```javascript
+test.use({
+    viewport: { width: 1600, height: 920 },
+    deviceScaleFactor: 2,
+    video: { mode: 'on', size: { width: 1600, height: 920 } },
+});
+```
+
+The three have to agree, and the trap is that they interact:
+
+- `deviceScaleFactor: 2` genuinely doubles captured detail, but a react-native-web app then
+  lays itself out for **half** the viewport width. At `viewport: 800` with `dsf: 2` you get a
+  crisp 400px-wide mobile layout, not a crisp desktop one. Double the viewport to get the
+  layout you wanted at twice the pixels.
+- `video.size` is a canvas, and Playwright scales the capture *down* into it, never up. Set
+  it larger than the capture and you get the page in the top-left corner with grey filler
+  around it. Set it to match `viewport`.
+- Confirm both by reading a frame, not by reading the dimensions. `ffprobe` reporting
+  1600x920 tells you nothing about whether those are real pixels or filler:
+  `ffmpeg -i video.webm -ss <t> -frames:v 1 frame.png`, then look at it.
+
+Then convert, and crop to the part of the screen the change is actually about. In a
+two-column table each player displays at roughly half the body width, so cropping away
+chrome and whitespace buys more legibility than resolution does:
+
+```bash
+ffmpeg -i video.webm -vf "crop=<w>:<h>:<x>:<y>,fps=24" \
+  -c:v libx264 -pix_fmt yuv420p -crf 23 -movflags +faststart before.mp4
+```
+
+Width and height both have to be even for h264.
+
+A before video usually means running the same recording twice against one dev stack, once
+with the change and once with it reverted. Revert by rewriting the lines, not by stashing:
+the stash stack is shared across worktrees.
+
+## 7. Show, then apply
 
 Relay the title, the body, the gaps, and anything you flagged. Then wait.
 
@@ -180,6 +284,9 @@ description was requested. Re-fetch before applying, in case it was edited meanw
 gh pr edit <n> --repo <owner>/<repo> --body-file ~/projects/drafts/pr-<slug>.md
 gh pr create --repo <owner>/<repo> --title "<title>" --body-file ~/projects/drafts/pr-<slug>.md
 ```
+
+Add `--attach` for any media (step 6), and re-read the body afterwards: an appended asset
+means the reference was not substituted and still needs splicing.
 
 Delete the brief and draft files from `~/projects/drafts/` once the GitHub operation
 succeeds.
@@ -208,3 +315,7 @@ result in with Edit.
 | Reciting how a number was measured | Provenance is one clause, not a sentence of sample sizes and API limits. Only a correction to your own earlier analysis is banned outright, with `(background)`. |
 | Hand-patching a fact `codex` dropped | Put it under `Must appear` and re-run. Editing the body leaves the brief wrong, so the next run drops it again. |
 | Filling empty slots with plausible text | `None.` is a valid answer and a useful signal. Invented content in the brief becomes invented content in the description. |
+| Before/after media as two labelled paragraphs | A two-column `Before` / `After` table. Side by side is the layout that answers the reviewer's actual question. |
+| Bare video URL inside a table cell | It renders as a plain link. `<video src="URL" controls></video>` in the cell, then confirm with a `<video` count against `body_html`. |
+| Trusting `--attach` order to label the assets | Download each asset with the gh token and compare hashes. A swapped before/after argues the opposite of the truth. |
+| Raising `video.size` alone to get a sharper recording | It scales down into that canvas, never up: you get the page in a corner surrounded by filler. Raise `deviceScaleFactor` *and* the viewport, and check a frame. |

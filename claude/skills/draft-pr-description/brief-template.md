@@ -95,6 +95,15 @@ meaning anything. -->
 
 -
 
+## Media
+
+<!-- Before/after screenshots or screencasts, if any. One bullet per file: the local path
+and the caption that belongs under it. Say which is before and which is after; the labels
+are the whole argument. Note how a recording was produced (an artificial delay, a reverted
+line) so the description can carry that caveat. `None.` if the change is not visual. -->
+
+-
+
 ## Uncertainties
 
 <!-- What is estimated rather than measured, what could not be tested locally, what a

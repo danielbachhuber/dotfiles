@@ -63,6 +63,13 @@ Claim only what the brief supports, or what you confirmed by reading the code. N
 that the change fixes, removes, or resolves something unless the brief says it does. If the
 work is partial, say what is left.
 
+When the brief supplies before/after screenshots or screencasts, lay them out as a
+two-column markdown table with `Before` and `After` as the headers, one media reference per
+column, and a one-line caption row beneath if the brief gives you the captions. Never a
+stack of labelled paragraphs. Use the exact file references the brief names, each in its own
+cell: images as `![alt](./name.png)`, videos as `<video src="./name.mp4" controls></video>`.
+The author replaces those references with uploaded asset URLs afterwards.
+
 Name changed files by their repo-relative path in backticks. Do not build links to the
 diff: the pull request number usually does not exist yet, and the author inserts those
 afterwards. A missing pull request number is not a gap, so do not report it as one.
