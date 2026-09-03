@@ -136,7 +136,7 @@ function Review({ row }: { row: Row }) {
     lines.push({ key: "re-review", text: "awaiting re-review" });
   }
   if (row.unresolvedThreads > 0) {
-    // Inline threads are the case an approval hides: robennals can approve
+    // Inline threads are the case an approval hides: hubber can approve
     // #5801 and still have left three comments on the diff.
     const outdated = row.outdatedThreads > 0 ? `, ${row.outdatedThreads} outdated` : "";
     lines.push({

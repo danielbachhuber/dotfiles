@@ -758,13 +758,13 @@ describe("unresolved review threads", () => {
           rowFixture({
             flags: ["merge-ready"],
             group: "ready-to-merge",
-            approvedBy: ["robennals"],
+            approvedBy: ["hubber"],
             unresolvedThreads: 3,
           }),
         ],
       }),
     );
-    await slot.findByText("approved by robennals");
+    await slot.findByText("approved by hubber");
     await slot.findByText("3 unresolved comments");
   });
 

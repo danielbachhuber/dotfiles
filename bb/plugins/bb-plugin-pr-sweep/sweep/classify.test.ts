@@ -331,7 +331,7 @@ describe("bot comments", () => {
     expect(isBotLogin("some-app[bot]")).toBe(true);
     expect(isBotLogin("dependabot")).toBe(true);
     expect(isBotLogin("Github-Actions")).toBe(true);
-    expect(isBotLogin("robennals")).toBe(false);
+    expect(isBotLogin("hubber")).toBe(false);
   });
 
   it("says nothing when only bots have commented", () => {
@@ -463,8 +463,10 @@ describe("latestChecks", () => {
 });
 
 describe("reviewNotes", () => {
-  const pr = (latestReviews: unknown[], authorLogin = "octocat") =>
-    ({ author: { login: authorLogin }, latestReviews }) as never;
+  // The full review history, not just the latest per reviewer: a body that a
+  // later empty review would hide is exactly what this has to keep.
+  const pr = (reviews: unknown[], authorLogin = "octocat") =>
+    ({ author: { login: authorLogin }, reviews, latestReviews: reviews }) as never;
 
   it("reports an approval that came with prose", () => {
     // #5840: APPROVED, no unresolved thread, no issue comment, and 3,495
@@ -507,14 +509,34 @@ describe("reviewNotes", () => {
     expect(notes).toEqual(["hubber"]);
   });
 
-  it("reads latestReviews, so an answered round does not resurface", () => {
+  it("lets a clean approval retire the round it answered", () => {
     // An earlier round's notes were dealt with by the round that superseded
-    // them; re-raising them would make the flag permanent.
+    // them; re-raising them would make the flag permanent. `reviews` is the
+    // whole history, so it carries both rounds.
     const raw = {
       author: { login: "octocat" },
+      reviews: [
+        { state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "fix this" },
+        { state: "APPROVED", author: { login: "hubber" }, body: "" },
+      ],
       latestReviews: [{ state: "APPROVED", author: { login: "hubber" }, body: "" }],
-      reviews: [{ state: "CHANGES_REQUESTED", author: { login: "hubber" }, body: "fix this" }],
     } as never;
     expect(reviewNotes(raw)).toEqual([]);
+  });
+
+  it("keeps a body a later empty comment would have hidden", () => {
+    // Live on #5886: a reviewer approved with 189 characters of caveats, then
+    // left a second, empty COMMENTED review. Reading only the latest review
+    // per reviewer lost the fact that anything had been said — on a pull
+    // request whose every other signal read as unqualified agreement.
+    const raw = {
+      author: { login: "octocat" },
+      reviews: [
+        { state: "APPROVED", author: { login: "hubber" }, body: "The biggest is that it cannot be enabled." },
+        { state: "COMMENTED", author: { login: "hubber" }, body: "" },
+      ],
+      latestReviews: [{ state: "COMMENTED", author: { login: "hubber" }, body: "" }],
+    } as never;
+    expect(reviewNotes(raw)).toEqual(["hubber"]);
   });
 });

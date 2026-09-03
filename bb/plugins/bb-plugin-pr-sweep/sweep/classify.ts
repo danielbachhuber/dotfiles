@@ -138,14 +138,28 @@ function commenters(pr: RawPullRequest): string[] {
  */
 export function reviewNotes(pr: RawPullRequest): string[] {
   const authorLogin = pr.author?.login ?? null;
-  const seen = new Set<string>();
-  for (const entry of pr.latestReviews) {
+  // The full history, not `latestReviews`. That field keeps only the most
+  // recent review per reviewer, and on #5886 a reviewer approved with 189
+  // characters naming a blocker and then left a second, empty COMMENTED
+  // review — which hid the fact that anything had been written at all.
+  //
+  // But an earlier round that was *answered* must not resurface either, or the
+  // note becomes permanent. What separates the two is the state of the empty
+  // review that follows: an empty approval is a sign-off and supersedes
+  // whatever the reviewer said before it. An empty comment says nothing and
+  // resolves nothing, so it supersedes nothing.
+  const noted = new Set<string>();
+  for (const entry of pr.reviews) {
     const login = entry.author?.login;
     if (!login || login === authorLogin) continue;
-    if ((entry.body ?? "").trim() === "") continue;
-    seen.add(login);
+
+    if ((entry.body ?? "").trim() === "") {
+      if (entry.state.toUpperCase() === "APPROVED") noted.delete(login);
+      continue;
+    }
+    noted.add(login);
   }
-  return [...seen];
+  return [...noted];
 }
 
 /**
