@@ -6,8 +6,10 @@ what a thread still owes you without reading its transcript.
 
 ## Surfaces
 
-- **Thread header** — a live `2/6` progress count, finished over total.
-  Clicking it opens the panel. Renders nothing on a thread with no list.
+- **Thread header** — a live `2/6` progress count, finished over total, or
+  "Add todo" on a thread with no list yet. Either way it opens the panel.
+  Hiding the control on an empty list kept the header clean but left no way
+  in, so a thread with no list stayed that way.
 - **Panel tab** — "Todo" in bb's thread panel, beside Browser and Terminal.
   The add field sits at the top; check, uncheck, add, remove, and clear the
   finished items below it.
@@ -71,6 +73,8 @@ running when this plugin loaded does not see them until it restarts.
   into `list.ts`, applies the answer.
 - `todos/contract.ts` — the RPC wire schema. A field missing here is dropped by
   the server and the panel renders without it.
+- `todos/cli.ts` — argv parsing for `bb todo`, pure so the grammar is testable
+  without a server.
 - `todos/instructions.ts` — what every thread is told about its list.
 - `server.ts` — tools, RPC handlers, realtime, thread-lifecycle cleanup.
 - `app.tsx` — the panel, the header count, and the content script that paints

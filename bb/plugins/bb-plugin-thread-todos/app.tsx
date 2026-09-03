@@ -275,8 +275,10 @@ function TodoCount({ threadId, isCompactViewport }: PluginThreadHeaderActionProp
     () => (todos ? countsFor(threadId, todos) : null),
     [threadId, todos],
   );
-  const label = counts ? headerLabel(counts) : null;
-  if (counts === null || label === null) return null;
+  // Only the first load is silent. Rendering "Add todo" before the list
+  // arrives would flash a call to action on a thread that already has one.
+  if (counts === null) return null;
+  const label = headerLabel(counts);
 
   return (
     <Button
@@ -286,7 +288,7 @@ function TodoCount({ threadId, isCompactViewport }: PluginThreadHeaderActionProp
       // phone — there, the glyph carries the meaning and the label is the
       // accessible name.
       className="h-7 cursor-pointer gap-1.5"
-      aria-label={headerAriaLabel(counts) ?? undefined}
+      aria-label={headerAriaLabel(counts)}
       onClick={() => {
         if (!navigate.openThreadPanel({ actionId: PANEL_ACTION_ID })) {
           toast.error("This surface has no thread panel to open the list in.");

@@ -122,17 +122,20 @@ export function countsFor(threadId: string, todos: readonly Todo[]): TodoCounts 
 }
 
 /**
- * The header button's label: finished over total, as `2/6`. Null when there is
- * nothing worth showing.
+ * The header button's label: finished over total, as `2/6`.
  *
  * A bare fraction reads as progress, so the numerator is what is *done* — the
  * opposite sense from the sidebar glyph, which counts what is remaining. The
  * two are deliberately complementary: the sidebar answers "does this thread
  * still want something", the header answers "how far along is it".
+ *
+ * An empty list gets a call to action rather than nothing. Hiding the control
+ * kept the header clean but left no way in: the panel was reachable only
+ * through the tab launcher, so a thread with no list stayed that way.
  */
-export function headerLabel(counts: TodoCounts): string | null {
+export function headerLabel(counts: TodoCounts): string {
   const total = counts.open + counts.done;
-  if (total === 0) return null;
+  if (total === 0) return "Add todo";
   return `${counts.done}/${total}`;
 }
 
@@ -140,9 +143,9 @@ export function headerLabel(counts: TodoCounts): string | null {
  * The header button's accessible name. `2/6` is legible on screen but says
  * nothing aloud, so screen readers get the sentence instead.
  */
-export function headerAriaLabel(counts: TodoCounts): string | null {
+export function headerAriaLabel(counts: TodoCounts): string {
   const total = counts.open + counts.done;
-  if (total === 0) return null;
+  if (total === 0) return "Todo list: empty. Add the first item";
   const steps = total === 1 ? "step" : "steps";
   return `Todo list: ${counts.done} of ${total} ${steps} done`;
 }

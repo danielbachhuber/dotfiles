@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countsFor,
+  headerAriaLabel,
   headerLabel,
   newTexts,
   normalizeText,
@@ -123,8 +124,8 @@ describe("countsFor and its labels", () => {
     expect(countsFor("t1", todos)).toEqual({ threadId: "t1", open: 1, done: 1 });
   });
 
-  it("says nothing at all for a thread with no list", () => {
-    expect(headerLabel({ threadId: "t1", open: 0, done: 0 })).toBeNull();
+  it("invites a first item instead of hiding when the list is empty", () => {
+    expect(headerLabel({ threadId: "t1", open: 0, done: 0 })).toBe("Add todo");
   });
 
   it("reads as progress: finished over total", () => {
@@ -166,5 +167,25 @@ describe("renderForAgent", () => {
 
   it("says so when the list is empty", () => {
     expect(renderForAgent([])).toBe("The todo list is empty.");
+  });
+});
+
+describe("headerAriaLabel", () => {
+  it("says aloud what the bare fraction cannot", () => {
+    expect(headerAriaLabel({ threadId: "t1", open: 4, done: 2 })).toBe(
+      "Todo list: 2 of 6 steps done",
+    );
+  });
+
+  it("agrees in number with a one-item list", () => {
+    expect(headerAriaLabel({ threadId: "t1", open: 1, done: 0 })).toBe(
+      "Todo list: 0 of 1 step done",
+    );
+  });
+
+  it("names the empty state as an invitation, matching the visible label", () => {
+    expect(headerAriaLabel({ threadId: "t1", open: 0, done: 0 })).toBe(
+      "Todo list: empty. Add the first item",
+    );
   });
 });
