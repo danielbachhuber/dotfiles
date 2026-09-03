@@ -191,3 +191,37 @@ describe("thread reasons", () => {
     expect(store.threadReasons()).toEqual([]);
   });
 });
+
+describe("scannedThreads", () => {
+  it("starts empty and remembers what it is told", () => {
+    const store = freshStore();
+    expect(store.scannedThreads()).toEqual(new Set());
+
+    store.markThreadScanned("thr_1", 100);
+    store.markThreadScanned("thr_2", 200);
+
+    expect(store.scannedThreads()).toEqual(new Set(["thr_1", "thr_2"]));
+  });
+
+  it("counts a thread once however often it is marked", () => {
+    const store = freshStore();
+    store.markThreadScanned("thr_1", 100);
+    store.markThreadScanned("thr_1", 300);
+
+    expect(store.scannedThreads()).toEqual(new Set(["thr_1"]));
+  });
+
+  it("survives a sweep, so a prompt is never read twice", () => {
+    const store = freshStore();
+    store.markThreadScanned("thr_1", 100);
+    store.replaceAll({
+      rows: [row()],
+      repos: ["acme/widgets"],
+      failedRepos: [],
+      truncated: false,
+      sweptAt: 1_700_000_000_000,
+    });
+
+    expect(store.scannedThreads()).toEqual(new Set(["thr_1"]));
+  });
+});

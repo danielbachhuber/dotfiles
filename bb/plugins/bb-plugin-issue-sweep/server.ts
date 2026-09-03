@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { isAdoptable, soleIssueReference } from "./issues/adopt.js";
 import { rpcContract } from "./issues/contract.js";
 import { parseStatusOrder, shouldAutoApply } from "./issues/board.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./issues/gh.js";
@@ -93,6 +94,19 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Board status when a closing pull request opens",
       default: "In Review",
     },
+    adoptHandStartedThreads: {
+      type: "select",
+      label: "Adopt threads started by hand",
+      // On: a thread typed into the composer whose prompt links exactly one
+      // issue in the sweep gets this plugin's title, the issue's link, and the
+      // board move a thread started from the panel would have made.
+      //
+      // It renames a title someone may have chosen, which is why it can be
+      // turned off. In practice the title it replaces is bb's own reading of
+      // the prompt ("Work on issue 5837"), not a typed one.
+      options: ["on", "off"],
+      default: "on",
+    },
   });
 
   const PERMISSION_MODES = ["accept-edits", "auto", "full"] as const;
@@ -168,6 +182,13 @@ export default async function plugin(bb: BbPluginApi) {
       // stored, so a promotion patches the stored row too and the moved cards
       // show their new status on this sweep rather than the next one.
       await promoteIssuesInReview(result.rows);
+      // Last, and inside the try: it reads every unscanned thread's first
+      // prompt, and a failure there must not lose the sweep that succeeded.
+      try {
+        await adoptHandStartedThreads(result.rows);
+      } catch (error) {
+        bb.log.warn(`could not adopt hand-started threads: ${String(error)}`);
+      }
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
       bb.log.info(`swept ${result.rows.length} open issue(s)`);
       // Reset here, not just on the failure path: three failures spread over a
@@ -290,6 +311,110 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.warn(`could not move ${row.repo}#${row.number} to ${wanted}: ${String(error)}`);
       return false;
     }
+  }
+
+  /** Pages threads.list, which caps a page however large a limit is asked for. */
+  async function everyThread(): Promise<
+    Array<{ id: string; title: string | null; originPluginId: string | null; archivedAt: number | null }>
+  > {
+    const all: Array<{
+      id: string;
+      title: string | null;
+      originPluginId: string | null;
+      archivedAt: number | null;
+    }> = [];
+    const pageSize = 100;
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await bb.sdk.threads.list({ archived: false, limit: pageSize, offset });
+      all.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return all;
+  }
+
+  /**
+   * The text of a thread's first prompt, or "" when it has none.
+   *
+   * Read from the thread's own event log rather than its `titleFallback`,
+   * which is the same text truncated to a sidebar's width — a prompt that
+   * mentions the issue after a sentence of context would have the URL cut off.
+   */
+  async function firstPromptText(threadId: string): Promise<string> {
+    const events = await bb.sdk.threads.events.list({
+      threadId,
+      types: ["client/turn/requested"],
+      order: "asc",
+      limit: "1",
+    });
+    const input = (events[0]?.data as { input?: Array<{ type?: string; text?: string }> } | undefined)
+      ?.input;
+    if (!Array.isArray(input)) return "";
+    return input
+      .filter((part) => part?.type === "text" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("\n");
+  }
+
+  /**
+   * Adopts threads started from the composer for an issue this sweep knows.
+   *
+   * Runs at the end of a sweep, on the rows just stored, so the title it
+   * writes is built from the same row the panel is about to render.
+   *
+   * Every thread's first prompt is read at most once ever, which is what makes
+   * this affordable on a five-minute timer: the answer cannot change, so a
+   * thread that named no issue is remembered as scanned and never read again.
+   */
+  async function adoptHandStartedThreads(rows: readonly IssueRow[]): Promise<boolean> {
+    const { adoptHandStartedThreads: enabled, statusOnStart } = await settings.get();
+    if (enabled !== "on" || rows.length === 0) return false;
+
+    const scanned = store.scannedThreads();
+    const linked = new Set(store.threadLinks().values());
+    let adopted = 0;
+
+    for (const thread of await everyThread()) {
+      if (scanned.has(thread.id) || linked.has(thread.id) || !isAdoptable(thread)) continue;
+
+      const reference = soleIssueReference(await firstPromptText(thread.id));
+      // Marked either way. A prompt that named no issue never will, and one
+      // that named an issue is about to be linked, so neither needs re-reading.
+      store.markThreadScanned(thread.id, Date.now());
+      if (!reference) continue;
+
+      const row = rows.find(
+        (entry) => entry.repo.toLowerCase() === reference.repo && entry.number === reference.number,
+      );
+      // Not in the sweep means not an open issue assigned to me — someone
+      // else's issue, or one already closed. Not this plugin's business.
+      if (!row) continue;
+
+      // Renaming and linking are separate decisions, because they can fail
+      // separately. Identifying the issue is enough to name the thread after
+      // it; taking over as *the* thread for that issue is only right when the
+      // issue does not already have one. An issue with two threads is a
+      // situation to leave as it is rather than resolve by reassignment.
+      const wanted = threadTitle(row.number, row.title);
+      if (thread.title !== wanted) {
+        await bb.sdk.threads.update({ threadId: thread.id, title: wanted });
+      }
+
+      const taken = store.threadFor(row.repo, row.number);
+      if (taken && taken !== thread.id) {
+        bb.log.info(
+          `renamed ${thread.id} to "${wanted}"; ${row.repo}#${row.number} keeps ${taken} as its thread`,
+        );
+        adopted += 1;
+        continue;
+      }
+
+      store.linkThread(row.repo, row.number, thread.id, Date.now());
+      await autoSetStatus(row, statusOnStart);
+      bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number} as "${wanted}"`);
+      adopted += 1;
+    }
+
+    return adopted > 0;
   }
 
   /**

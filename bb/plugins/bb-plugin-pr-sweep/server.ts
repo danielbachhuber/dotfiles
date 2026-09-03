@@ -10,6 +10,7 @@ import {
   type WorktreePlan,
 } from "./sweep/open-pr.js";
 import { parseRemoteSlug } from "./sweep/spawn-target.js";
+import { isAdoptable, solePullRequestReference } from "./sweep/adopt.js";
 import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
@@ -86,6 +87,19 @@ export default async function plugin(bb: BbPluginApi) {
       // to bb's default.
       default: "claude-code",
     },
+    adoptHandStartedThreads: {
+      type: "select",
+      label: "Adopt threads started by hand",
+      // On: a thread typed into the composer whose prompt links exactly one
+      // pull request in the sweep gets this plugin's title, and its link when
+      // the pull request has no thread yet.
+      //
+      // It renames a title someone may have chosen, which is why it can be
+      // turned off. In practice the title it replaces is bb's own reading of
+      // the prompt, not a typed one.
+      options: ["on", "off"],
+      default: "on",
+    },
   });
 
   /** In-flight spawns, keyed repo#number, so racing clicks share one result. */
@@ -108,23 +122,129 @@ export default async function plugin(bb: BbPluginApi) {
    * that is gone. Reconciling on every sweep makes the link self-healing
    * rather than dependent on having witnessed the event.
    */
-  async function reconcileThreadLinks(): Promise<void> {
-    const links = store.threadLinks();
-    if (links.size === 0) return;
-
-    const live = new Set<string>();
+  /** Pages threads.list, which caps a page however large a limit is asked for. */
+  async function everyThread(options: { includeHidden?: boolean } = {}): Promise<
+    Array<{
+      id: string;
+      title: string | null;
+      originPluginId: string | null;
+      archivedAt: number | null;
+    }>
+  > {
+    const all: Array<{
+      id: string;
+      title: string | null;
+      originPluginId: string | null;
+      archivedAt: number | null;
+    }> = [];
     const pageSize = 100;
     for (let offset = 0; ; offset += pageSize) {
-      const threads = await bb.sdk.threads.list({
-        originPluginId: bb.pluginId,
-        includeHidden: true,
+      const page = await bb.sdk.threads.list({
+        ...(options.includeHidden ? { includeHidden: true } : {}),
         archived: false,
         limit: pageSize,
         offset,
       });
-      for (const thread of threads) live.add(thread.id);
-      if (threads.length < pageSize) break;
+      all.push(...page);
+      if (page.length < pageSize) break;
     }
+    return all;
+  }
+
+  /**
+   * The text of a thread's first prompt, or "" when it has none.
+   *
+   * Read from the thread's own event log rather than its `titleFallback`,
+   * which is the same text truncated to a sidebar's width — a prompt that
+   * mentions the pull request after a sentence of context would have the URL
+   * cut off.
+   */
+  async function firstPromptText(threadId: string): Promise<string> {
+    const events = await bb.sdk.threads.events.list({
+      threadId,
+      types: ["client/turn/requested"],
+      order: "asc",
+      limit: "1",
+    });
+    const input = (
+      events[0]?.data as { input?: Array<{ type?: string; text?: string }> } | undefined
+    )?.input;
+    if (!Array.isArray(input)) return "";
+    return input
+      .filter((part) => part?.type === "text" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("\n");
+  }
+
+  /**
+   * Adopts threads started from the composer for a pull request this sweep
+   * knows.
+   *
+   * Every thread's first prompt is read at most once ever, which is what makes
+   * this affordable on a five-minute timer: the answer cannot change, so a
+   * thread that named no pull request is remembered as scanned and never read
+   * again.
+   */
+  async function adoptHandStartedThreads(): Promise<void> {
+    const { adoptHandStartedThreads: enabled } = await settings.get();
+    if (enabled !== "on") return;
+
+    const rows = store.readRows();
+    if (rows.length === 0) return;
+
+    const scanned = store.scannedThreads();
+    const linked = new Set(store.threadLinks().values());
+
+    for (const thread of await everyThread()) {
+      if (scanned.has(thread.id) || linked.has(thread.id) || !isAdoptable(thread)) continue;
+
+      const reference = solePullRequestReference(await firstPromptText(thread.id));
+      // Marked either way. A prompt that named no pull request never will, and
+      // one that named a pull request is about to be handled, so neither needs
+      // re-reading.
+      store.markThreadScanned(thread.id, Date.now());
+      if (!reference) continue;
+
+      const row = rows.find(
+        (entry) => entry.repo.toLowerCase() === reference.repo && entry.number === reference.number,
+      );
+      // Not in the sweep means not an open pull request of mine. Not this
+      // plugin's business.
+      if (!row) continue;
+
+      // Renaming and linking are separate decisions. Identifying the pull
+      // request is enough to name the thread after it; taking over as *the*
+      // thread for it is only right when it does not already have one.
+      const wanted = threadTitle(row.number, row.title);
+      if (thread.title !== wanted) {
+        await bb.sdk.threads.update({ threadId: thread.id, title: wanted });
+      }
+
+      const taken = store.threadFor(row.repo, row.number);
+      if (taken && taken !== thread.id) {
+        bb.log.info(
+          `renamed ${thread.id} to "${wanted}"; ${row.repo}#${row.number} keeps ${taken}`,
+        );
+        continue;
+      }
+
+      // No reason recorded: auto-archive fires when the flag a thread was
+      // started for disappears, and this thread was not started for a flag.
+      store.linkThread(row.repo, row.number, thread.id, Date.now(), null);
+      bb.log.info(`adopted ${thread.id} for ${row.repo}#${row.number} as "${wanted}"`);
+    }
+  }
+
+  async function reconcileThreadLinks(): Promise<void> {
+    const links = store.threadLinks();
+    if (links.size === 0) return;
+
+    // Every thread, not just this plugin's own. A link can now point at a
+    // thread someone started from the composer that the sweep adopted, and
+    // filtering by originPluginId made every one of those look deleted — the
+    // link would be dropped on the sweep after the one that created it, and
+    // the row would go back to offering to start a thread for work underway.
+    const live = new Set((await everyThread({ includeHidden: true })).map((thread) => thread.id));
 
     let dropped = 0;
     for (const threadId of links.values()) {
@@ -143,6 +263,14 @@ export default async function plugin(bb: BbPluginApi) {
     // a missing gh says nothing about whether a linked thread still exists,
     // and a row stuck on "Open thread" for a deleted thread should heal even
     // while the sweep itself is broken.
+    // Before reconciliation, so a link made here is seen as live rather than
+    // being created and dropped within the same sweep.
+    try {
+      await adoptHandStartedThreads();
+    } catch (error) {
+      bb.log.warn(`could not adopt hand-started threads: ${String(error)}`);
+    }
+
     try {
       await reconcileThreadLinks();
     } catch (error) {

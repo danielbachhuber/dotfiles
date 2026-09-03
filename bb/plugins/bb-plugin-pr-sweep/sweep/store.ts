@@ -29,6 +29,10 @@ export const MIGRATIONS = [
   // particular piece of work is finished. Nullable: rows linked before this
   // column existed have no reason and are simply never auto-archived.
   `ALTER TABLE pr_threads ADD COLUMN reason TEXT`,
+  `CREATE TABLE IF NOT EXISTS thread_scan (
+     thread_id TEXT PRIMARY KEY,
+     scanned_at INTEGER NOT NULL
+   )`,
 ];
 
 export interface SweepMeta {
@@ -73,6 +77,16 @@ export interface Store {
   unlinkThread(threadId: string): void;
   /** The pull request a thread was started for, or null if it is not ours. */
   pullRequestForThread(threadId: string): { repo: string; number: number } | null;
+  /**
+   * Threads already examined for a pull request link, so a sweep reads each
+   * one's first prompt once rather than every five minutes.
+   *
+   * A first prompt never changes, so a thread that named no pull request then
+   * will not name one later. The set is not pruned: a row per thread ever seen
+   * is cheaper than the read it saves, and a thread id is never reused.
+   */
+  scannedThreads(): Set<string>;
+  markThreadScanned(threadId: string, scannedAt: number): void;
 }
 
 export function createStore(db: DatabaseLike): Store {
@@ -103,6 +117,11 @@ export function createStore(db: DatabaseLike): Store {
   const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM pr_threads`);
   const selectReasons = db.prepare(`SELECT repo, number, thread_id, reason FROM pr_threads`);
   const deleteLink = db.prepare(`DELETE FROM pr_threads WHERE thread_id = ?`);
+  const selectScans = db.prepare(`SELECT thread_id FROM thread_scan`);
+  const insertScan = db.prepare(
+    `INSERT INTO thread_scan (thread_id, scanned_at) VALUES (?, ?)
+     ON CONFLICT(thread_id) DO UPDATE SET scanned_at = excluded.scanned_at`,
+  );
   const selectByThread = db.prepare(
     `SELECT repo, number FROM pr_threads WHERE thread_id = ?`,
   );
@@ -208,6 +227,16 @@ export function createStore(db: DatabaseLike): Store {
 
     unlinkThread(threadId) {
       deleteLink.run(threadId);
+    },
+
+    scannedThreads() {
+      return new Set(
+        (selectScans.all() as Array<{ thread_id: string }>).map((entry) => entry.thread_id),
+      );
+    },
+
+    markThreadScanned(threadId, scannedAt) {
+      insertScan.run(threadId, scannedAt);
     },
 
     pullRequestForThread(threadId) {

@@ -31,6 +31,10 @@ export const MIGRATIONS = [
      applied_at INTEGER NOT NULL,
      PRIMARY KEY (repo, number)
    )`,
+  `CREATE TABLE IF NOT EXISTS thread_scan (
+     thread_id TEXT PRIMARY KEY,
+     scanned_at INTEGER NOT NULL
+   )`,
 ];
 
 export interface SweepMeta {
@@ -86,6 +90,16 @@ export interface Store {
    * learns the patch went nowhere.
    */
   setRowStatus(repo: string, number: number, status: string): boolean;
+  /**
+   * Threads already examined for an issue link, so a sweep reads each one's
+   * first prompt once rather than every five minutes.
+   *
+   * A first prompt never changes, so a thread that did not name an issue then
+   * will not name one later. The set is not pruned: a row per thread ever seen
+   * is cheaper than the read it saves, and a thread id is never reused.
+   */
+  scannedThreads(): Set<string>;
+  markThreadScanned(threadId: string, scannedAt: number): void;
 }
 
 export function createStore(db: DatabaseLike): Store {
@@ -113,6 +127,11 @@ export function createStore(db: DatabaseLike): Store {
   const selectLink = db.prepare(`SELECT thread_id FROM issue_threads WHERE repo = ? AND number = ?`);
   const selectLinks = db.prepare(`SELECT repo, number, thread_id FROM issue_threads`);
   const deleteLink = db.prepare(`DELETE FROM issue_threads WHERE thread_id = ?`);
+  const selectScans = db.prepare(`SELECT thread_id FROM thread_scan`);
+  const insertScan = db.prepare(
+    `INSERT INTO thread_scan (thread_id, scanned_at) VALUES (?, ?)
+     ON CONFLICT(thread_id) DO UPDATE SET scanned_at = excluded.scanned_at`,
+  );
   const selectAuto = db.prepare(`SELECT status FROM board_auto WHERE repo = ? AND number = ?`);
   const upsertAuto = db.prepare(
     `INSERT INTO board_auto (repo, number, status, applied_at)
@@ -194,6 +213,16 @@ export function createStore(db: DatabaseLike): Store {
       if (row.boardStatus === status) return false;
       updateRow.run(JSON.stringify({ ...row, boardStatus: status }), repo, number);
       return true;
+    },
+
+    scannedThreads() {
+      return new Set(
+        (selectScans.all() as Array<{ thread_id: string }>).map((entry) => entry.thread_id),
+      );
+    },
+
+    markThreadScanned(threadId, scannedAt) {
+      insertScan.run(threadId, scannedAt);
     },
 
     recordAutoStatus(repo, number, status, appliedAt) {
