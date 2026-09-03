@@ -22,6 +22,7 @@ import {
   statusTone,
   skillOwnsWorkflow,
   threadTitle,
+  titleGist,
   unflaggedStatus,
 } from "./actions.js";
 import { FLAG_SEVERITY } from "./types.js";
@@ -125,47 +126,63 @@ describe("skillFor", () => {
 });
 
 describe("threadTitle", () => {
-  it("pairs the action with the pull request number", () => {
-    expect(threadTitle(["conflict"], 5687)).toBe("Resolve conflict #5687");
-    expect(threadTitle(["feedback"], 5708)).toBe("Address feedback #5708");
-    expect(threadTitle(["merge-ready"], 5707)).toBe("Merge #5707");
+  it("carries a few words of the pull request title, so a queue of threads is legible", () => {
+    expect(threadTitle(5879, "docs(adr): propose exact API replay")).toBe(
+      "Refine #5879: propose exact API replay",
+    );
+  });
+
+  it("uses one label for every kind of work, whatever the flag", () => {
+    // The button still names the specific action; the sidebar has no Status
+    // column beside it, so the pull request's own words are worth more there.
+    expect(threadTitle(5687, "Fix the widget endpoint")).toMatch(/^Refine #5687: /);
+  });
+
+  it("falls back to the bare label and number when there is no title", () => {
+    expect(threadTitle(5687)).toBe("Refine #5687");
+    expect(threadTitle(5687, "   ")).toBe("Refine #5687");
+  });
+
+  it("drops a conventional-commit prefix, which the number already covers", () => {
+    expect(threadTitle(12, "fix(sync): handle empty page")).toBe("Refine #12: handle empty page");
+    expect(threadTitle(12, "[ACME-4] Handle empty page")).toBe("Refine #12: Handle empty page");
   });
 
   it("leaves out the repository, which the sidebar already shows", () => {
-    expect(threadTitle(["conflict"], 5687)).not.toMatch(/\//);
+    expect(threadTitle(5687, "Fix the widget endpoint")).not.toMatch(/\//);
   });
 
-  it("fits the sidebar for every flag at a realistic number", () => {
-    for (const flag of FLAG_SEVERITY) {
-      expect(threadTitle([flag], 5687).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    }
+  it("cuts the gist on a word boundary and stays inside the budget", () => {
+    const title = threadTitle(5931, "Add a retry with exponential backoff to the sync worker");
+    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(title).toBe("Refine #5931: Add a retry with…");
+    expect(title).not.toContain("expon");
   });
 
   it("fits the sidebar even for an implausibly long number", () => {
-    for (const flag of FLAG_SEVERITY) {
-      const title = threadTitle([flag], 999_999_999);
-      expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-      expect(title).toContain("999999999");
-    }
-  });
-
-  it("sacrifices the label rather than the number when squeezed", () => {
-    const title = threadTitle(["mergeable-unknown"], 12_345_678_901);
+    const title = threadTitle(999_999_999, "Add a retry to the sync worker");
     expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toContain("#12345678901");
+    expect(title).toContain("999999999");
   });
 
-  it("names the same action the button does, for any set of flags", () => {
-    for (const first of FLAG_SEVERITY) {
-      for (const second of FLAG_SEVERITY) {
-        const pair = [first, second];
-        expect(threadTitle(pair, 1)).toBe(`${actionSummary(pair)} #1`);
-      }
-    }
+  it("keeps the whole number, whatever else has to go", () => {
+    // The largest integer JavaScript represents exactly. Anything longer would
+    // be a rounded literal, so this is as far as the invariant can be tested;
+    // the branch that clips the label itself is unreachable at this budget and
+    // stands as a guard for a smaller one.
+    const title = threadTitle(Number.MAX_SAFE_INTEGER, "Add a retry to the sync worker");
+    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(title).toContain(`#${Number.MAX_SAFE_INTEGER}`);
+  });
+});
+
+describe("titleGist", () => {
+  it("says nothing rather than a stub when the budget is tiny", () => {
+    expect(titleGist("Add the widget endpoint", 2)).toBe("");
   });
 
-  it("titles a multi-step thread after the summary, not the first step", () => {
-    expect(threadTitle(["conflict", "feedback"], 5780)).toBe("Address issues #5780");
+  it("cuts a single over-long word rather than returning empty", () => {
+    expect(titleGist("Supercalifragilistic", 10)).toBe("Supercali…");
   });
 });
 
@@ -394,14 +411,12 @@ describe("a merge-ready pull request with comments on it", () => {
     expect(actionSummary(["ci-failing"], 3)).toBe("Fix failing CI");
   });
 
-  it("titles the thread with the same words, untruncated", () => {
-    const title = threadTitle(["merge-ready"], 5801, 3);
-    expect(title).toBe("Review and merge #5801");
-    expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-  });
-
-  it("still fits the plain case exactly", () => {
-    expect(threadTitle(["merge-ready"], 5801, 0)).toBe("Merge #5801");
+  it("does not reach the thread title, which names no flag at all", () => {
+    // The title is the pull request's, not the work's, so the comment count
+    // that changes the button changes nothing here.
+    expect(threadTitle(5801, "Add the widget endpoint")).toBe(
+      "Refine #5801: Add the widget endpoint",
+    );
   });
 });
 
@@ -428,10 +443,13 @@ describe("every button label fits its column", () => {
     expect(actionSummary([]).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
   });
 
-  it("keeps every thread title inside the sidebar budget too", () => {
-    for (const flag of FLAG_SEVERITY) {
-      expect(threadTitle([flag], 5801, 3).length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    }
+  it("keeps a thread title inside the sidebar budget however long the PR title", () => {
+    expect(
+      threadTitle(5801, "a".repeat(200)).length,
+    ).toBeLessThanOrEqual(MAX_THREAD_TITLE);
+    expect(
+      threadTitle(5801, "word ".repeat(60)).length,
+    ).toBeLessThanOrEqual(MAX_THREAD_TITLE);
   });
 });
 

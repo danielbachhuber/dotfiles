@@ -660,7 +660,7 @@ export default async function plugin(bb: BbPluginApi) {
           ...(model ? { model } : {}),
           permissionMode: mode,
           prompt: buildPrompt(row),
-          title: threadTitle(row.flags, number, commentsToRead(row)),
+          title: threadTitle(number, row.title),
         });
         bb.log.info(
           `started ${thread.id} for ${key}` +

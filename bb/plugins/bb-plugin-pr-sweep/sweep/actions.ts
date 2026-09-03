@@ -75,36 +75,77 @@ export function skillOwnsWorkflow(flags: readonly string[], commentsToRead = 0):
 /**
  * The sidebar clips a thread title past roughly this width, and the row above
  * it already names the project, so the repository is wasted characters here.
+ *
+ * It is deliberately longer than what the sidebar shows in full: a clipped
+ * tail still reads in the thread list, in search, and on hover, and four
+ * threads reading "Resolve conflict #…" gave no way to tell them apart.
  */
-export const MAX_THREAD_TITLE = 30;
+export const MAX_THREAD_TITLE = 40;
 
 /**
- * "Resolve conflict #5687", or "Address issues #5780" when the row needed more
- * than one thing. Deliberately the same string the button carried, so the
- * sidebar entry names the work the user asked for rather than a step of it.
+ * One label for every thread this panel starts.
  *
- * The number is what identifies the pull request, so if the pair somehow
- * exceeds the budget the label gives way, never the number.
+ * The button still names the specific work, because the panel shows it beside
+ * a Status column that spells the problem out. A sidebar entry has neither, and
+ * the specific label was the expensive part: "Resolve conflict" spends over
+ * half the budget saying something the pull request's own title says better.
  */
-export function threadTitle(
-  flags: readonly string[],
-  number: number,
-  commentsToRead = 0,
-): string {
+export const THREAD_LABEL = "Refine";
+
+/**
+ * Conventional-commit and ticket prefixes carry no information once the number
+ * is already in the title, and they eat the few characters that do.
+ */
+const TITLE_PREFIX = /^\s*(?:\[[^\]]+\]\s*|\([^)]+\)\s*|[A-Za-z]+!?(?:\([^)]*\))?!?:\s*)+/;
+
+const SEPARATOR = ": ";
+
+/**
+ * "Refine #5879: propose exact API replay". The number identifies the pull
+ * request, so if the pieces exceed the budget the gist gives way, never the
+ * number.
+ *
+ * Deliberately the same shape as review-sweep's, and deliberately its own copy:
+ * these plugins share `gh-shared` for reaching GitHub, not their phrasing, and
+ * a shared helper here would be one more thing to rebuild three plugins for.
+ */
+export function threadTitle(number: number, prTitle = ""): string {
   const suffix = ` #${number}`;
-  const label = actionSummary(flags, commentsToRead);
-  const full = `${label}${suffix}`;
-  if (full.length <= MAX_THREAD_TITLE) return full;
+  const head = `${THREAD_LABEL}${suffix}`;
 
-  const room = MAX_THREAD_TITLE - suffix.length;
-  if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
+  if (head.length > MAX_THREAD_TITLE) {
+    const room = MAX_THREAD_TITLE - suffix.length;
+    if (room <= 1) return suffix.trimStart().slice(0, MAX_THREAD_TITLE);
+    return `${THREAD_LABEL.slice(0, room - 1).trimEnd()}…${suffix}`;
+  }
 
-  // Cut at a word boundary where one is available: "Review comments and…"
-  // reads, "Review comments and mer…" does not.
-  const clipped = label.slice(0, room - 1);
-  const lastSpace = clipped.lastIndexOf(" ");
-  const kept = lastSpace > room / 2 ? clipped.slice(0, lastSpace) : clipped;
-  return `${kept.trimEnd()}…${suffix}`;
+  const gist = titleGist(prTitle, MAX_THREAD_TITLE - head.length - SEPARATOR.length);
+  return gist ? `${head}${SEPARATOR}${gist}` : head;
+}
+
+/**
+ * The leading whole words of a pull request title that fit in `budget`.
+ *
+ * Returns "" rather than a single truncated word when nothing fits, so the
+ * title falls back to the bare "Refine #5879" instead of trailing a stub.
+ */
+export function titleGist(prTitle: string, budget: number): string {
+  if (budget < 3) return "";
+  const cleaned = prTitle.replace(TITLE_PREFIX, "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  if (cleaned.length <= budget) return cleaned;
+
+  const words = cleaned.split(" ");
+  let out = "";
+  for (const word of words) {
+    const next = out ? `${out} ${word}` : word;
+    // One character of the budget belongs to the ellipsis that marks the cut.
+    if (next.length > budget - 1) break;
+    out = next;
+  }
+  // A first word longer than the budget still beats saying nothing, so cut it.
+  if (!out) return `${cleaned.slice(0, budget - 1).trimEnd()}…`;
+  return `${out}…`;
 }
 
 /**

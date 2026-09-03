@@ -57,10 +57,14 @@ describe("threadTitle", () => {
     expect(title).not.toContain("expon");
   });
 
-  it("keeps the number when the label and number alone would overflow", () => {
-    const title = threadTitle("re-review", 1234567890123456789, "Add the widget endpoint");
+  it("keeps the whole number, whatever else has to go", () => {
+    // The largest integer JavaScript represents exactly. Anything longer would
+    // be a rounded literal, so this is as far as the invariant can be tested;
+    // the branch that clips the label itself is unreachable at this budget and
+    // stands as a guard for a smaller one.
+    const title = threadTitle("re-review", Number.MAX_SAFE_INTEGER, "Add the widget endpoint");
     expect(title.length).toBeLessThanOrEqual(MAX_THREAD_TITLE);
-    expect(title).toContain("1234567890123456");
+    expect(title).toContain(`#${Number.MAX_SAFE_INTEGER}`);
   });
 });
 

@@ -175,7 +175,7 @@ describe("workOnThis is one thread per pull request", () => {
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(1);
   });
 
-  it("titles the thread with the action and number, not the repository", async () => {
+  it("titles the thread with the number and PR gist, not the repository or the flag", async () => {
     const { harness } = await seededHost();
     await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
 
@@ -183,8 +183,8 @@ describe("workOnThis is one thread per pull request", () => {
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { title: string },
     ]];
-    expect(spawnArgs.title).toBe("Resolve conflict #42");
-    expect(spawnArgs.title.length).toBeLessThanOrEqual(30);
+    expect(spawnArgs.title).toBe("Refine #42: Add the widget endpoint");
+    expect(spawnArgs.title.length).toBeLessThanOrEqual(40);
   });
 
   it("spawns a conflict thread on the cheap model, and others on the default", async () => {
