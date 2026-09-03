@@ -6,14 +6,38 @@ what a thread still owes you without reading its transcript.
 
 ## Surfaces
 
-- **Sidebar glyph** — every thread row with unfinished items carries a
-  `ListTodo` glyph labelled "3 steps remaining". A thread with nothing open
-  goes quiet, so the decorated rows are exactly the ones that still want
-  something.
-- **Thread header** — a live "3 left" button. Clicking it opens the panel.
-  Renders nothing on a thread with no list at all.
+- **Thread header** — a live `2/6` progress count, finished over total.
+  Clicking it opens the panel. Renders nothing on a thread with no list.
 - **Panel tab** — "Todo" in bb's thread panel, beside Browser and Terminal.
-  Check, uncheck, add, remove, and clear the finished items.
+  The add field sits at the top; check, uncheck, add, remove, and clear the
+  finished items below it.
+- **Sidebar glyph** — written, but **inert on every shipped bb**. See below.
+
+## The sidebar glyph does not work yet
+
+A content script decorates each thread row with a `ListTodo` glyph labelled
+"3 steps remaining", clearing it once nothing is open. It is feature-detected
+and currently always detects absent, because no released bb implements the
+API. Checked against the app bundles directly:
+
+| Surface | 0.40.0 | 0.41.0 |
+| --- | --- | --- |
+| `setThreadRowStatus` | 0 | 0 |
+| `contentScripts` | 0 | 0 |
+| `experimental_threadList` | 0 | 0 |
+
+Those are occurrence counts in `app/dist/assets/index-*.js`. Slot names are
+preserved through minification — `threadPanelAction` appears in both — so the
+zeros are real absence, not mangling. The SDK's type declarations (0.4.21)
+carry all three and mark `setThreadRowStatus` optional precisely because it is
+still rolling out.
+
+Nothing to do about it here. The code stays, feature-detected, and starts
+working the day a bb release ships the API. It logs to the console when it
+detects the API missing, so an inert decorator is never mistaken for a broken
+one. If you want a sidebar signal before then, the buildable route is a
+`navPanel` with an `experimental_sidebarAccessory` count — the pattern
+`pr-sweep` uses — which shows totals across threads rather than per row.
 
 ## The list is append-only
 

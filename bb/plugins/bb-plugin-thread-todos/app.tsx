@@ -328,7 +328,19 @@ export default definePluginApp((app) => {
       const setRowStatus = context.experimental_setThreadRowStatus;
       // Feature-detected: the SDK marks it optional while it rolls out across
       // 0.x clients, and an older client should lose the glyph, not the plugin.
-      if (!setRowStatus) return;
+      //
+      // It says so out loud. No shipped bb implements this yet — 0.40 and 0.41
+      // carry neither `setThreadRowStatus` nor content scripts at all — so this
+      // branch is currently the only one taken, and a decorator that vanishes
+      // without a word is indistinguishable from one that is broken.
+      if (!setRowStatus) {
+        console.info(
+          "todos: this bb client has no experimental_setThreadRowStatus, so " +
+            "sidebar row glyphs are unavailable. The header count and panel " +
+            "are unaffected.",
+        );
+        return;
+      }
 
       const decorated = new Set<string>();
       let disposed = false;
