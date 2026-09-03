@@ -924,11 +924,11 @@ describe("copy link", () => {
 });
 
 describe("title tooltip", () => {
-  const LONG = "refactor(profile): hide SRG profile toggles from per-instance menu";
+  const LONG = "refactor(profile): hide the profile toggles from the per-instance menu";
 
   it("shows the full title on focus, for the part the column cut off", async () => {
     const slot = render(listing({ rows: [rowFixture({ number: 5840, title: LONG })] }));
-    const link = await slot.findByRole("link", { name: /hide SRG profile toggles/i });
+    const link = await slot.findByRole("link", { name: /hide the profile toggles/i });
 
     fireEvent.focus(link);
 
@@ -948,7 +948,7 @@ describe("title tooltip", () => {
         ],
       }),
     );
-    const link = await slot.findByRole("link", { name: /hide SRG profile toggles/i });
+    const link = await slot.findByRole("link", { name: /hide the profile toggles/i });
     expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/pull/5840");
     expect(link).toHaveAttribute("target", "_blank");
   });

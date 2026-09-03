@@ -583,7 +583,7 @@ describe("isCounted", () => {
 
 describe("scopedThreadTitle", () => {
   it("names the work the thread was started for, not the pull request", () => {
-    // #5840's three threads all read "Refine #5840: hide SRG profile toggles…"
+    // #5840's three threads all read "Refine #5840: hide the profile toggles…"
     // — three ways of saying nothing. What differs is what each is for.
     expect(scopedThreadTitle(5840, actionSummary(["conflict"]))).toBe("Refine #5840: resolve conflict");
     expect(scopedThreadTitle(5840, actionSummary(["ci-failing"]))).toBe(

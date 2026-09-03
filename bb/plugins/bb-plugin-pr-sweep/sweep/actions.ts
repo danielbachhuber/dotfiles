@@ -129,7 +129,7 @@ export function threadTitle(number: number, prTitle = ""): string {
  *
  * For a pull request's second thread. One pull request has several threads
  * over its life, and the pull request's own words are the same in all of them:
- * #5840 ended up with three unarchived threads reading "Refine #5840: hide SRG
+ * #5840 ended up with three unarchived threads reading "Refine #5840: hide the
  * profile toggles…", which is three ways of saying nothing. What differs is
  * the work each was started for, and that is what the title should carry.
  *
