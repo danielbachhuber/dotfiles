@@ -21,6 +21,7 @@
 - Do not create git commits unless I explicitly ask. Leave changes in the working tree for review.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
 - Do not commit brainstorming or design-spec documents; leave them available for review.
+- In starting work on a new pull request in a new work tree, please draft the pull request description at the end of the initial body of work. This will give me a summary to read without having to explicitly ask for you to draft the pull request description.
 
 ## Writing
 
