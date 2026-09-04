@@ -14,6 +14,11 @@ time entries, pull requests opened and merged, reviews, issues filed, Slack
 threads, and daily notes. A pull request opened Monday and merged Thursday
 appears on both days; opened and merged the same day collapses to one row.
 
+**Where the time went** — one section per Harvest category, most hours first,
+with every entry underneath it: each meeting and how long it ran, each stretch
+of development and which issue it was against. A meeting carries the notes
+someone took in it, lifted out of whichever reference doc holds them.
+
 **Standing context** — everything without one: completed tasks (Todoist exposes
 no completion timestamp, so they sit at week level), issues assigned to you with
 the ones untouched for 30 days flagged, the near-term backlog, and links to the
@@ -22,6 +27,23 @@ reference docs.
 A footer reports the status of every source. A source that fails is recorded and
 rendered as not gathered, rather than crashing the run — a broken credential
 should never read as a quiet week.
+
+## Meeting notes
+
+The reference docs are mostly running 1:1 documents — one per person, newest
+entry first, each under a `## August 31st` heading. A time entry reading
+`1:1 w/ Rob` on that day is that meeting, so its section is what was discussed,
+and the page shows it inline.
+
+Two rules decide the match, both strict. A doc whose label appears in the entry
+is that meeting. Otherwise a doc about one person matches an entry naming that
+person — but only when the entry reads like a meeting. `1:1 w/ Brendan` and
+`Review Brendan's project plan` both name Brendan; attaching a 1:1's notes to
+the second would read as a record of a conversation that never happened.
+
+Notes are routinely written up a day either side of the meeting, so the nearest
+dated section within three days wins. The doc and its heading are shown with
+the text rather than hidden behind it, so a near match reads as what it is.
 
 ## Sources
 

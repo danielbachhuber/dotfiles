@@ -25,6 +25,21 @@ const weekSummarySchema = z.object({
   generatedAt: z.string(),
 });
 
+/**
+ * A meeting's own notes, lifted out of the reference doc that holds them. The
+ * doc and the heading travel with the text, so a match a day either side of
+ * the meeting reads as what it is rather than as a claim about that day.
+ */
+const meetingNoteSchema = z.object({
+  day: daySchema,
+  /** The time entry this belongs to, matched on verbatim by the page. */
+  entryNote: z.string(),
+  label: z.string(),
+  url: z.string(),
+  heading: z.string(),
+  text: z.string(),
+});
+
 const docSourceSchema = z.object({
   id: z.string().trim().min(1).max(200),
   label: z.string().trim().max(200),
@@ -62,6 +77,7 @@ export const rpcContract = defineRpcContract({
       week: weekDataSchema.nullable(),
       /** The agent's reading, when one has been recorded. */
       interpretation: interpretationSchema.nullable(),
+      meetingNotes: z.array(meetingNoteSchema),
       dir: z.string(),
     }),
   },

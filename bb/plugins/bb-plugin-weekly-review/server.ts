@@ -37,6 +37,9 @@ import {
   renderPrompt,
 } from "./review/interpretation.js";
 import { readFile } from "node:fs/promises";
+import { join as joinPath } from "node:path";
+import type { WeekData } from "./review/types.js";
+import { datedSections, matchDoc, sectionNear } from "./review/meeting-notes.js";
 
 export { rpcContract };
 
@@ -159,6 +162,71 @@ export default async function plugin(bb: BbPluginApi) {
     return { monday: result.week.from, sources: result.sources };
   }
 
+  /** A meeting's notes are long; a whole 1:1 doc is longer. */
+  const MEETING_NOTE_MAX = 6_000;
+
+  /**
+   * Lifts each meeting's own notes out of the reference doc that holds them.
+   *
+   * Runs on the server because the doc text is cached on disk, and returns
+   * only the matched sections rather than the documents: sending twelve 1:1
+   * docs to the panel to display four paragraphs would be most of a megabyte
+   * for the sake of a page that reads better.
+   */
+  async function meetingNotesFor(weeksDir: string, monday: string, week: WeekData) {
+    const cached = week.docs.data.filter(
+      (doc): doc is typeof doc & { cachedPath: string } => doc.cachedPath !== undefined,
+    );
+    if (cached.length === 0) return [];
+
+    const dir = weekDir(weeksDir, monday);
+    const sections = new Map<string, ReturnType<typeof datedSections>>();
+    const notes: Array<{
+      day: string;
+      entryNote: string;
+      label: string;
+      url: string;
+      heading: string;
+      text: string;
+    }> = [];
+    const seen = new Set<string>();
+
+    for (const entry of week.harvest.data) {
+      const match = matchDoc(entry.notes, cached);
+      // "mentioned" is an entry that names someone, not a meeting with them.
+      // Attaching a 1:1's notes to it reads as a record of a conversation that
+      // never happened.
+      if (match === null || match.kind !== "met") continue;
+
+      const key = `${entry.day}\u0000${entry.notes}`;
+      if (seen.has(key)) continue;
+
+      let parsed = sections.get(match.doc.id);
+      if (parsed === undefined) {
+        try {
+          const text = await readFile(joinPath(dir, match.doc.cachedPath), "utf8");
+          parsed = datedSections(text, week.from);
+        } catch {
+          parsed = [];
+        }
+        sections.set(match.doc.id, parsed);
+      }
+
+      const section = sectionNear(parsed, entry.day);
+      if (section === null) continue;
+      seen.add(key);
+      notes.push({
+        day: entry.day,
+        entryNote: entry.notes,
+        label: match.doc.label,
+        url: match.doc.url,
+        heading: section.heading,
+        text: section.body.slice(0, MEETING_NOTE_MAX),
+      });
+    }
+    return notes;
+  }
+
   function describePrompt() {
     const prompt = sources.readPrompt(DEFAULT_PROMPT);
     return { prompt, isDefault: prompt === DEFAULT_PROMPT };
@@ -251,7 +319,12 @@ export default async function plugin(bb: BbPluginApi) {
         readWeek(weeksDir, monday),
         readInterpretation(weeksDir, monday),
       ]);
-      return { week, interpretation, dir: weekDir(weeksDir, monday) };
+      return {
+        week,
+        interpretation,
+        meetingNotes: week === null ? [] : await meetingNotesFor(weeksDir, monday, week),
+        dir: weekDir(weeksDir, monday),
+      };
     },
     week_interpret: ({ monday }) => interpret(monday),
 

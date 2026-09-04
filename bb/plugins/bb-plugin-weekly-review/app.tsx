@@ -33,10 +33,11 @@ import {
   weekTotals,
   STALE_DAYS,
 } from "./review/week.js";
-import { formatDayLong, fromDay, toDay } from "./review/dates.js";
+import { formatDayLong, formatDayShort, fromDay, toDay } from "./review/dates.js";
 import type { BodyOfWork, Interpretation, NextItem } from "./review/interpretation.js";
-import type { CategoryHours, RefKind, WorkItem } from "./review/overview.js";
-import { attributeTime, categories as timeCategories, inFlight } from "./review/overview.js";
+import { attributeTime, inFlight } from "./review/overview.js";
+import type { TimeEntry, TimeSection } from "./review/time-sections.js";
+import { timeSections } from "./review/time-sections.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -181,59 +182,10 @@ function relative(instant: string): string {
 /* Overview                                                                   */
 /* -------------------------------------------------------------------------- */
 
-const REF_KIND_LABEL: Record<RefKind, string> = {
-  authored: "pull request",
-  reviewed: "reviewed",
-  "issue-filed": "issue you filed",
-  "issue-assigned": "assigned to you",
-  unknown: "outside this week",
-};
-
 /**
- * Where the logged time went, by category, largest first. Text rather than a
- * bar: the ratio between the top two categories is the thing worth reading,
- * and two numbers side by side say it more precisely than two widths.
- */
-function TimeBreakdown({
-  categories,
-  attributed,
-  total,
-}: {
-  categories: CategoryHours[];
-  attributed: number;
-  total: number;
-}) {
-  if (categories.length === 0) return <EmptyState>No time logged this week.</EmptyState>;
-  return (
-    <div>
-      <ul className="overflow-hidden rounded-lg border border-border bg-card px-3">
-        {categories.map((category) => (
-          <li
-            key={category.task}
-            className="flex items-baseline gap-3 py-1.5 text-sm tabular-nums"
-          >
-            <span className="w-14 shrink-0 text-right font-medium">
-              {category.hours.toFixed(1)}h
-            </span>
-            <span className="w-10 shrink-0 text-right text-xs text-muted-foreground">
-              {Math.round(category.share * 100)}%
-            </span>
-            <span className="min-w-0 flex-1 font-sans">{category.task}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {attributed.toFixed(1)}h of {total.toFixed(1)}h named a specific issue or pull
-        request. The rest is logged to a category only.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Every number the week knows about, so an interpretation's `refs` can become
- * links. A number the week has never heard of is dropped rather than linked to
- * a guess at its URL.
+ * Every number the week knows about, so an interpretation's `refs` and a time
+ * entry's `#1234` can become links. A number the week has never heard of is
+ * left unlinked rather than pointed at a guess.
  */
 function urlsByNumber(week: WeekData): Map<number, string> {
   const github = week.github.data;
@@ -268,13 +220,7 @@ function RefLinks({ refs, urls }: { refs: number[]; urls: Map<number, string> })
   );
 }
 
-function BodyOfWorkCard({
-  body,
-  urls,
-}: {
-  body: BodyOfWork;
-  urls: Map<number, string>;
-}) {
+function BodyOfWorkCard({ body, urls }: { body: BodyOfWork; urls: Map<number, string> }) {
   return (
     <li className="py-2.5">
       <div className="flex items-baseline gap-2">
@@ -308,25 +254,103 @@ function NextCard({ item, urls }: { item: NextItem; urls: Map<number, string> })
   );
 }
 
-/** The hours that landed on something with a number, most first. */
-function WorkItemRow({ item }: { item: WorkItem }) {
+type MeetingNote = {
+  day: string;
+  entryNote: string;
+  label: string;
+  url: string;
+  heading: string;
+  text: string;
+};
+
+/**
+ * One time entry: when, how long, and what it was against.
+ *
+ * A meeting carries the notes someone took in it, when a reference doc holds
+ * them. The doc and its heading are shown with the text rather than hidden
+ * behind it, because notes are routinely written up a day either side of the
+ * meeting and a silent match would read as a claim about the wrong day.
+ */
+function TimeEntryRow({
+  entry,
+  url,
+  note,
+}: {
+  entry: TimeEntry;
+  url: string | undefined;
+  note: MeetingNote | undefined;
+}) {
   return (
-    <Row>
-      <span className="w-12 shrink-0 text-right text-sm font-medium tabular-nums">
-        {item.hours.toFixed(1)}h
-      </span>
-      {item.url === "" ? (
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">
-          #{item.number}
+    <li className="py-1.5 text-sm">
+      <div className="flex items-baseline gap-3">
+        <span className="w-14 shrink-0 text-right font-medium tabular-nums">
+          {entry.hours.toFixed(2)}h
         </span>
-      ) : (
-        <Ref number={item.number} href={item.url} />
+        <span className="w-24 shrink-0 text-xs text-muted-foreground">
+          {formatDayShort(entry.day)}
+        </span>
+        {entry.reference === null ? null : url === undefined ? (
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+            #{entry.reference}
+          </span>
+        ) : (
+          <Ref number={entry.reference} href={url} />
+        )}
+        <span
+          className={cn(
+            "min-w-0 flex-1",
+            entry.label === "" && "italic text-muted-foreground",
+          )}
+        >
+          {entry.label === "" ? "no note" : entry.label}
+        </span>
+      </div>
+
+      {note === undefined ? null : (
+        <div className="ml-14 mt-1.5 border-l-2 border-border pl-3">
+          <UrlLink
+            href={note.url}
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {note.label} · {note.heading}
+          </UrlLink>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{note.text}</p>
+        </div>
       )}
-      <span className="min-w-0 flex-1">{item.title}</span>
-      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-        {REF_KIND_LABEL[item.kind]}
-      </span>
-    </Row>
+    </li>
+  );
+}
+
+/** A category of logged time, with everything that went into it. */
+function TimeSectionBlock({
+  section,
+  urls,
+  notesFor,
+}: {
+  section: TimeSection;
+  urls: Map<number, string>;
+  notesFor: (entry: TimeEntry) => MeetingNote | undefined;
+}) {
+  return (
+    <section className="mt-6">
+      <h2 className="flex items-baseline gap-2 text-sm font-semibold text-foreground">
+        {section.task}
+        <span className="text-xs font-normal tabular-nums text-muted-foreground">
+          {section.hours.toFixed(1)}h · {Math.round(section.share * 100)}% ·{" "}
+          {section.entries.length} {section.entries.length === 1 ? "entry" : "entries"}
+        </span>
+      </h2>
+      <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
+        {section.entries.map((entry, index) => (
+          <TimeEntryRow
+            key={`${entry.day}-${index}`}
+            entry={entry}
+            url={entry.reference === null ? undefined : urls.get(entry.reference)}
+            note={notesFor(entry)}
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -661,6 +685,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const { listing } = useListing();
   const [week, setWeek] = useState<WeekData | null>(null);
   const [interpretation, setInterpretation] = useState<Interpretation | null>(null);
+  const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
@@ -682,6 +707,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
         if (!live) return;
         setWeek(result.week);
         setInterpretation(result.interpretation);
+        setMeetingNotes(result.meetingNotes);
         setDir(result.dir);
         setError(null);
         setLoading(false);
@@ -721,10 +747,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     () => (week === null ? null : weekTotals(week, slices)),
     [week, slices],
   );
-  const categories = useMemo(
-    () => (week === null ? [] : timeCategories(week.harvest.data)),
-    [week],
-  );
+  const sections = useMemo(() => (week === null ? [] : timeSections(week)), [week]);
   const time = useMemo(() => (week === null ? null : attributeTime(week)), [week]);
   const flight = useMemo(() => (week === null ? null : inFlight(week)), [week]);
   const backlog = useMemo(
@@ -735,7 +758,21 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     [week],
   );
 
-  const urls = useMemo(() => (week === null ? new Map<number, string>() : urlsByNumber(week)), [week]);
+  const urls = useMemo(
+    () => (week === null ? new Map<number, string>() : urlsByNumber(week)),
+    [week],
+  );
+  const notesByEntry = useMemo(() => {
+    const index = new Map<string, MeetingNote>();
+    for (const note of meetingNotes) index.set(`${note.day}\u0000${note.entryNote}`, note);
+    return index;
+  }, [meetingNotes]);
+  // Only entries that named no issue or pull request are ever matched to a
+  // document, so a stripped label is the same string the server keyed on.
+  const notesFor = useCallback(
+    (entry: TimeEntry) => notesByEntry.get(`${entry.day}\u0000${entry.label}`),
+    [notesByEntry],
+  );
   const today = toDay(new Date());
   const assigned = week?.github.data.issuesAssigned ?? [];
   const populated = slices.filter((slice) => !slice.empty);
@@ -824,24 +861,26 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               </Section>
             )}
 
-            {time === null ? null : (
-              <Section title="Where the time went">
-                <TimeBreakdown
-                  categories={categories}
-                  attributed={time.attributed}
-                  total={time.total}
-                />
-              </Section>
-            )}
-
-            {time === null || time.items.length === 0 ? null : (
-              <Section title="What the hours went into" count={time.items.length}>
-                <List>
-                  {time.items.map((item) => (
-                    <WorkItemRow key={item.number} item={item} />
-                  ))}
-                </List>
-              </Section>
+            {sections.length === 0 ? null : (
+              <>
+                <h2 className="mt-6 text-sm font-semibold text-foreground">
+                  Where the time went
+                </h2>
+                {time === null ? null : (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {time.total.toFixed(1)}h across {sections.length} categories.{" "}
+                    {time.attributed.toFixed(1)}h named a specific issue or pull request.
+                  </p>
+                )}
+                {sections.map((section) => (
+                  <TimeSectionBlock
+                    key={section.task}
+                    section={section}
+                    urls={urls}
+                    notesFor={notesFor}
+                  />
+                ))}
+              </>
             )}
 
             {flight === null || flight.openPullRequests.length === 0 ? null : (
