@@ -16,6 +16,8 @@ export interface TimeEntry {
   label: string;
   /** The issue or pull request the note named, when it named one. */
   reference: number | null;
+  /** The Harvest category it was booked to: what kind of time this was. */
+  task: string;
 }
 
 export interface TimeSection {
@@ -65,6 +67,7 @@ function toTimeEntry(entry: HarvestEntry): TimeEntry {
     hours: round(entry.hours),
     label: entry.notes.replace(/^#\d+\s*:?\s*/, "").trim(),
     reference,
+    task: entry.task,
   };
 }
 

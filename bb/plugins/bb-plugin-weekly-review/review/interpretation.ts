@@ -7,28 +7,6 @@
  */
 import { z } from "zod";
 
-export const bodyOfWorkSchema = z.object({
-  /** What to call this thread of work, in the words the work itself used. */
-  title: z.string().trim().min(1).max(120),
-  /** A sentence or two on what actually happened and why it mattered. */
-  detail: z.string().trim().max(600),
-  status: z.enum(["shipped", "in progress", "blocked", "abandoned"]),
-  /** Hours, when the time entries attributed any to it. */
-  hours: z.number().nonnegative().optional(),
-  /** Issue and pull request numbers this covers, so the page can link them. */
-  refs: z.array(z.number().int().positive()).max(60).default([]),
-  /**
-   * Time entries that belong here but name no issue or pull request — the
-   * meetings, the planning, the reviews. Matched verbatim on the day and the
-   * entry's own text, the same escape hatch a daily note uses. Entries that do
-   * name a number are claimed through `refs` and need not be listed.
-   */
-  entries: z
-    .array(z.object({ day: z.string(), label: z.string() }))
-    .max(120)
-    .default([]),
-});
-
 export const nextItemSchema = z.object({
   title: z.string().trim().min(1).max(120),
   /** Why this one, stated from the week's evidence rather than in general. */
@@ -39,13 +17,11 @@ export const nextItemSchema = z.object({
 export const interpretationSchema = z.object({
   /** Two or three sentences: what kind of week this was. */
   summary: z.string().trim().min(1).max(1200),
-  bodiesOfWork: z.array(bodyOfWorkSchema).max(20).default([]),
   next: z.array(nextItemSchema).max(20).default([]),
   /** Stamped on ingest, not by the agent. */
   interpretedAt: z.string().optional(),
 });
 
-export type BodyOfWork = z.infer<typeof bodyOfWorkSchema>;
 export type NextItem = z.infer<typeof nextItemSchema>;
 export type Interpretation = z.infer<typeof interpretationSchema>;
 
@@ -54,37 +30,18 @@ export type Interpretation = z.infer<typeof interpretationSchema>;
  * the starting point — `{{DIGEST}}` and `{{COMMAND}}` are substituted before
  * the thread is spawned.
  */
-export const DEFAULT_PROMPT = `You are reading one week of someone's work and writing the overview they will
-use to plan the next one. Everything below was gathered from Harvest, GitHub,
-and Todoist. Nothing is missing that you should go looking for; interpret what
-is here.
+export const DEFAULT_PROMPT = `You are reading one week of someone's work and writing the two things a page
+of evidence cannot supply for itself. The week is already grouped by theme and
+already shows where every hour went; do not restate it. Everything below was
+gathered from Harvest, GitHub and Todoist; nothing is missing that you should
+go looking for.
 
-Produce three things.
+Produce two things.
 
 **summary** — two or three sentences on what kind of week this was. Lead with
 the shape of it, not a count. If most of the hours went to meetings and
 planning while most of the output was pull requests, say so: that gap is the
 most useful sentence you can write.
-
-**bodiesOfWork** — the substantial threads of work, largest first. A body of
-work is a set of pull requests, issues, meetings and hours that were the same
-effort, not a single pull request and not a commit scope. Titles that repeat a
-phrase are usually one body of work. Name each one in the words the work itself
-used, say what happened in a sentence or two, and mark whether it shipped or is
-still in progress.
-
-Every body of work claims its evidence twice over. \`refs\` is every issue and
-pull request number it covers. \`entries\` is every time entry that belongs to it
-but names no number — the meetings, the planning, the reviews — copied verbatim
-from the "Time entries, with notes" list as \`{ "day": "…", "label": "…" }\`,
-where the label is the entry's text exactly as printed. An entry that does name
-a number is already claimed through \`refs\`; do not list it again.
-
-This is what turns the page from a time sheet into an account of the week, so
-be thorough with \`entries\`. Meetings are work. A recurring standup and a
-one-off review are not the same body of work; a series of conversations
-pushing one decision forward is. Anything genuinely miscellaneous can be left
-out and will be shown on its own.
 
 **next** — where the time should go next, drawn from what this week left open:
 pull requests still unmerged, issues assigned and going stale, work the notes
@@ -103,10 +60,6 @@ Write the result as JSON matching this shape:
 
 {
   "summary": "…",
-  "bodiesOfWork": [
-    { "title": "…", "detail": "…", "status": "shipped|in progress|blocked|abandoned",
-      "hours": 0, "refs": [123, 456] }
-  ],
   "next": [ { "title": "…", "why": "…", "refs": [789] } ]
 }
 

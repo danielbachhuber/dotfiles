@@ -17,30 +17,13 @@ import {
 import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { rpcContract } from "./server";
-import type {
-  DocRef,
-  Issue,
-  Review,
-  SourceResult,
-  Task,
-  WeekData,
-} from "./review/types.js";
-import type { DaySlice, PrEvent } from "./review/week.js";
-import {
-  buildDaySlices,
-  isStale,
-  splitBacklog,
-  weekTotals,
-  STALE_DAYS,
-} from "./review/week.js";
-import { formatDayLong, formatDayShort, fromDay, toDay } from "./review/dates.js";
+import type { SourceResult, WeekData } from "./review/types.js";
+import { buildDaySlices, weekTotals } from "./review/week.js";
+import { formatDayShort, fromDay } from "./review/dates.js";
 import type { Feedback, Interpretation, NextItem } from "./review/interpretation.js";
-import { attributeTime, inFlight } from "./review/overview.js";
-import type { TimeEntry, TimeSection } from "./review/time-sections.js";
-import { timeSections } from "./review/time-sections.js";
-import type { WorkGroup } from "./review/work-groups.js";
-import { groupByWork } from "./review/work-groups.js";
-import { Badge } from "@/components/ui/badge";
+import type { TimeEntry } from "./review/time-sections.js";
+import type { Theme } from "./review/themes.js";
+import { buildThemes } from "./review/themes.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -145,20 +128,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function Row({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <li className={cn("flex items-start gap-2 py-1.5 text-sm", className)}>{children}</li>
-  );
-}
-
-function List({ children }: { children: ReactNode }) {
-  return (
-    <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
-      {children}
-    </ul>
-  );
-}
-
 /** `#123` linking out, kept narrow so titles line up. */
 function Ref({ number, href }: { number: number; href: string }) {
   return (
@@ -202,13 +171,6 @@ function urlsByNumber(week: WeekData): Map<number, string> {
   }
   return urls;
 }
-
-const STATUS_TONE: Record<WorkGroup["status"], string> = {
-  shipped: "border-transparent bg-primary/15 text-primary",
-  "in progress": "border-border bg-transparent text-muted-foreground",
-  blocked: "border-transparent bg-destructive/15 text-destructive",
-  abandoned: "border-transparent bg-muted text-muted-foreground",
-};
 
 function RefLinks({ refs, urls }: { refs: number[]; urls: Map<number, string> }) {
   const linkable = refs.filter((ref) => urls.has(ref));
@@ -326,14 +288,71 @@ type MeetingNote = {
 };
 
 /**
- * One time entry: when, how long, and what it was against.
+ * A theme: what the work was about, day by day.
  *
- * A meeting carries the notes someone took in it, when a reference doc holds
- * them. The doc and its heading are shown with the text rather than hidden
- * behind it, because notes are routinely written up a day either side of the
- * meeting and a silent match would read as a claim about the wrong day.
+ * Each day carries its own total, and each entry under it says how long, what
+ * kind of time it was booked as, and what it was — plus the notes taken in it,
+ * when there are any. A theme routinely crosses categories, which is the whole
+ * reason it is not the categories being shown: "Architecture Talk" was
+ * meetings, admin and planning, and reading it as three numbers on three lists
+ * loses that it was one piece of work.
  */
-function TimeEntryRow({
+function ThemeBlock({
+  theme,
+  urls,
+  notesFor,
+}: {
+  theme: Theme;
+  urls: Map<number, string>;
+  notesFor: (entry: TimeEntry) => MeetingNote[];
+}) {
+  return (
+    <section className="mt-6">
+      <h2 className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
+        <span className="min-w-0 flex-1">{theme.title}</span>
+        <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
+          {theme.hours.toFixed(2)}h
+        </span>
+      </h2>
+
+      {theme.tasks.length <= 1 ? null : (
+        <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+          {theme.tasks.map((task) => (
+            <span key={task.task}>
+              <span className="tabular-nums">{task.hours.toFixed(2)}h</span> {task.task}
+            </span>
+          ))}
+        </p>
+      )}
+
+      <div className="mt-2 overflow-hidden rounded-lg border border-border bg-card">
+        {theme.days.map((day) => (
+          <div key={day.day} className="border-t border-border/60 px-3 py-2 first:border-t-0">
+            <div className="flex items-baseline justify-between text-xs">
+              <span className="font-medium text-foreground">{formatDayShort(day.day)}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {day.hours.toFixed(2)}h
+              </span>
+            </div>
+            <ul className="mt-1">
+              {day.entries.map((entry, index) => (
+                <ThemeEntryRow
+                  key={`${entry.day}-${index}`}
+                  entry={entry}
+                  url={entry.reference === null ? undefined : urls.get(entry.reference)}
+                  notes={notesFor(entry)}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** One entry inside a theme's day: how long, what kind, and what it was. */
+function ThemeEntryRow({
   entry,
   url,
   notes,
@@ -343,13 +362,13 @@ function TimeEntryRow({
   notes: MeetingNote[];
 }) {
   return (
-    <li className="py-1.5 text-sm">
-      <div className="flex items-baseline gap-3">
-        <span className="w-14 shrink-0 text-right font-medium tabular-nums">
+    <li className="py-1 text-sm">
+      <div className="flex items-baseline gap-2">
+        <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground">
           {entry.hours.toFixed(2)}h
         </span>
-        <span className="w-24 shrink-0 text-xs text-muted-foreground">
-          {formatDayShort(entry.day)}
+        <span className="w-24 shrink-0 truncate text-xs text-muted-foreground">
+          {entry.task}
         </span>
         {entry.reference === null ? null : url === undefined ? (
           <span className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -393,287 +412,13 @@ function TimeEntryRow({
   );
 }
 
-/**
- * A body of work: what it was, what it cost, and everything that belongs to it.
- *
- * The hours come from the entries actually assigned rather than from the
- * interpretation's own claim, so the number on the page is one the time sheet
- * supports.
- */
-function WorkGroupBlock({
-  group,
-  urls,
-  notesFor,
-}: {
-  group: WorkGroup;
-  urls: Map<number, string>;
-  notesFor: (entry: TimeEntry) => MeetingNote[];
-}) {
-  const refs = [
-    ...group.pullRequests.map((pr) => pr.number),
-    ...group.issues.map((issue) => issue.number),
-    ...group.reviews.map((review) => review.number),
-  ];
-  const linked = refs.filter((ref) => !group.entries.some((entry) => entry.reference === ref));
-
-  return (
-    <section className="mt-6">
-      <h2 className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
-        <span className="min-w-0 flex-1">{group.title}</span>
-        {group.hours === 0 ? null : (
-          <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
-            {group.hours.toFixed(1)}h
-          </span>
-        )}
-        <Badge className={cn("shrink-0 text-[10px] uppercase", STATUS_TONE[group.status])}>
-          {group.status}
-        </Badge>
-      </h2>
-
-      {group.detail === "" ? null : (
-        <p className="mt-1 text-sm text-muted-foreground">{group.detail}</p>
-      )}
-
-      {group.tasks.length === 0 ? null : (
-        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-          {group.tasks.map((task) => (
-            <span key={task.task}>
-              <span className="tabular-nums">{task.hours.toFixed(1)}h</span> {task.task}
-            </span>
-          ))}
-        </p>
-      )}
-
-      {group.entries.length === 0 ? null : (
-        <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
-          {group.entries.map((entry, index) => (
-            <TimeEntryRow
-              key={`${entry.day}-${index}`}
-              entry={entry}
-              url={entry.reference === null ? undefined : urls.get(entry.reference)}
-              notes={notesFor(entry)}
-            />
-          ))}
-        </ul>
-      )}
-
-      {/* Numbers with no logged time against them: shipped, but off the clock. */}
-      {linked.length === 0 ? null : (
-        <div className="mt-2">
-          <RefLinks refs={linked} urls={urls} />
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** A category of logged time, with everything that went into it. */
-function TimeSectionBlock({
-  section,
-  urls,
-  notesFor,
-}: {
-  section: TimeSection;
-  urls: Map<number, string>;
-  notesFor: (entry: TimeEntry) => MeetingNote[];
-}) {
-  return (
-    <section className="mt-6">
-      <h2 className="flex items-baseline gap-2 text-sm font-semibold text-foreground">
-        {section.task}
-        <span className="text-xs font-normal tabular-nums text-muted-foreground">
-          {section.hours.toFixed(1)}h
-          {section.share === 0 ? "" : ` · ${Math.round(section.share * 100)}%`} ·{" "}
-          {section.entries.length} {section.entries.length === 1 ? "entry" : "entries"}
-        </span>
-      </h2>
-      <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
-        {section.entries.map((entry, index) => (
-          <TimeEntryRow
-            key={`${entry.day}-${index}`}
-            entry={entry}
-            url={entry.reference === null ? undefined : urls.get(entry.reference)}
-            notes={notesFor(entry)}
-          />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* The week spine                                                             */
 /* -------------------------------------------------------------------------- */
 
-const PR_TONE: Record<PrEvent["kind"], string> = {
-  merged: "border-transparent bg-primary/15 text-primary",
-  opened: "border-border bg-transparent text-muted-foreground",
-  closed: "border-transparent bg-destructive/15 text-destructive",
-};
-
-function PrRow({ event }: { event: PrEvent }) {
-  const { pr, kind, openedSameDay } = event;
-  return (
-    <Row>
-      <Badge className={cn("mt-0.5 shrink-0 text-[10px] uppercase", PR_TONE[kind])}>
-        {openedSameDay ? `opened + ${kind}` : kind}
-      </Badge>
-      <Ref number={pr.number} href={pr.url} />
-      <span className="min-w-0 flex-1">{pr.title}</span>
-      {pr.isDraft ? (
-        <span className="shrink-0 text-xs text-muted-foreground">draft</span>
-      ) : null}
-    </Row>
-  );
-}
-
-function ReviewRow({ review }: { review: Review }) {
-  return (
-    <Row>
-      <Icon name="Check" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <Ref number={review.number} href={review.url} />
-      <span className="min-w-0 flex-1">{review.title}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">{review.author}</span>
-    </Row>
-  );
-}
-
-function IssueRow({ issue, note }: { issue: Issue; note?: ReactNode }) {
-  return (
-    <Row>
-      <Ref number={issue.number} href={issue.url} />
-      <span className="min-w-0 flex-1">{issue.title}</span>
-      {note}
-    </Row>
-  );
-}
-
-function DaySection({ slice }: { slice: DaySlice }) {
-  if (slice.empty) return null;
-  return (
-    <section className="mt-4 border-t border-border pt-4 first:border-t-0">
-      <h3 className="flex items-baseline justify-between text-sm font-semibold text-foreground">
-        {formatDayLong(slice.day)}
-        {slice.hours > 0 ? (
-          <span className="text-xs font-normal tabular-nums text-muted-foreground">
-            {slice.hours}h
-          </span>
-        ) : null}
-      </h3>
-
-      {slice.reflect.length === 0 ? null : (
-        <div className="mt-2 space-y-2">
-          {slice.reflect.map((note, index) => (
-            <div
-              key={index}
-              className="rounded-lg border-l-2 border-primary/40 bg-muted/40 px-3 py-2 text-sm"
-            >
-              <div className="text-xs font-medium text-muted-foreground">{note.title}</div>
-              <p className="mt-1 whitespace-pre-wrap">{note.body}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {slice.harvest.length === 0 ? null : (
-        <ul className="mt-2 text-sm">
-          {slice.harvest.map((entry, index) => (
-            <Row key={index} className="py-1">
-              <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground">
-                {entry.hours}h
-              </span>
-              <span className="shrink-0 font-medium">{entry.task}</span>
-              {entry.notes === "" ? null : (
-                <span className="min-w-0 flex-1 text-muted-foreground">{entry.notes}</span>
-              )}
-            </Row>
-          ))}
-        </ul>
-      )}
-
-      {slice.prEvents.length === 0 ? null : (
-        <ul className="mt-2">
-          {slice.prEvents.map((event, index) => (
-            <PrRow key={`${event.pr.number}-${event.kind}-${index}`} event={event} />
-          ))}
-        </ul>
-      )}
-
-      {slice.reviews.length === 0 ? null : (
-        <ul className="mt-2">
-          {slice.reviews.map((review) => (
-            <ReviewRow key={review.number} review={review} />
-          ))}
-        </ul>
-      )}
-
-      {slice.issuesCreated.length === 0 ? null : (
-        <ul className="mt-2">
-          {slice.issuesCreated.map((issue) => (
-            <IssueRow key={issue.number} issue={issue} />
-          ))}
-        </ul>
-      )}
-
-      {slice.slack.length === 0 ? null : (
-        <ul className="mt-2">
-          {slice.slack.map((thread, index) => (
-            <Row key={index}>
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                #{thread.channel}
-              </span>
-              <span className="min-w-0 flex-1">{thread.summary}</span>
-              {thread.permalink === undefined ? null : (
-                <UrlLink href={thread.permalink} className="shrink-0">
-                  <Icon name="ExternalLink" className="size-3.5 text-muted-foreground" />
-                </UrlLink>
-              )}
-            </Row>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* Standing context                                                           */
 /* -------------------------------------------------------------------------- */
-
-function TaskRow({ task }: { task: Task }) {
-  return (
-    <Row>
-      {task.url === "" ? (
-        <span className="min-w-0 flex-1">{task.content}</span>
-      ) : (
-        <UrlLink href={task.url} className="min-w-0 flex-1 hover:underline">
-          {task.content}
-        </UrlLink>
-      )}
-      {task.dueString === null ? null : (
-        <span className="shrink-0 text-xs text-muted-foreground">{task.dueString}</span>
-      )}
-    </Row>
-  );
-}
-
-function DocRow({ doc, dir }: { doc: DocRef; dir: string }) {
-  return (
-    <Row>
-      <Icon name="FileText" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <UrlLink href={doc.url} className="min-w-0 flex-1 hover:underline">
-        {doc.label}
-      </UrlLink>
-      {doc.error === undefined ? (
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">
-          {dir}/{doc.cachedPath}
-        </span>
-      ) : (
-        <span className="shrink-0 text-xs text-destructive">not cached</span>
-      )}
-    </Row>
-  );
-}
 
 /* -------------------------------------------------------------------------- */
 /* Source status                                                              */
@@ -836,7 +581,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [entry, setEntry] = useState<WeekEntry | null>(null);
   const [reviewing, setReviewing] = useState(false);
-  const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
   const [gatheringNotes, setGatheringNotes] = useState(false);
@@ -861,7 +605,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
         setMeetingNotes(result.meetingNotes);
         setFeedback(result.feedback);
         setEntry(result.entry);
-        setDir(result.dir);
         setError(null);
         setLoading(false);
       },
@@ -930,22 +673,9 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     () => (week === null ? null : weekTotals(week, slices)),
     [week, slices],
   );
-  const sections = useMemo(() => (week === null ? [] : timeSections(week)), [week]);
-  // Bodies of work are the spine once a week has been read. Until then there
-  // is nothing to group by but the categories the time was booked to.
-  const grouping = useMemo(
-    () => (week === null || interpretation === null ? null : groupByWork(week, interpretation)),
-    [week, interpretation],
-  );
-  const time = useMemo(() => (week === null ? null : attributeTime(week)), [week]);
-  const flight = useMemo(() => (week === null ? null : inFlight(week)), [week]);
-  const backlog = useMemo(
-    () =>
-      week === null
-        ? null
-        : splitBacklog(week.todoist.data.incomplete, toDay(new Date())),
-    [week],
-  );
+  // Themes, not Harvest categories: the notes already say what the work was
+  // about, and no model is needed to read them.
+  const grouping = useMemo(() => (week === null ? null : buildThemes(week)), [week]);
 
   const urls = useMemo(
     () => (week === null ? new Map<number, string>() : urlsByNumber(week)),
@@ -969,9 +699,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     [notesByEntry, EMPTY],
   );
   const hasNotes = (week?.reflect?.data.length ?? 0) > 0;
-  const today = toDay(new Date());
-  const assigned = week?.github.data.issuesAssigned ?? [];
-  const populated = slices.filter((slice) => !slice.empty);
 
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto">
@@ -1122,153 +849,33 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               </Section>
             )}
 
-            {sections.length === 0 ? null : (
+            {grouping === null ? null : (
               <>
                 <h2 className="mt-6 text-sm font-semibold text-foreground">
-                  {grouping === null ? "Where the time went" : "Bodies of work"}
+                  Where the time went
                 </h2>
-                <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                  {time === null ? null : <span>{time.total.toFixed(1)}h</span>}
-                  {sections.map((section) => (
-                    <span key={section.task}>
-                      <span className="tabular-nums text-foreground">
-                        {section.hours.toFixed(1)}h
-                      </span>{" "}
-                      {section.task}
-                    </span>
-                  ))}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {grouping.total.toFixed(2)}h across {grouping.themes.length} themes,
+                  grouped by what the work was rather than how it was booked.
                 </p>
 
-                {grouping === null ? (
-                  sections.map((section) => (
-                    <TimeSectionBlock
-                      key={section.task}
-                      section={section}
-                      urls={urls}
-                      notesFor={notesFor}
-                    />
-                  ))
-                ) : (
-                  <>
-                    {grouping.groups.map((group, index) => (
-                      <WorkGroupBlock
-                        key={index}
-                        group={group}
-                        urls={urls}
-                        notesFor={notesFor}
-                      />
-                    ))}
+                {grouping.themes.map((theme) => (
+                  <ThemeBlock
+                    key={theme.title}
+                    theme={theme}
+                    urls={urls}
+                    notesFor={notesFor}
+                  />
+                ))}
 
-                    {grouping.ungrouped.length === 0 ? null : (
-                      <>
-                        <h2 className="mt-8 flex items-baseline gap-2 text-sm font-semibold text-foreground">
-                          Everything else
-                          <span className="text-xs font-normal tabular-nums text-muted-foreground">
-                            {grouping.ungroupedHours.toFixed(1)}h
-                          </span>
-                        </h2>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Time no body of work claimed, still grouped by how it was booked.
-                        </p>
-                        {grouping.ungrouped.map((section) => (
-                          <TimeSectionBlock
-                            key={section.task}
-                            section={section}
-                            urls={urls}
-                            notesFor={notesFor}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </>
+                {grouping.everythingElse === null ? null : (
+                  <ThemeBlock
+                    theme={grouping.everythingElse}
+                    urls={urls}
+                    notesFor={notesFor}
+                  />
                 )}
               </>
-            )}
-
-            {flight === null || flight.openPullRequests.length === 0 ? null : (
-              <Section
-                title="Still open from this week"
-                count={flight.openPullRequests.length}
-              >
-                <List>
-                  {flight.openPullRequests.map((pr) => (
-                    <Row key={pr.number}>
-                      <Ref number={pr.number} href={pr.url} />
-                      <span className="min-w-0 flex-1">{pr.title}</span>
-                      {pr.isDraft ? (
-                        <span className="shrink-0 text-xs text-muted-foreground">draft</span>
-                      ) : null}
-                    </Row>
-                  ))}
-                </List>
-              </Section>
-            )}
-
-            <Section title="The week">
-              {populated.length === 0 ? (
-                <EmptyState>No dated activity in this range.</EmptyState>
-              ) : (
-                <div>
-                  {slices.map((slice) => (
-                    <DaySection key={slice.day} slice={slice} />
-                  ))}
-                </div>
-              )}
-            </Section>
-
-            {week.todoist.data.completed.length === 0 ? null : (
-              <Section title="Tasks completed" count={week.todoist.data.completed.length}>
-                {/* Todoist exposes no completion timestamp, so these sit at week
-                    level rather than on a day. */}
-                <List>
-                  {week.todoist.data.completed.map((task) => (
-                    <TaskRow key={task.id} task={task} />
-                  ))}
-                </List>
-              </Section>
-            )}
-
-            {assigned.length === 0 ? null : (
-              <Section title="Assigned to me" count={assigned.length}>
-                <List>
-                  {assigned.map((issue) => (
-                    <IssueRow
-                      key={issue.number}
-                      issue={issue}
-                      note={
-                        isStale(issue, today) ? (
-                          <span className="shrink-0 text-xs text-destructive">
-                            untouched {STALE_DAYS}d+
-                          </span>
-                        ) : undefined
-                      }
-                    />
-                  ))}
-                </List>
-              </Section>
-            )}
-
-            {backlog === null || backlog.overdue.length + backlog.upcoming.length === 0 ? null : (
-              <Section
-                title="Backlog"
-                count={backlog.overdue.length + backlog.upcoming.length}
-              >
-                <List>
-                  {[...backlog.overdue, ...backlog.upcoming].map((task) => (
-                    <TaskRow key={task.id} task={task} />
-                  ))}
-                </List>
-              </Section>
-            )}
-
-            {week.docs.data.length === 0 ? null : (
-              <Section title="Reference docs" count={week.docs.data.length}>
-                <List>
-                  {week.docs.data.map((doc) => (
-                    <DocRow key={doc.id} doc={doc} dir={dir} />
-                  ))}
-                </List>
-              </Section>
             )}
 
             {interpretation === null ? null : (

@@ -14,29 +14,19 @@ time entries, pull requests opened and merged, reviews, issues filed, Slack
 threads, and daily notes. A pull request opened Monday and merged Thursday
 appears on both days; opened and merged the same day collapses to one row.
 
-**Bodies of work** — the spine, once a week has been read. Each thread of work
-carries the hours it cost, the meetings and development and review that made it
-up, and the issues and pull requests it covers. A category answers "how much of
-the week was meetings"; it cannot answer "what did the feature-toggle migration
-cost", because that migration was meetings and planning and development and
-review and the time sheet files those four apart.
+**Where the time went** — the body of the page, grouped by what the work was
+about rather than by how it was booked. One-on-ones, Open Source Roadmap,
+Phase 3 review, Code review, and an Everything else for the tail. Under each
+theme the days it happened on, and under each day how long, what kind of time
+it was booked as, what it was, and the notes taken in it.
 
-Time no body of work claimed falls to **Everything else**, still grouped by how
-it was booked. Grouped and ungrouped hours add up to the week's total exactly.
-
-Until a week is interpreted there is nothing to group by but the categories, so
-the page falls back to one section per Harvest category, most hours first.
-Either way each entry shows when it was, how long it ran, and what it was
-against, and a meeting carries the notes someone took in it.
-
-**Standing context** — everything without one: completed tasks (Todoist exposes
-no completion timestamp, so they sit at week level), issues assigned to you with
-the ones untouched for 30 days flagged, the near-term backlog, and links to the
-reference docs.
-
-A footer reports the status of every source. A source that fails is recorded and
-rendered as not gathered, rather than crashing the run — a broken credential
-should never read as a quiet week.
+The grouping is read out of the entries themselves and needs no model. An entry
+naming an issue takes that item's title; one reading `<something> w/ <person>`
+takes the something, unless that something is just a word for a meeting, in
+which case it is a one-on-one. Themes sharing a run of significant words then
+merge, which is what puts "Architecture Talk", "Architecture Talk Prep" and
+"Prep Architecture Talk" together across three different Harvest categories.
+Grouped hours and the tail add up to the week's total exactly.
 
 ## Meeting notes
 
@@ -140,9 +130,9 @@ bb weekly-review feedback <monday> --file <path-to-json>  # how it records the r
 
 ## The interpretation step
 
-Everything above is deterministic and runs without a model. Grouping forty
-pull request titles into three bodies of work is not, so that is a separate
-step with its own button.
+Everything above is deterministic and runs without a model, including the
+grouping. What is left for an agent is the part evidence cannot supply for
+itself: what kind of week this was, and where the time should go next.
 
 Pressing **Interpret** hands the gathered week to an agent in a spawned thread:
 the whole digest, inline, with an editable prompt around it. The agent writes
@@ -151,15 +141,7 @@ which validates it against a schema and puts it on the page. A failed
 validation reports what was wrong in a form the agent can act on and try again.
 
 The result lands beside the week as `overview.json`. Delete that file and the
-deterministic page is exactly what it was, grouped by category again.
-
-Assignment follows the same rule as the meeting notes: deterministic where the
-record allows it, explicit where it does not. A time entry naming `#5837`
-belongs to whichever body claims 5837 and needs no judgment. An entry reading
-`Phase 3 review` belongs wherever the interpreter puts it, listed verbatim in
-that body's `entries`. Hours shown are summed from the entries actually
-assigned rather than from the interpretation's own claim, so the number on the
-page is one the time sheet supports.
+page loses a summary and a list of what to do next, and nothing else.
 
 The prompt is editable on this plugin's page in Tools, or with
 `bb weekly-review prompt reset` to restore the default. `{{DIGEST}}` and
