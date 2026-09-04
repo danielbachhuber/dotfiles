@@ -314,7 +314,10 @@ function ThemeSummary({ themes, total }: { themes: Theme[]; total: number }) {
           <button
             type="button"
             onClick={() => jump(theme.title)}
-            className="flex w-full items-baseline gap-3 py-1.5 text-left text-sm hover:text-foreground"
+            // The row is a jump link, and only the title says so on hover:
+            // underlining the whole row would drag the hours and the counts
+            // into the affordance.
+            className="group flex w-full items-baseline gap-3 py-1.5 text-left text-sm"
           >
             <span className="w-14 shrink-0 text-right font-medium tabular-nums">
               {theme.hours.toFixed(2)}h
@@ -322,7 +325,9 @@ function ThemeSummary({ themes, total }: { themes: Theme[]; total: number }) {
             <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
               {total === 0 ? "" : `${Math.round((theme.hours / total) * 100)}%`}
             </span>
-            <span className="min-w-0 flex-1 truncate">{theme.title}</span>
+            <span className="min-w-0 flex-1 truncate underline-offset-2 group-hover:underline">
+              {theme.title}
+            </span>
             <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
               {theme.days.length}d · {theme.entryCount}{" "}
               {theme.entryCount === 1 ? "entry" : "entries"}
