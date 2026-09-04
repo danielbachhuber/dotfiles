@@ -110,6 +110,34 @@ where an agent can read it without going through this plugin.
 `hrvst`, `td`, and the Google Doc script are, plus where weeks are written. A
 path is not a fact about anyone, so those are safe as declarative settings.
 
+## The entry, and feedback on it
+
+The weekly entry is written by hand, in a Google Doc, and stays that way. This
+plugin reads that document and never writes to it. The whole point of the
+feedback step is that it does not have to.
+
+Set the doc with `bb weekly-review source set journalDocId <id>`. The entry for
+a week is the last dated section falling inside it — the doc uses the same
+`## September 4, 2026` headings the 1:1 documents do — and it is read fresh
+every time the page loads, because the entry is written after the week is
+gathered and a copy taken at gather time would always be the empty template.
+
+**Check my entry** sends an agent the entry as written and the week's digest,
+and asks two questions: what happened that the entry does not mention, and
+where does the entry say something the evidence says more about. The second is
+where the value is — a line reading "worked on feature toggles" is true, and
+the digest knows it took 3.3 hours across three days and closed four issues.
+
+It proposes no replacement prose. Feedback lands beside the week as
+`feedback.json`, stamped with the heading of the entry it was given on, so
+feedback on a draft you have since rewritten shows as stale rather than
+quietly wrong.
+
+```sh
+bb weekly-review entry <monday>                          # what the agent will read
+bb weekly-review feedback <monday> --file <path-to-json>  # how it records the result
+```
+
 ## The interpretation step
 
 Everything above is deterministic and runs without a model. Grouping forty
@@ -158,7 +186,9 @@ bb weekly-review digest <monday>
 bb weekly-review interpret <monday> --file <path-to-json>
 bb weekly-review meetings <monday>
 bb weekly-review notes <monday> --file <path-to-json>
-bb weekly-review prompt [interpret|notes] [reset]
+bb weekly-review entry <monday>
+bb weekly-review feedback <monday> --file <path-to-json>
+bb weekly-review prompt [interpret|notes|feedback] [reset]
 bb weekly-review source list | set <key> <value> | add-doc <id> <label> | remove-doc <id|label>
 ```
 
@@ -173,6 +203,7 @@ Weeks are identified by their Monday, which is also the directory name.
 data/weeks/2026-08-31/
   week.json        everything the gather produced
   overview.json    the agent's reading of the week (optional)
+  feedback.json    the agent's read of your written entry (optional)
   docs/*.txt       cached text of the reference docs
   reflect.json     written by the agent step (optional)
   slack.json       written by the agent step (optional)

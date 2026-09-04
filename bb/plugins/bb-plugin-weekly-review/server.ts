@@ -25,15 +25,20 @@ import {
 } from "./review/sources.js";
 import {
   listWeeks,
+  readFeedback,
   readInterpretation,
   readWeek,
   weekDir,
+  writeFeedback,
   writeInterpretation,
 } from "./review/store.js";
+import { run } from "./review/fetch/shell.js";
 import { buildDigest } from "./review/digest.js";
 import {
+  DEFAULT_FEEDBACK_PROMPT,
   DEFAULT_NOTES_PROMPT,
   DEFAULT_PROMPT,
+  feedbackSchema,
   interpretationSchema,
   renderPrompt,
 } from "./review/interpretation.js";
@@ -251,7 +256,42 @@ export default async function plugin(bb: BbPluginApi) {
   const DEFAULT_PROMPTS: Record<PromptKind, string> = {
     interpret: DEFAULT_PROMPT,
     notes: DEFAULT_NOTES_PROMPT,
+    feedback: DEFAULT_FEEDBACK_PROMPT,
   };
+
+  /**
+   * This week's entry, as written, read fresh from the document every time.
+   *
+   * Not cached with the week: the whole point is that the entry is written
+   * after the week is gathered, so a copy taken at gather time would always be
+   * the empty template. Read only — nothing in this plugin writes to the doc.
+   */
+  async function readEntry(week: WeekData) {
+    const { journalDocId } = sources.read();
+    if (journalDocId === "") return null;
+
+    const { tools: paths } = await tools();
+    let text: string;
+    try {
+      text = await run(paths.fetchDocScript, [journalDocId]);
+    } catch (error) {
+      bb.log.warn(`could not read the entry doc: ${String(error)}`);
+      return null;
+    }
+
+    // The entry for a week is dated within it, usually on the day it was
+    // written up rather than the Monday. The last one inside the range wins.
+    const inWeek = datedSections(text, week.from).filter(
+      (section) => section.day >= week.from && section.day <= week.to,
+    );
+    const section = inWeek[inWeek.length - 1];
+    if (section === undefined || section.body.trim() === "") return null;
+    return {
+      heading: section.heading,
+      text: section.body,
+      url: `https://docs.google.com/document/d/${journalDocId}/edit`,
+    };
+  }
 
   function describePrompt(kind: PromptKind) {
     const fallback = DEFAULT_PROMPTS[kind];
@@ -318,6 +358,66 @@ export default async function plugin(bb: BbPluginApi) {
       `Weekly review notes — ${monday}`,
       `gathering notes for ${monday}`,
     );
+  }
+
+  /**
+   * Sends an agent to check the hand-written entry against the week.
+   *
+   * The entry stays hand-written. This reports what the evidence says the
+   * entry missed; it proposes no prose and writes nothing to the document.
+   */
+  async function reviewEntry(monday: string): Promise<{ threadId: string }> {
+    const { weeksDir } = await tools();
+    const week = await readWeek(weeksDir, monday);
+    if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
+
+    const entry = await readEntry(week);
+    if (entry === null) {
+      throw new Error(
+        sources.read().journalDocId === ""
+          ? "No weekly entry doc configured. Set it in this plugin's settings."
+          : `Nothing written for ${week.from} through ${week.to} yet.`,
+      );
+    }
+
+    const values = await settings.get();
+    const projectId = values.interpretProjectId.trim() || (await firstProjectId());
+    if (projectId === null) throw new Error("No project to file the feedback thread under.");
+
+    return spawnAgent(
+      projectId,
+      values.interpretProviderId.trim(),
+      renderPrompt(describePrompt("feedback").prompt, {
+        ENTRY: `### ${entry.heading}\n\n${entry.text}`,
+        DIGEST: buildDigest(week),
+        COMMAND: `bb weekly-review feedback ${monday} --file <path-to-your-json>`,
+      }),
+      `Weekly review feedback — ${monday}`,
+      `reviewing the entry for ${monday}`,
+    );
+  }
+
+  /** Validates and records the agent's read of the entry. */
+  async function recordFeedback(monday: string, path: string): Promise<string> {
+    const { weeksDir } = await tools();
+    const parsed = feedbackSchema.safeParse(JSON.parse(await readFile(path, "utf8")));
+    if (!parsed.success) {
+      throw new Error(
+        `That is not valid feedback: ${parsed.error.issues
+          .slice(0, 5)
+          .map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`)
+          .join("; ")}`,
+      );
+    }
+    const week = await readWeek(weeksDir, monday);
+    const entry = week === null ? null : await readEntry(week);
+    const written = await writeFeedback(weeksDir, monday, {
+      ...parsed.data,
+      reviewedAt: new Date().toISOString(),
+      ...(entry === null ? {} : { entryHeading: entry.heading }),
+    });
+    bb.realtime.publish(WEEK_INTERPRETED, { monday });
+    return written;
   }
 
   async function spawnAgent(
@@ -411,19 +511,20 @@ export default async function plugin(bb: BbPluginApi) {
     },
     week_get: async ({ monday }) => {
       const { weeksDir } = await tools();
-      const [week, interpretation] = await Promise.all([
+      const [week, interpretation, feedback] = await Promise.all([
         readWeek(weeksDir, monday),
         readInterpretation(weeksDir, monday),
+        readFeedback(weeksDir, monday),
       ]);
-      return {
-        week,
-        interpretation,
-        meetingNotes: week === null ? [] : await meetingNotesFor(weeksDir, monday, week),
-        dir: weekDir(weeksDir, monday),
-      };
+      const [meetingNotes, entry] = await Promise.all([
+        week === null ? [] : meetingNotesFor(weeksDir, monday, week),
+        week === null ? null : readEntry(week),
+      ]);
+      return { week, interpretation, feedback, entry, meetingNotes, dir: weekDir(weeksDir, monday) };
     },
     week_interpret: ({ monday }) => interpret(monday),
     week_gather_notes: ({ monday }) => gatherNotes(monday),
+    week_feedback: ({ monday }) => reviewEntry(monday),
 
     prompt_get: ({ kind }) => describePrompt(kind),
     prompt_set: ({ kind, prompt }) => {
@@ -458,8 +559,10 @@ export default async function plugin(bb: BbPluginApi) {
     "  bb weekly-review digest <monday>",
     "  bb weekly-review meetings <monday>",
     "  bb weekly-review notes <monday> --file <path-to-json>",
+    "  bb weekly-review entry <monday>",
     "  bb weekly-review interpret <monday> --file <path-to-json>",
-    "  bb weekly-review prompt [interpret|notes] [reset]",
+    "  bb weekly-review feedback <monday> --file <path-to-json>",
+    "  bb weekly-review prompt [interpret|notes|feedback] [reset]",
     "  bb weekly-review source list",
     `  bb weekly-review source set <${SCALAR_KEYS.join("|")}> <value>`,
     "  bb weekly-review source add-doc <google-doc-id> <label...>",
@@ -476,6 +579,7 @@ export default async function plugin(bb: BbPluginApi) {
       `repo              ${current.repo || "(unset)"}`,
       `author            ${current.author || "(unset)"}`,
       `harvestProjectId  ${current.harvestProjectId || "(all projects)"}`,
+      `journalDocId      ${current.journalDocId || "(unset)"}`,
       current.docs.length === 0
         ? "docs              (none)"
         : `docs              ${current.docs.length}`,
@@ -550,14 +654,24 @@ export default async function plugin(bb: BbPluginApi) {
         usage: "bb weekly-review notes <monday> --file <path-to-json>",
       },
       {
+        name: "entry",
+        summary: "Print the week's hand-written entry as it stands in the doc",
+        usage: "bb weekly-review entry <monday>",
+      },
+      {
         name: "interpret",
         summary: "Record an agent's reading of a week from a JSON file",
         usage: "bb weekly-review interpret <monday> --file <path-to-json>",
       },
       {
+        name: "feedback",
+        summary: "Record an agent's read of the written entry from a JSON file",
+        usage: "bb weekly-review feedback <monday> --file <path-to-json>",
+      },
+      {
         name: "prompt",
         summary: "Show or reset the prompt an agent step is given",
-        usage: "bb weekly-review prompt [interpret|notes] [reset]",
+        usage: "bb weekly-review prompt [interpret|notes|feedback] [reset]",
       },
       {
         name: "source",
@@ -634,8 +748,47 @@ export default async function plugin(bb: BbPluginApi) {
             return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };
           }
         }
+        case "entry": {
+          const { weeksDir } = await tools();
+          const monday = positional[0] ?? resolveRange().from;
+          const week = await readWeek(weeksDir, monday);
+          if (week === null) {
+            return { exitCode: 1, stderr: `No week gathered for ${monday}.` };
+          }
+          const entry = await readEntry(week);
+          if (entry === null) {
+            return {
+              exitCode: 1,
+              stderr: `Nothing written for ${week.from} through ${week.to} yet.`,
+            };
+          }
+          return { exitCode: 0, stdout: `### ${entry.heading}\n\n${entry.text}` };
+        }
+        case "feedback": {
+          const monday = positional[0];
+          const file = flag("file");
+          if (monday === undefined || file === undefined) {
+            return {
+              exitCode: 1,
+              stderr: "Usage: bb weekly-review feedback <monday> --file <path-to-json>",
+            };
+          }
+          try {
+            const written = await recordFeedback(monday, file);
+            return { exitCode: 0, stdout: `Recorded feedback on ${monday} at ${written}` };
+          } catch (error) {
+            return {
+              exitCode: 1,
+              stderr: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
         case "prompt": {
-          const kind: PromptKind = positional.includes("notes") ? "notes" : "interpret";
+          const kind: PromptKind = positional.includes("notes")
+            ? "notes"
+            : positional.includes("feedback")
+              ? "feedback"
+              : "interpret";
           if (positional.includes("reset")) {
             sources.writePrompt(kind, "");
             return { exitCode: 0, stdout: `Restored the default ${kind} prompt.` };

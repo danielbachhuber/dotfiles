@@ -1,11 +1,11 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { daySchema, weekDataSchema } from "./schema.js";
-import { interpretationSchema } from "./interpretation.js";
+import { feedbackSchema, interpretationSchema } from "./interpretation.js";
 import { SCALAR_KEYS } from "./sources.js";
 
 /** Which of the two agent steps a prompt belongs to. */
-export const promptKindSchema = z.enum(["interpret", "notes"]);
+export const promptKindSchema = z.enum(["interpret", "notes", "feedback"]);
 export type PromptKind = z.infer<typeof promptKindSchema>;
 
 const sourceStatusSchema = z.object({
@@ -57,6 +57,7 @@ const sourcesSchema = z.object({
   repo: z.string(),
   author: z.string(),
   harvestProjectId: z.string(),
+  journalDocId: z.string(),
   docs: z.array(docSourceSchema),
 });
 
@@ -85,6 +86,10 @@ export const rpcContract = defineRpcContract({
       week: weekDataSchema.nullable(),
       /** The agent's reading, when one has been recorded. */
       interpretation: interpretationSchema.nullable(),
+      /** The agent's read of the hand-written entry, when one has been recorded. */
+      feedback: feedbackSchema.nullable(),
+      /** This week's entry as written, read fresh from the doc. Null when there is none. */
+      entry: z.object({ heading: z.string(), text: z.string(), url: z.string() }).nullable(),
       meetingNotes: z.array(meetingNoteSchema),
       dir: z.string(),
     }),
@@ -106,6 +111,14 @@ export const rpcContract = defineRpcContract({
    * the meetings the name matching could not.
    */
   week_gather_notes: {
+    input: z.object({ monday: mondaySchema }),
+    output: z.object({ threadId: z.string() }),
+  },
+  /**
+   * Sends an agent to check the hand-written entry against the week. It reads
+   * the document and reports; it never writes to it.
+   */
+  week_feedback: {
     input: z.object({ monday: mondaySchema }),
     output: z.object({ threadId: z.string() }),
   },
@@ -147,6 +160,7 @@ export const rpcContract = defineRpcContract({
       repo: z.string().trim().max(200).optional(),
       author: z.string().trim().max(200).optional(),
       harvestProjectId: z.string().trim().max(50).optional(),
+      journalDocId: z.string().trim().max(200).optional(),
       /** Present replaces the whole list, in the order given. */
       docs: z.array(docSourceSchema).max(100).optional(),
     }),

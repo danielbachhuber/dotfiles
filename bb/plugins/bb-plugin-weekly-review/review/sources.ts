@@ -36,11 +36,17 @@ export interface Sources {
   author: string;
   /** Numeric Harvest project id, or blank to gather every project's entries. */
   harvestProjectId: string;
+  /**
+   * The Google Doc the weekly entry is written in, by hand. Read only: this
+   * plugin never writes to it, and the feedback step exists precisely so it
+   * does not have to.
+   */
+  journalDocId: string;
   docs: DocSource[];
 }
 
 /** The scalar keys, so a typo in a `set` is a failure rather than a new row. */
-export const SCALAR_KEYS = ["repo", "author", "harvestProjectId"] as const;
+export const SCALAR_KEYS = ["repo", "author", "harvestProjectId", "journalDocId"] as const;
 export type ScalarKey = (typeof SCALAR_KEYS)[number];
 
 export function isScalarKey(key: string): key is ScalarKey {
@@ -105,6 +111,7 @@ export function createSourceStore(db: Database): SourceStore {
         repo: (values.get("repo") ?? "").trim(),
         author: (values.get("author") ?? "").trim(),
         harvestProjectId: (values.get("harvestProjectId") ?? "").trim(),
+        journalDocId: (values.get("journalDocId") ?? "").trim(),
         docs: statements.readDocs.all() as DocSource[],
       };
     },

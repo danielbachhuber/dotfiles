@@ -34,7 +34,7 @@ import {
   STALE_DAYS,
 } from "./review/week.js";
 import { formatDayLong, formatDayShort, fromDay, toDay } from "./review/dates.js";
-import type { Interpretation, NextItem } from "./review/interpretation.js";
+import type { Feedback, Interpretation, NextItem } from "./review/interpretation.js";
 import { attributeTime, inFlight } from "./review/overview.js";
 import type { TimeEntry, TimeSection } from "./review/time-sections.js";
 import { timeSections } from "./review/time-sections.js";
@@ -231,6 +231,87 @@ function NextCard({ item, urls }: { item: NextItem; urls: Map<number, string> })
       )}
       <RefLinks refs={item.refs} urls={urls} />
     </li>
+  );
+}
+
+type WeekEntry = { heading: string; text: string; url: string };
+
+/**
+ * The agent's read of the hand-written entry.
+ *
+ * Two lists, and they do different jobs. `missing` is what happened and did
+ * not get written down. `expand` is what got written down thinly, quoted so
+ * the line can be found, with what the evidence adds beside it. Neither
+ * proposes replacement prose: the entry is written by hand and stays that way.
+ */
+function FeedbackBlock({
+  feedback,
+  entry,
+  urls,
+}: {
+  feedback: Feedback;
+  entry: WeekEntry | null;
+  urls: Map<number, string>;
+}) {
+  const stale =
+    entry !== null &&
+    feedback.entryHeading !== undefined &&
+    feedback.entryHeading !== entry.heading;
+
+  return (
+    <div className="rounded-lg border border-border bg-card px-4 py-3">
+      <p className="text-sm leading-relaxed">{feedback.assessment}</p>
+
+      {stale ? (
+        <p className="mt-2 text-xs text-destructive">
+          Given on "{feedback.entryHeading}", but the doc now shows "{entry.heading}".
+        </p>
+      ) : null}
+
+      {feedback.missing.length === 0 ? null : (
+        <div className="mt-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Not in the entry
+          </h3>
+          <ul className="mt-1 divide-y divide-border/60">
+            {feedback.missing.map((item, index) => (
+              <li key={index} className="py-2">
+                <div className="text-sm font-medium">{item.title}</div>
+                {item.why === "" ? null : (
+                  <p className="mt-0.5 text-sm text-muted-foreground">{item.why}</p>
+                )}
+                <RefLinks refs={item.refs} urls={urls} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {feedback.expand.length === 0 ? null : (
+        <div className="mt-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Worth more detail
+          </h3>
+          <ul className="mt-1 divide-y divide-border/60">
+            {feedback.expand.map((item, index) => (
+              <li key={index} className="py-2">
+                <p className="border-l-2 border-border pl-2 text-sm italic text-muted-foreground">
+                  {item.quote}
+                </p>
+                <p className="mt-1 text-sm">{item.detail}</p>
+                <RefLinks refs={item.refs} urls={urls} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {feedback.missing.length === 0 && feedback.expand.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Nothing flagged. The entry covers the week.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -752,6 +833,9 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const [week, setWeek] = useState<WeekData | null>(null);
   const [interpretation, setInterpretation] = useState<Interpretation | null>(null);
   const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [entry, setEntry] = useState<WeekEntry | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
@@ -775,6 +859,8 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
         setWeek(result.week);
         setInterpretation(result.interpretation);
         setMeetingNotes(result.meetingNotes);
+        setFeedback(result.feedback);
+        setEntry(result.entry);
         setDir(result.dir);
         setError(null);
         setLoading(false);
@@ -806,6 +892,21 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setGatheringNotes(false);
+    }
+  };
+
+  const askForFeedback = async () => {
+    if (selected === null || reviewing) return;
+    setReviewing(true);
+    try {
+      const { threadId } = await rpc.call("week_feedback", { monday: selected });
+      toast.success("Checking your entry", {
+        description: `Thread ${threadId} is reading it against the week.`,
+      });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -899,6 +1000,66 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
           </div>
         ) : (
           <>
+            {/* The entry is the point of the page: it is written by hand, and
+                the agent's job is to say what it missed. */}
+            <section className="mb-4">
+              <h2 className="flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold text-foreground">
+                <span>
+                  Your entry
+                  {entry === null ? null : (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {entry.heading}
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-center gap-2">
+                  {entry === null ? null : (
+                    <UrlLink
+                      href={entry.url}
+                      className="text-xs font-normal text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      Open the doc
+                    </UrlLink>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7"
+                    onClick={askForFeedback}
+                    disabled={reviewing || entry === null}
+                  >
+                    <Icon
+                      name={reviewing ? "Spinner" : "Check"}
+                      className={cn("size-3.5", reviewing && "animate-spin")}
+                    />
+                    {feedback === null ? "Check my entry" : "Check it again"}
+                  </Button>
+                </span>
+              </h2>
+
+              <div className="mt-2">
+                {entry === null ? (
+                  <EmptyState>
+                    Nothing written for this week yet. Write it in the doc; this page
+                    never does.
+                  </EmptyState>
+                ) : feedback === null ? (
+                  <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                    {entry.text.split("\n").filter((line) => line.trim() !== "").length} lines
+                    written. Check it against the week to see what it missed.
+                  </div>
+                ) : (
+                  <FeedbackBlock feedback={feedback} entry={entry} urls={urls} />
+                )}
+              </div>
+
+              {feedback?.reviewedAt === undefined ? null : (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Checked {relative(feedback.reviewedAt)}
+                </p>
+              )}
+            </section>
+
             {interpretation === null ? (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3">
                 <p className="text-sm text-muted-foreground">
@@ -1163,6 +1324,18 @@ export default definePluginApp((app) => {
     title: "Sources",
     description: "What a week is gathered from. Held in this plugin's database, not in a file.",
     component: SourcesSection,
+  });
+
+  app.slots.settingsSection({
+    id: "feedback-prompt",
+    title: "Feedback prompt",
+    description: "What an agent is asked when it checks your written entry against the week.",
+    component: () => (
+      <PromptSection
+        kind="feedback"
+        placeholders="Sent to the feedback thread. {{ENTRY}} becomes the entry as written, {{DIGEST}} the week, and {{COMMAND}} the command that records the result. Nothing in this plugin writes to the document."
+      />
+    ),
   });
 
   app.slots.settingsSection({

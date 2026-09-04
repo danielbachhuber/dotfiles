@@ -17,6 +17,7 @@ type Sources = {
   repo: string;
   author: string;
   harvestProjectId: string;
+  journalDocId: string;
   docs: DocSource[];
 };
 
@@ -38,6 +39,12 @@ const FIELDS = [
     label: "Harvest project id",
     placeholder: "Every project",
     hint: "Leave blank to gather time entries across all projects.",
+  },
+  {
+    key: "journalDocId" as const,
+    label: "Weekly entry doc id",
+    placeholder: "1AbCdEf…",
+    hint: "The Google Doc you write the weekly entry in. Read only — nothing here ever writes to it.",
   },
 ];
 
