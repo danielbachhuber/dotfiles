@@ -40,6 +40,12 @@ in `resolveCard` carry that weight instead: the collapse button must be the
 first child of the header's left span, and the header row must have exactly two
 children and `justify-between`.
 
+`viewed/engine.test.ts` drives the whole loop against a DOM shaped like bb's,
+with a stand-in for React that flips `aria-expanded` on click. The engine is
+split out of `app.tsx` precisely so it can be tested: every bug this plugin has
+shipped lived in that loop and survived a green run, because only the pure
+functions had tests.
+
 `viewed/dom.test.ts` holds fixtures of the header and toolbar DOM as bb renders
 them. After a bb upgrade, those are the tests that fail first; re-read
 `GitDiffCardHeader-*.js` and `ThreadSecondaryPanel-*.js` in bb's
@@ -78,8 +84,9 @@ width-driven default in charge until you actually pick something.
 | `viewed/marks.ts` | Pure logic: keying, fingerprinting, record changes |
 | `viewed/prefs.ts` | Pure logic: which toolbar buttons to click, and when to save |
 | `viewed/dom.ts` | Reading and decorating bb's card headers |
+| `viewed/engine.ts` | The sync loop: passes, observers, click handling, cleanup |
 | `server.ts` | RPC contract and kv storage boundary |
-| `app.tsx` | The content script: sync loop, observers, cleanup |
+| `app.tsx` | Wiring only: real fetch, real scheduler, real document |
 
 ## Development
 

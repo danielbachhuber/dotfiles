@@ -100,6 +100,24 @@ export function findCards(root: ParentNode): DiffCard[] {
   return cards;
 }
 
+/**
+ * Resolve the card from one of this plugin's own controls.
+ *
+ * This is the lookup the click handler uses. Holding on to the card object —
+ * or even the collapse button — from the pass that injected the checkbox does
+ * not survive bb re-rendering the header: the snapshot's `isCollapsed` goes
+ * stale, and a replaced button leaves the handler pointing at a node that is
+ * no longer in the document, so clicking it does nothing. The control the user
+ * just clicked is by definition still mounted, so walking up from it always
+ * lands on the live header.
+ */
+export function cardForControl(control: Element): DiffCard | null {
+  const actions = control.parentElement;
+  const headerRow = actions?.parentElement;
+  const toggle = headerRow?.firstElementChild?.firstElementChild;
+  return toggle === undefined || toggle === null ? null : resolveCard(toggle);
+}
+
 /** This plugin's control inside a card header, if it is still mounted. */
 export function existingControl(card: DiffCard): HTMLLabelElement | null {
   const control = card.actions.querySelector(`label[${OWNED_ATTR}]`);
