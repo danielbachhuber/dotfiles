@@ -32,14 +32,17 @@ import {
 } from "./review/store.js";
 import { buildDigest } from "./review/digest.js";
 import {
+  DEFAULT_NOTES_PROMPT,
   DEFAULT_PROMPT,
   interpretationSchema,
   renderPrompt,
 } from "./review/interpretation.js";
-import { readFile } from "node:fs/promises";
+import type { PromptKind } from "./review/contract.js";
+import { reflectNoteSchema } from "./review/schema.js";
+import { datedSections, matchDoc, matchNote, sectionNear, entriesWithoutNotes } from "./review/meeting-notes.js";
+import { readFile, writeFile } from "node:fs/promises";
 import { join as joinPath } from "node:path";
 import type { WeekData } from "./review/types.js";
-import { datedSections, matchDoc, sectionNear } from "./review/meeting-notes.js";
 
 export { rpcContract };
 
@@ -177,13 +180,15 @@ export default async function plugin(bb: BbPluginApi) {
     const cached = week.docs.data.filter(
       (doc): doc is typeof doc & { cachedPath: string } => doc.cachedPath !== undefined,
     );
-    if (cached.length === 0) return [];
+    const daily = week.reflect?.data ?? [];
+    if (cached.length === 0 && daily.length === 0) return [];
 
     const dir = weekDir(weeksDir, monday);
     const sections = new Map<string, ReturnType<typeof datedSections>>();
     const notes: Array<{
       day: string;
       entryNote: string;
+      source: "doc" | "notes";
       label: string;
       url: string;
       heading: string;
@@ -192,6 +197,21 @@ export default async function plugin(bb: BbPluginApi) {
     const seen = new Set<string>();
 
     for (const entry of week.harvest.data) {
+      // The day's own notes first. They were written about the meeting, where a
+      // reference doc is a running document the meeting is one entry in.
+      const note = matchNote(entry, daily);
+      if (note !== undefined && note !== null) {
+        notes.push({
+          day: entry.day,
+          entryNote: entry.notes,
+          source: "notes",
+          label: note.title,
+          url: "",
+          heading: "",
+          text: note.body.slice(0, MEETING_NOTE_MAX),
+        });
+      }
+
       const match = matchDoc(entry.notes, cached);
       // "mentioned" is an entry that names someone, not a meeting with them.
       // Attaching a 1:1's notes to it reads as a record of a conversation that
@@ -218,6 +238,7 @@ export default async function plugin(bb: BbPluginApi) {
       notes.push({
         day: entry.day,
         entryNote: entry.notes,
+        source: "doc",
         label: match.doc.label,
         url: match.doc.url,
         heading: section.heading,
@@ -227,9 +248,15 @@ export default async function plugin(bb: BbPluginApi) {
     return notes;
   }
 
-  function describePrompt() {
-    const prompt = sources.readPrompt(DEFAULT_PROMPT);
-    return { prompt, isDefault: prompt === DEFAULT_PROMPT };
+  const DEFAULT_PROMPTS: Record<PromptKind, string> = {
+    interpret: DEFAULT_PROMPT,
+    notes: DEFAULT_NOTES_PROMPT,
+  };
+
+  function describePrompt(kind: PromptKind) {
+    const fallback = DEFAULT_PROMPTS[kind];
+    const prompt = sources.readPrompt(kind, fallback);
+    return { prompt, isDefault: prompt === fallback };
   }
 
   /**
@@ -251,13 +278,55 @@ export default async function plugin(bb: BbPluginApi) {
       throw new Error("No project to file the interpretation thread under.");
     }
 
-    const providerId = values.interpretProviderId.trim();
-    const prompt = renderPrompt(
-      sources.readPrompt(DEFAULT_PROMPT),
-      buildDigest(week),
-      `bb weekly-review interpret ${monday} --file <path-to-your-json>`,
+    return spawnAgent(
+      projectId,
+      values.interpretProviderId.trim(),
+      renderPrompt(describePrompt("interpret").prompt, {
+        DIGEST: buildDigest(week),
+        COMMAND: `bb weekly-review interpret ${monday} --file <path-to-your-json>`,
+      }),
+      `Weekly review — ${monday}`,
+      `interpreting ${monday}`,
     );
+  }
 
+  /**
+   * Sends an agent for the week's daily notes.
+   *
+   * Separate from the interpretation, and before it: the notes are evidence,
+   * not a reading, and the digest the interpreter is handed should already
+   * contain them.
+   */
+  async function gatherNotes(monday: string): Promise<{ threadId: string }> {
+    const { weeksDir } = await tools();
+    const week = await readWeek(weeksDir, monday);
+    if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
+
+    const values = await settings.get();
+    const projectId = values.interpretProjectId.trim() || (await firstProjectId());
+    if (projectId === null) throw new Error("No project to file the notes thread under.");
+
+    return spawnAgent(
+      projectId,
+      values.interpretProviderId.trim(),
+      renderPrompt(describePrompt("notes").prompt, {
+        FROM: week.from,
+        TO: week.to,
+        MEETINGS_COMMAND: `bb weekly-review meetings ${monday}`,
+        COMMAND: `bb weekly-review notes ${monday} --file <path-to-your-json>`,
+      }),
+      `Weekly review notes — ${monday}`,
+      `gathering notes for ${monday}`,
+    );
+  }
+
+  async function spawnAgent(
+    projectId: string,
+    providerId: string,
+    prompt: string,
+    title: string,
+    what: string,
+  ): Promise<{ threadId: string }> {
     const thread = await bb.sdk.threads.spawn({
       projectId,
       // A personal workspace, not a worktree: the thread reads a prompt and
@@ -265,9 +334,9 @@ export default async function plugin(bb: BbPluginApi) {
       environment: { type: "host", workspace: { type: "personal" } },
       ...(providerId === "" ? {} : { providerId }),
       prompt,
-      title: `Weekly review — ${monday}`,
+      title,
     });
-    bb.log.info(`interpreting ${monday} in ${thread.id}`);
+    bb.log.info(`${what} in ${thread.id}`);
     return { threadId: thread.id };
   }
 
@@ -279,6 +348,33 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.warn(`could not list projects: ${String(error)}`);
       return null;
     }
+  }
+
+  /**
+   * Validates and records the week's daily notes. Written beside the week
+   * rather than into week.json, so re-gathering the scriptable sources never
+   * discards what an agent had to go and fetch by hand.
+   */
+  async function recordNotes(monday: string, path: string): Promise<number> {
+    const { weeksDir } = await tools();
+    const parsed = reflectNoteSchema
+      .array()
+      .safeParse(JSON.parse(await readFile(path, "utf8")));
+    if (!parsed.success) {
+      throw new Error(
+        `That is not a valid notes file: ${parsed.error.issues
+          .slice(0, 5)
+          .map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`)
+          .join("; ")}`,
+      );
+    }
+    await writeFile(
+      joinPath(weekDir(weeksDir, monday), "reflect.json"),
+      JSON.stringify(parsed.data, null, 2),
+      "utf8",
+    );
+    bb.realtime.publish(WEEK_GENERATED, { monday });
+    return parsed.data.length;
   }
 
   /** Validates and records an agent's reading. Shared by the CLI and nothing else. */
@@ -327,11 +423,12 @@ export default async function plugin(bb: BbPluginApi) {
       };
     },
     week_interpret: ({ monday }) => interpret(monday),
+    week_gather_notes: ({ monday }) => gatherNotes(monday),
 
-    prompt_get: () => describePrompt(),
-    prompt_set: ({ prompt }) => {
-      sources.writePrompt(prompt.trim());
-      return describePrompt();
+    prompt_get: ({ kind }) => describePrompt(kind),
+    prompt_set: ({ kind, prompt }) => {
+      sources.writePrompt(kind, prompt.trim());
+      return describePrompt(kind);
     },
     week_generate: ({ from, to }) => runGenerate(from, to),
 
@@ -359,8 +456,10 @@ export default async function plugin(bb: BbPluginApi) {
     "  bb weekly-review generate [<monday>|--from YYYY-MM-DD --to YYYY-MM-DD]",
     "  bb weekly-review path [<monday>]",
     "  bb weekly-review digest <monday>",
+    "  bb weekly-review meetings <monday>",
+    "  bb weekly-review notes <monday> --file <path-to-json>",
     "  bb weekly-review interpret <monday> --file <path-to-json>",
-    "  bb weekly-review prompt [show|reset]",
+    "  bb weekly-review prompt [interpret|notes] [reset]",
     "  bb weekly-review source list",
     `  bb weekly-review source set <${SCALAR_KEYS.join("|")}> <value>`,
     "  bb weekly-review source add-doc <google-doc-id> <label...>",
@@ -441,14 +540,24 @@ export default async function plugin(bb: BbPluginApi) {
         usage: "bb weekly-review digest <monday>",
       },
       {
+        name: "meetings",
+        summary: "List the week's named time entries, flagging those with no notes",
+        usage: "bb weekly-review meetings <monday>",
+      },
+      {
+        name: "notes",
+        summary: "Record the week's daily notes from a JSON file",
+        usage: "bb weekly-review notes <monday> --file <path-to-json>",
+      },
+      {
         name: "interpret",
         summary: "Record an agent's reading of a week from a JSON file",
         usage: "bb weekly-review interpret <monday> --file <path-to-json>",
       },
       {
         name: "prompt",
-        summary: "Show or reset the prompt the interpretation thread is given",
-        usage: "bb weekly-review prompt [show|reset]",
+        summary: "Show or reset the prompt an agent step is given",
+        usage: "bb weekly-review prompt [interpret|notes] [reset]",
       },
       {
         name: "source",
@@ -526,12 +635,59 @@ export default async function plugin(bb: BbPluginApi) {
           }
         }
         case "prompt": {
-          if (positional[0] === "reset") {
-            sources.writePrompt("");
-            return { exitCode: 0, stdout: "Restored the default prompt." };
+          const kind: PromptKind = positional.includes("notes") ? "notes" : "interpret";
+          if (positional.includes("reset")) {
+            sources.writePrompt(kind, "");
+            return { exitCode: 0, stdout: `Restored the default ${kind} prompt.` };
           }
-          const { prompt, isDefault } = describePrompt();
-          return { exitCode: 0, stdout: isDefault ? prompt : prompt };
+          return { exitCode: 0, stdout: describePrompt(kind).prompt };
+        }
+        case "meetings": {
+          const { weeksDir } = await tools();
+          const monday = positional[0] ?? resolveRange().from;
+          const week = await readWeek(weeksDir, monday);
+          if (week === null) {
+            return { exitCode: 1, stderr: `No week gathered for ${monday}.` };
+          }
+          const matched = new Set(
+            (await meetingNotesFor(weeksDir, monday, week)).map(
+              (note) => `${note.day}\u0000${note.entryNote}`,
+            ),
+          );
+          const pending = entriesWithoutNotes(
+            week.harvest.data,
+            (entry) => matched.has(`${entry.day}\u0000${entry.notes}`),
+          );
+          const lines = week.harvest.data
+            .filter((entry) => entry.notes.trim() !== "" && !/^#\d+/.test(entry.notes.trim()))
+            .sort((a, b) => a.day.localeCompare(b.day) || b.hours - a.hours)
+            .map((entry) => {
+              const needs = pending.includes(entry) ? "  needs notes" : "";
+              return `${entry.day}  ${entry.hours.toFixed(2)}h  ${entry.task.padEnd(12)}  ${entry.notes}${needs}`;
+            });
+          return {
+            exitCode: 0,
+            stdout: lines.length === 0 ? "No named time entries this week." : lines.join("\n"),
+          };
+        }
+        case "notes": {
+          const monday = positional[0];
+          const file = flag("file");
+          if (monday === undefined || file === undefined) {
+            return {
+              exitCode: 1,
+              stderr: "Usage: bb weekly-review notes <monday> --file <path-to-json>",
+            };
+          }
+          try {
+            const count = await recordNotes(monday, file);
+            return { exitCode: 0, stdout: `Recorded ${count} notes for ${monday}` };
+          } catch (error) {
+            return {
+              exitCode: 1,
+              stderr: error instanceof Error ? error.message : String(error),
+            };
+          }
         }
         case "source":
           return runSourceCommand(args);

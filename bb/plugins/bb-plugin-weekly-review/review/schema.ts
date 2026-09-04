@@ -77,11 +77,21 @@ export const taskSchema = z.object({
   labels: z.array(z.string()),
 });
 
-/** Written by the agent step, not by the fetch — Reflect is MCP-only. */
+/**
+ * Written by the agent step, not by the fetch — daily notes are MCP-only.
+ *
+ * One entry per meeting rather than per day, because a day's note is already
+ * written that way: a top-level bullet per conversation, its detail nested
+ * underneath. `title` is that bullet, and is what the deterministic matcher
+ * reads. `meeting` is the escape hatch for when the two records disagree about
+ * what a meeting was called — logged as "Phase 3 review", written up as "PSI
+ * deadline check-in" — and names the time entry verbatim.
+ */
 export const reflectNoteSchema = z.object({
   day: daySchema,
   title: z.string(),
   body: z.string(),
+  meeting: z.string().optional(),
 });
 
 /** Written by the agent step, not by the fetch — Slack is MCP-only. */

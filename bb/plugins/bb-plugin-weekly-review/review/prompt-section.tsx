@@ -5,11 +5,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRpc } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "../server";
+import type { PromptKind } from "./contract.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Textarea } from "@/components/ui/textarea";
 
-export function PromptSection() {
+export function PromptSection({
+  kind,
+  placeholders,
+}: {
+  kind: PromptKind;
+  placeholders: string;
+}) {
   const rpc = useRpc<typeof rpcContract>();
   const [prompt, setPrompt] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(true);
@@ -24,16 +31,16 @@ export function PromptSection() {
   }, []);
 
   useEffect(() => {
-    rpc.call("prompt_get", null).then(apply, (cause) =>
+    rpc.call("prompt_get", { kind }).then(apply, (cause) =>
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
-  }, [rpc, apply]);
+  }, [rpc, apply, kind]);
 
   const save = async (next: string) => {
     setSaving(true);
     setError(null);
     try {
-      apply(await rpc.call("prompt_set", { prompt: next }));
+      apply(await rpc.call("prompt_set", { kind, prompt: next }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -49,12 +56,7 @@ export function PromptSection() {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">
-        Sent to the interpretation thread with the week's digest substituted for{" "}
-        <code>{"{{DIGEST}}"}</code> and the command that records the answer for{" "}
-        <code>{"{{COMMAND}}"}</code>. Everything deterministic is already gathered by the
-        time this runs.
-      </p>
+      <p className="text-xs text-muted-foreground">{placeholders}</p>
       <Textarea
         value={draft}
         onChange={(event) => setDraft(event.target.value)}

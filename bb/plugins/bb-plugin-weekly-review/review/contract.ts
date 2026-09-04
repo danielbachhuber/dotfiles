@@ -4,6 +4,10 @@ import { daySchema, weekDataSchema } from "./schema.js";
 import { interpretationSchema } from "./interpretation.js";
 import { SCALAR_KEYS } from "./sources.js";
 
+/** Which of the two agent steps a prompt belongs to. */
+export const promptKindSchema = z.enum(["interpret", "notes"]);
+export type PromptKind = z.infer<typeof promptKindSchema>;
+
 const sourceStatusSchema = z.object({
   name: z.string(),
   ok: z.boolean(),
@@ -34,8 +38,12 @@ const meetingNoteSchema = z.object({
   day: daySchema,
   /** The time entry this belongs to, matched on verbatim by the page. */
   entryNote: z.string(),
+  /** Where it came from: a reference doc, or the day's own notes. */
+  source: z.enum(["doc", "notes"]),
   label: z.string(),
+  /** Empty for a source with nowhere to link to. */
   url: z.string(),
+  /** The dated heading the text sat under; empty when there was none. */
   heading: z.string(),
   text: z.string(),
 });
@@ -92,12 +100,22 @@ export const rpcContract = defineRpcContract({
       threadId: z.string(),
     }),
   },
+  /**
+   * Sends an agent to collect the week's daily notes, which are reachable over
+   * MCP and so cannot be gathered by the deterministic fetch. It also resolves
+   * the meetings the name matching could not.
+   */
+  week_gather_notes: {
+    input: z.object({ monday: mondaySchema }),
+    output: z.object({ threadId: z.string() }),
+  },
   prompt_get: {
-    input: z.null(),
+    input: z.object({ kind: promptKindSchema }),
     output: z.object({ prompt: z.string(), isDefault: z.boolean() }),
   },
   prompt_set: {
     input: z.object({
+      kind: promptKindSchema,
       /** Blank restores the default. */
       prompt: z.string().max(20_000),
     }),

@@ -30,6 +30,22 @@ should never read as a quiet week.
 
 ## Meeting notes
 
+Two sources sit under a meeting: the day's own notes, and the reference doc
+that covers it. Both can appear on the same row.
+
+Daily notes are MCP-only, so a script cannot reach them. **Collect notes**
+sends an agent, which pulls each day in the range, splits it into one entry per
+meeting — a daily note is already written that way, a top-level bullet per
+conversation — and records them with `bb weekly-review notes`.
+
+Matching is deterministic first. `Open Source Roadmap w/ Marius` and
+`Open Source Roadmap w/ Marius Scheffel` are the same conversation and the page
+sees that itself. When the two records disagree entirely — logged as
+`Phase 3 review`, written up as `PSI deadline check-in` — the agent sets
+`meeting` to the time entry verbatim, and that wins over any rule.
+`bb weekly-review meetings <monday>` prints the week's entries and flags the
+ones nothing has matched, which is the list the agent is sent to resolve.
+
 The reference docs are mostly running 1:1 documents — one per person, newest
 entry first, each under a `## August 31st` heading. A time entry reading
 `1:1 w/ Rob` on that day is that meeting, so its section is what was discussed,
@@ -57,8 +73,8 @@ the text rather than hidden behind it, so a near match reads as what it is.
 | Todoist completed | `td completed list` | no |
 | Todoist incomplete | `td task list` | no — backlog |
 | Reference docs | a script that prints a Google Doc as text | no |
-| Slack | agent step | yes |
-| Daily notes | agent step | yes |
+| Slack | by hand | yes |
+| Daily notes | agent step, over MCP | yes |
 
 ## Two kinds of state, kept apart
 
@@ -104,23 +120,11 @@ The prompt is editable on this plugin's page in Tools, or with
 `{{COMMAND}}` are substituted before the thread is spawned. Read what the agent
 will see with `bb weekly-review digest <monday>`.
 
-## The agent step
+## Slack
 
-Slack and daily notes are reachable over MCP rather than from a script, so an
-agent writes them between gathering and reading. Drop either into the week's
-directory as a bare array, which is the easiest thing to write, or as a full
-`SourceResult` envelope. Both survive a regenerate.
+Slack is reachable over MCP rather than from a script and has no gathering step
+yet. Drop `slack.json` into the week's directory by hand and it will be read:
 
-```sh
-bb weekly-review path 2026-08-31   # the directory to write into
-```
-
-`reflect.json`
-```json
-[{ "day": "2026-08-31", "title": "Daily note", "body": "…" }]
-```
-
-`slack.json`
 ```json
 [{ "day": "2026-08-31", "channel": "standup",
    "summary": "…", "permalink": "https://…" }]
@@ -134,7 +138,9 @@ bb weekly-review generate [<monday>|--from YYYY-MM-DD --to YYYY-MM-DD]
 bb weekly-review path [<monday>]
 bb weekly-review digest <monday>
 bb weekly-review interpret <monday> --file <path-to-json>
-bb weekly-review prompt [show|reset]
+bb weekly-review meetings <monday>
+bb weekly-review notes <monday> --file <path-to-json>
+bb weekly-review prompt [interpret|notes] [reset]
 bb weekly-review source list | set <key> <value> | add-doc <id> <label> | remove-doc <id|label>
 ```
 

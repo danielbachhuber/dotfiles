@@ -67,8 +67,8 @@ export interface SourceStore {
    * user's own writing about their own work, and because an edited prompt is
    * the thing least worth losing to a reinstall.
    */
-  readPrompt(fallback: string): string;
-  writePrompt(prompt: string): void;
+  readPrompt(kind: string, fallback: string): string;
+  writePrompt(kind: string, prompt: string): void;
 }
 
 export function createSourceStore(db: Database): SourceStore {
@@ -131,15 +131,23 @@ export function createSourceStore(db: Database): SourceStore {
 
     replaceDocs: replace,
 
-    readPrompt(fallback) {
-      const row = statements.readSetting.get("interpretPrompt") as
+    readPrompt(kind, fallback) {
+      const row = statements.readSetting.get(promptKey(kind)) as
         | { value: string }
         | undefined;
       return row === undefined || row.value.trim() === "" ? fallback : row.value;
     },
 
-    writePrompt(prompt) {
-      statements.writeSetting.run("interpretPrompt", prompt);
+    writePrompt(kind, prompt) {
+      statements.writeSetting.run(promptKey(kind), prompt);
     },
   };
+}
+
+/**
+ * The interpretation prompt predates the notes prompt and is still stored
+ * under its original key, so an edited prompt survives the upgrade.
+ */
+function promptKey(kind: string): string {
+  return kind === "interpret" ? "interpretPrompt" : `${kind}Prompt`;
 }

@@ -96,7 +96,62 @@ That command validates the JSON and puts it on the page. If it reports a
 validation error, fix the file and run it again. Report what you recorded, then
 stop.`;
 
-/** Fills the prompt's two placeholders. A template missing one still works. */
-export function renderPrompt(template: string, digest: string, command: string): string {
-  return template.replaceAll("{{DIGEST}}", digest).replaceAll("{{COMMAND}}", command);
+/**
+ * The default prompt for collecting the week's daily notes.
+ *
+ * Kept separate from the interpretation because it is a different kind of job:
+ * this one fetches something a script cannot reach and resolves the handful of
+ * meetings name matching could not, and nothing it produces is a judgment
+ * about the work.
+ */
+export const DEFAULT_NOTES_PROMPT = `Collect this week's daily notes so they can sit beside the meetings they were
+taken in.
+
+The week runs {{FROM}} through {{TO}}.
+
+1. Read the meetings already logged for the week:
+
+   {{MEETINGS_COMMAND}}
+
+   Each line is a time entry. A line marked \`needs notes\` has nothing matched
+   to it yet. Not all of them are meetings, and not all of them will appear in
+   the notes; that is fine.
+
+2. Pull the daily note for each day in the range from Reflect. If a day has no
+   note, skip it; do not invent one.
+
+3. Split each day's note into one entry per meeting. A daily note is already
+   written that way — a top-level bullet per conversation, its detail nested
+   underneath. The bullet becomes \`title\` and everything under it becomes
+   \`body\`, kept verbatim, including the names of who was there.
+
+4. Where a bullet is plainly the same conversation as a logged meeting but is
+   called something different — logged as "Phase 3 review", written up as "PSI
+   deadline check-in" — set \`meeting\` to the time entry's text exactly as step
+   1 printed it. Leave \`meeting\` off when the names already agree; the page
+   matches those itself. Do not guess: an unmatched note still gets recorded,
+   and a wrong pairing is worse than none.
+
+5. Write the result to a file under /tmp as JSON:
+
+   [ { "day": "YYYY-MM-DD", "title": "…", "body": "…", "meeting": "…" } ]
+
+   then record it with:
+
+   {{COMMAND}}
+
+That command validates the file and puts the notes on the page. If it reports a
+validation error, fix the file and run it again. Say which meetings you matched
+and which you could not, then stop.`;
+
+/** Substitutes `{{NAME}}` placeholders. A template missing one still works. */
+export function renderPrompt(
+  template: string,
+  values: Record<string, string>,
+): string {
+  let out = template;
+  for (const [name, value] of Object.entries(values)) {
+    out = out.replaceAll(`{{${name}}}`, value);
+  }
+  return out;
 }

@@ -257,6 +257,7 @@ function NextCard({ item, urls }: { item: NextItem; urls: Map<number, string> })
 type MeetingNote = {
   day: string;
   entryNote: string;
+  source: "doc" | "notes";
   label: string;
   url: string;
   heading: string;
@@ -274,11 +275,11 @@ type MeetingNote = {
 function TimeEntryRow({
   entry,
   url,
-  note,
+  notes,
 }: {
   entry: TimeEntry;
   url: string | undefined;
-  note: MeetingNote | undefined;
+  notes: MeetingNote[];
 }) {
   return (
     <li className="py-1.5 text-sm">
@@ -306,17 +307,27 @@ function TimeEntryRow({
         </span>
       </div>
 
-      {note === undefined ? null : (
-        <div className="ml-14 mt-1.5 border-l-2 border-border pl-3">
-          <UrlLink
-            href={note.url}
-            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
-          >
-            {note.label} · {note.heading}
-          </UrlLink>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{note.text}</p>
-        </div>
-      )}
+      {notes.map((note, index) => {
+        const attribution =
+          note.heading === "" ? note.label : `${note.label} · ${note.heading}`;
+        return (
+          <div key={index} className="ml-14 mt-1.5 border-l-2 border-border pl-3">
+            {note.url === "" ? (
+              <span className="text-xs text-muted-foreground">{attribution}</span>
+            ) : (
+              <UrlLink
+                href={note.url}
+                className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+              >
+                {attribution}
+              </UrlLink>
+            )}
+            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+              {note.text}
+            </p>
+          </div>
+        );
+      })}
     </li>
   );
 }
@@ -329,7 +340,7 @@ function TimeSectionBlock({
 }: {
   section: TimeSection;
   urls: Map<number, string>;
-  notesFor: (entry: TimeEntry) => MeetingNote | undefined;
+  notesFor: (entry: TimeEntry) => MeetingNote[];
 }) {
   return (
     <section className="mt-6">
@@ -346,7 +357,7 @@ function TimeSectionBlock({
             key={`${entry.day}-${index}`}
             entry={entry}
             url={entry.reference === null ? undefined : urls.get(entry.reference)}
-            note={notesFor(entry)}
+            notes={notesFor(entry)}
           />
         ))}
       </ul>
@@ -689,6 +700,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [interpreting, setInterpreting] = useState(false);
+  const [gatheringNotes, setGatheringNotes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
@@ -727,6 +739,21 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   // the same way it hears about anything else: over the signal.
   useRealtime("week-interpreted", () => setReload((count) => count + 1));
 
+  const askForNotes = async () => {
+    if (selected === null || gatheringNotes) return;
+    setGatheringNotes(true);
+    try {
+      const { threadId } = await rpc.call("week_gather_notes", { monday: selected });
+      toast.success("Collecting the week's notes", {
+        description: `Thread ${threadId} is pulling them; they appear on their meetings when it lands.`,
+      });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setGatheringNotes(false);
+    }
+  };
+
   const askForInterpretation = async () => {
     if (selected === null || interpreting) return;
     setInterpreting(true);
@@ -763,16 +790,23 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     [week],
   );
   const notesByEntry = useMemo(() => {
-    const index = new Map<string, MeetingNote>();
-    for (const note of meetingNotes) index.set(`${note.day}\u0000${note.entryNote}`, note);
+    const index = new Map<string, MeetingNote[]>();
+    for (const note of meetingNotes) {
+      const key = `${note.day}\u0000${note.entryNote}`;
+      const existing = index.get(key);
+      if (existing === undefined) index.set(key, [note]);
+      else existing.push(note);
+    }
     return index;
   }, [meetingNotes]);
-  // Only entries that named no issue or pull request are ever matched to a
-  // document, so a stripped label is the same string the server keyed on.
+  const EMPTY: MeetingNote[] = useMemo(() => [], []);
+  // Only entries that named no issue or pull request are ever matched, so a
+  // stripped label is the same string the server keyed on.
   const notesFor = useCallback(
-    (entry: TimeEntry) => notesByEntry.get(`${entry.day}\u0000${entry.label}`),
-    [notesByEntry],
+    (entry: TimeEntry) => notesByEntry.get(`${entry.day}\u0000${entry.label}`) ?? EMPTY,
+    [notesByEntry, EMPTY],
   );
+  const hasNotes = (week?.reflect?.data.length ?? 0) > 0;
   const today = toDay(new Date());
   const assigned = week?.github.data.issuesAssigned ?? [];
   const populated = slices.filter((slice) => !slice.empty);
@@ -810,17 +844,32 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                   Nothing has read this week yet. An agent can group the work into threads
                   and say where next week should go.
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={askForInterpretation}
-                  disabled={interpreting}
-                >
-                  <Icon
-                    name={interpreting ? "Spinner" : "Zap"}
-                    className={cn("size-4", interpreting && "animate-spin")}
-                  />
-                  Interpret
-                </Button>
+                <div className="flex items-center gap-2">
+                  {hasNotes ? null : (
+                    <Button
+                      variant="ghost"
+                      onClick={askForNotes}
+                      disabled={gatheringNotes}
+                    >
+                      <Icon
+                        name={gatheringNotes ? "Spinner" : "FileText"}
+                        className={cn("size-4", gatheringNotes && "animate-spin")}
+                      />
+                      Collect notes
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={askForInterpretation}
+                    disabled={interpreting}
+                  >
+                    <Icon
+                      name={interpreting ? "Spinner" : "Zap"}
+                      className={cn("size-4", interpreting && "animate-spin")}
+                    />
+                    Interpret
+                  </Button>
+                </div>
               </div>
             ) : (
               <p className="mb-4 text-sm leading-relaxed">{interpretation.summary}</p>
@@ -977,6 +1026,21 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                     ? "at an unknown time"
                     : relative(interpretation.interpretedAt)}
                 </span>
+                {hasNotes ? null : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={askForNotes}
+                    disabled={gatheringNotes}
+                  >
+                    <Icon
+                      name={gatheringNotes ? "Spinner" : "FileText"}
+                      className={cn("size-3.5", gatheringNotes && "animate-spin")}
+                    />
+                    Collect notes
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1010,10 +1074,27 @@ export default definePluginApp((app) => {
   });
 
   app.slots.settingsSection({
+    id: "notes-prompt",
+    title: "Notes prompt",
+    description: "What an agent is asked when it collects the week's daily notes.",
+    component: () => (
+      <PromptSection
+        kind="notes"
+        placeholders="Sent to the notes thread. {{FROM}} and {{TO}} become the week's dates, {{MEETINGS_COMMAND}} the command that lists its meetings, and {{COMMAND}} the one that records the result."
+      />
+    ),
+  });
+
+  app.slots.settingsSection({
     id: "prompt",
     title: "Interpretation prompt",
     description: "What the agent is asked when it reads a week.",
-    component: PromptSection,
+    component: () => (
+      <PromptSection
+        kind="interpret"
+        placeholders="Sent to the interpretation thread. {{DIGEST}} becomes the week's digest and {{COMMAND}} the command that records the answer. Everything deterministic is already gathered by the time this runs."
+      />
+    ),
   });
 
   app.slots.navPanel({

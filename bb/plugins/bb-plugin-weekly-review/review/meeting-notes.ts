@@ -184,3 +184,54 @@ export function sectionNear(sections: DatedSection[], day: Day, toleranceDays = 
   }
   return best?.section ?? null;
 }
+
+/**
+ * Which daily-note entry, if any, was written about a time entry.
+ *
+ * An explicit `meeting` wins: it is the agent saying these two records are the
+ * same conversation under different names, which is the case no rule can
+ * reach. Failing that, the note's own bullet is matched against the entry the
+ * same way a document is — the same conversation is usually called nearly the
+ * same thing in both places.
+ */
+export function matchNote<T extends { day: Day; title: string; meeting?: string }>(
+  entry: { day: Day; notes: string },
+  notes: T[],
+): T | null {
+  const wanted = normalize(entry.notes);
+  if (wanted === "" || LEADING_REF.test(wanted)) return null;
+
+  const sameDay = notes.filter((note) => note.day === entry.day);
+
+  for (const note of sameDay) {
+    if (note.meeting !== undefined && normalize(note.meeting) === wanted) return note;
+  }
+  for (const note of sameDay) {
+    if (note.meeting !== undefined) continue;
+    const title = normalize(note.title);
+    if (title === "") continue;
+    // Either name containing the other is the ordinary case: "Open Source
+    // Roadmap w/ Marius" against "Open Source Roadmap w/ Marius Scheffel".
+    if (title.includes(wanted) || wanted.includes(title)) return note;
+  }
+  return null;
+}
+
+/**
+ * Named time entries nothing has been matched to yet.
+ *
+ * Deliberately not filtered by whether the entry reads like a meeting. That
+ * test exists to stop a 1:1 document attaching itself to work merely naming
+ * the person; using it here would hide the entries that need an agent most.
+ * "Phase 3 review" and "Architecture Talk" are meetings and contain none of
+ * the words, which is exactly why no rule found their notes.
+ */
+export function entriesWithoutNotes<T extends { day: Day; notes: string }>(
+  entries: T[],
+  matched: (entry: T) => boolean,
+): T[] {
+  return entries.filter((entry) => {
+    const note = normalize(entry.notes);
+    return note !== "" && !LEADING_REF.test(note) && !matched(entry);
+  });
+}
