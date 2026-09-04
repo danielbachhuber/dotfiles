@@ -7,7 +7,15 @@
 // pretending to be something that happened on Tuesday.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { definePluginApp, UrlLink, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import {
+  definePluginApp,
+  UrlLink,
+  useBbNavigate,
+  useRealtime,
+  useRpc,
+} from "@get-bb/plugin-sdk/app";
+import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
+import { toast } from "sonner";
 import type { rpcContract } from "./server";
 import type {
   DocRef,
@@ -39,14 +47,50 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { SourcesSection } from "./review/sources-section.js";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
+
+type WeekSummary = { monday: string; to: string; generatedAt: string };
 
 type Listing = {
-  weeks: string[];
+  weeks: WeekSummary[];
   currentWeek: string;
   previousWeek: string;
   missingSources: string[];
   weeksDir: string;
 };
+
+/** The panel's route segment, and the prefix its deep links are built on. */
+const PANEL_PATH = "weekly-review";
+const MONDAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The listing, shared by the title bar and the body. They mount separately, so
+ * each runs its own copy rather than passing one down; both refetch on the
+ * server's signal, so they cannot disagree for long.
+ */
+function useListing() {
+  const rpc = useRpc<typeof rpcContract>();
+  const [listing, setListing] = useState<Listing | null>(null);
+  const refetch = useCallback(() => {
+    rpc.call("weeks_list", null).then(setListing, () => undefined);
+  }, [rpc]);
+  useEffect(refetch, [refetch]);
+  useRealtime("week-generated", refetch);
+  return { listing, refetch };
+}
+
+/**
+ * Which week the page is showing. The route holds it, so a week is linkable
+ * and the back button walks the weeks you looked at. An empty or unparseable
+ * subPath falls back to the newest gathered week, then to the current one,
+ * which the empty state offers to gather.
+ */
+function selectedWeek(subPath: string, listing: Listing | null): string | null {
+  const fromRoute = subPath.split("/")[0];
+  if (MONDAY.test(fromRoute)) return fromRoute;
+  if (listing === null) return null;
+  return listing.weeks[0]?.monday ?? listing.currentWeek;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Small shared pieces                                                        */
@@ -362,32 +406,113 @@ function weekLabel(monday: string, listing: Listing | null): string {
   return `${short(start)} – ${short(end)}${suffix}`;
 }
 
-function WeeklyReviewPage() {
+/**
+ * The title bar: which week, regenerating it, and how fresh it is.
+ *
+ * Mounted separately from the body, so the two share the route rather than
+ * React state. That is what makes a week linkable, and it means the browser's
+ * back button walks the weeks you looked at.
+ */
+function WeeklyReviewHeader({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc<typeof rpcContract>();
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const navigate = useBbNavigate();
+  const compact = useIsCompactViewport();
+  const { listing, refetch } = useListing();
+  const [generating, setGenerating] = useState(false);
+
+  const selected = selectedWeek(subPath, listing);
+  const summary = listing?.weeks.find((week) => week.monday === selected) ?? null;
+
+  // Weeks that exist, plus this week and last week even when they don't, so
+  // generating either one is a selection rather than a date to work out.
+  const options = useMemo(() => {
+    if (listing === null) return [];
+    const all = new Set([
+      ...listing.weeks.map((week) => week.monday),
+      listing.currentWeek,
+      listing.previousWeek,
+    ]);
+    return [...all].sort().reverse();
+  }, [listing]);
+
+  const generate = async () => {
+    if (selected === null || generating) return;
+    setGenerating(true);
+    try {
+      const result = await rpc.call("week_generate", { from: selected });
+      const failed = result.sources.filter((source) => !source.ok);
+      // Raised here rather than in the body: a source that failed is a fact
+      // about this run, and the body still has everything the others produced.
+      if (failed.length === 0) {
+        toast.success(`Gathered ${result.monday}`);
+      } else {
+        toast.warning(`${failed.map((source) => source.name).join(", ")} not gathered`, {
+          description: failed.map((source) => source.error).join("; "),
+        });
+      }
+      refetch();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {compact || summary === null ? null : (
+        <span className="whitespace-nowrap text-xs text-muted-foreground">
+          gathered {relative(summary.generatedAt)}
+        </span>
+      )}
+
+      <Select
+        value={selected ?? undefined}
+        onValueChange={(value) => navigate.toPluginPanel(PANEL_PATH, { subPath: value })}
+      >
+        <SelectTrigger className="h-7 w-52" aria-label="Week">
+          <SelectValue placeholder="Choose a week" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((monday) => (
+            <SelectItem key={monday} value={monday}>
+              {weekLabel(monday, listing)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7"
+        onClick={generate}
+        disabled={generating || selected === null}
+        aria-label={summary === null ? "Generate this week" : "Regenerate this week"}
+      >
+        <Icon
+          name={generating ? "Spinner" : "ArrowReloadHorizontal"}
+          className={cn("size-3.5", generating && "animate-spin")}
+        />
+        {compact ? null : summary === null ? "Generate" : "Regenerate"}
+      </Button>
+    </div>
+  );
+}
+
+function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
+  const rpc = useRpc<typeof rpcContract>();
+  const { listing } = useListing();
   const [week, setWeek] = useState<WeekData | null>(null);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const report = useCallback((cause: unknown) => {
-    setError(cause instanceof Error ? cause.message : String(cause));
-  }, []);
-
-  const refetchListing = useCallback(() => {
-    rpc.call("weeks_list", null).then((next) => {
-      setListing(next);
-      setError(null);
-      // Land on the newest week that exists; failing that, the current one,
-      // which the empty state then offers to generate.
-      setSelected((current) => current ?? next.weeks[0] ?? next.currentWeek);
-    }, report);
-  }, [rpc, report]);
-
-  useEffect(refetchListing, [refetchListing]);
-  useRealtime("week-generated", refetchListing);
+  const selected = selectedWeek(subPath, listing);
+  // Part of the effect's key, so a regenerate in the title bar pulls the new
+  // week down here without the two components having to know about each other.
+  const generatedAt =
+    listing?.weeks.find((summary) => summary.monday === selected)?.generatedAt ?? null;
 
   useEffect(() => {
     if (selected === null) return;
@@ -398,49 +523,19 @@ function WeeklyReviewPage() {
         if (!live) return;
         setWeek(result.week);
         setDir(result.dir);
+        setError(null);
         setLoading(false);
       },
       (cause) => {
         if (!live) return;
-        report(cause);
+        setError(cause instanceof Error ? cause.message : String(cause));
         setLoading(false);
       },
     );
     return () => {
       live = false;
     };
-  }, [rpc, selected, report]);
-
-  const generate = async () => {
-    if (selected === null || generating) return;
-    setGenerating(true);
-    setError(null);
-    try {
-      const result = await rpc.call("week_generate", { from: selected });
-      const failed = result.sources.filter((source) => !source.ok);
-      if (failed.length > 0) {
-        setError(
-          `${failed.map((source) => `${source.name}: ${source.error}`).join("; ")}`,
-        );
-      }
-      const fresh = await rpc.call("week_get", { monday: result.monday });
-      setWeek(fresh.week);
-      setDir(fresh.dir);
-      refetchListing();
-    } catch (cause) {
-      report(cause);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  // Weeks that exist, plus this week and last week even when they don't, so
-  // generating either one is a selection rather than a date to work out.
-  const options = useMemo(() => {
-    if (listing === null) return [];
-    const all = new Set([...listing.weeks, listing.currentWeek, listing.previousWeek]);
-    return [...all].sort().reverse();
-  }, [listing]);
+  }, [rpc, selected, generatedAt]);
 
   const slices = useMemo(() => (week === null ? [] : buildDaySlices(week)), [week]);
   const totals = useMemo(
@@ -466,60 +561,23 @@ function WeeklyReviewPage() {
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto box-border w-full max-w-4xl px-4 pb-16 pt-3 md:px-5 md:pt-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={selected ?? undefined}
-            onValueChange={(value) => {
-              setSelected(value);
-              setError(null);
-            }}
-          >
-            <SelectTrigger className="w-64" aria-label="Week">
-              <SelectValue placeholder="Choose a week" />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((monday) => (
-                <SelectItem key={monday} value={monday}>
-                  {weekLabel(monday, listing)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button variant="outline" onClick={generate} disabled={generating || selected === null}>
-            <Icon
-              name={generating ? "Spinner" : "ArrowReloadHorizontal"}
-              className={cn("size-4", generating && "animate-spin")}
-            />
-            {week === null ? "Generate" : "Regenerate"}
-          </Button>
-
-          {week === null ? null : (
-            <span className="text-xs text-muted-foreground">
-              {week.from} – {week.to} · gathered {relative(week.generatedAt)}
-            </span>
-          )}
-        </div>
-
         {listing !== null && listing.missingSources.length > 0 ? (
-          <p role="alert" className="mt-3 text-sm text-muted-foreground">
+          <p role="alert" className="text-sm text-muted-foreground">
             Set {listing.missingSources.join(" and ")} in this plugin's settings before
             gathering a week.
           </p>
         ) : null}
 
         {error === null ? null : (
-          <p role="alert" className="mt-3 text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
 
         {loading && week === null ? (
-          <div className="mt-4">
-            <EmptyState>Loading…</EmptyState>
-          </div>
+          <EmptyState>Loading…</EmptyState>
         ) : week === null ? (
-          <div className="mt-4">
+          <div>
             <EmptyState>
               Nothing gathered for this week yet. Generate it, or run{" "}
               <code>bb weekly-review generate {selected ?? ""}</code>.
@@ -528,7 +586,7 @@ function WeeklyReviewPage() {
         ) : (
           <>
             {totals === null ? null : (
-              <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                 <Stat label="Hours" value={totals.hours} />
                 <Stat label="PRs opened" value={totals.prsOpened} />
                 <Stat label="PRs merged" value={totals.prsMerged} />
@@ -538,16 +596,17 @@ function WeeklyReviewPage() {
               </div>
             )}
 
-            {categories.length === 0 ? null : (
-              <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                {categories.map((category) => (
-                  <span key={category.task}>
-                    <span className="tabular-nums text-foreground">{category.hours}h</span>{" "}
-                    {category.task}
-                  </span>
-                ))}
-              </p>
-            )}
+            <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="text-foreground">
+                {week.from} – {week.to}
+              </span>
+              {categories.map((category) => (
+                <span key={category.task}>
+                  <span className="tabular-nums text-foreground">{category.hours}h</span>{" "}
+                  {category.task}
+                </span>
+              ))}
+            </p>
 
             <Section title="The week">
               {populated.length === 0 ? (
@@ -636,7 +695,8 @@ export default definePluginApp((app) => {
     id: "weekly-review",
     title: "Weekly review",
     icon: "Calendar",
-    path: "weekly-review",
+    path: PANEL_PATH,
     component: WeeklyReviewPage,
+    headerContent: WeeklyReviewHeader,
   });
 });

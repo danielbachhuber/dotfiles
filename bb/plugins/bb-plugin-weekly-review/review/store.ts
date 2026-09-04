@@ -25,15 +25,35 @@ export function weekDir(weeksDir: string, monday: Day): string {
   return join(weeksDir, monday);
 }
 
-/** Every week with a directory, newest first. */
-export async function listWeeks(weeksDir: string): Promise<Day[]> {
+/** A gathered week, reduced to what a chooser needs to label it. */
+export interface WeekSummary {
+  monday: Day;
+  to: Day;
+  generatedAt: string;
+}
+
+/**
+ * Every gathered week, newest first. Each summary costs one file read, which is
+ * fine at the scale of a working life: a decade of weeks is five hundred small
+ * local reads, and the listing is not on a hot path.
+ */
+export async function listWeeks(weeksDir: string): Promise<WeekSummary[]> {
   let entries: string[];
   try {
     entries = await readdir(weeksDir);
   } catch {
     return [];
   }
-  return entries.filter((name) => MONDAY_DIR.test(name)).sort().reverse();
+  const mondays = entries.filter((name) => MONDAY_DIR.test(name)).sort().reverse();
+  const summaries = await Promise.all(
+    mondays.map(async (monday) => {
+      const week = await readJson(join(weeksDir, monday, "week.json"), weekDataSchema);
+      return week === null
+        ? null
+        : { monday, to: week.to, generatedAt: week.generatedAt };
+    }),
+  );
+  return summaries.filter((summary): summary is WeekSummary => summary !== null);
 }
 
 export async function readWeek(weeksDir: string, monday: Day): Promise<WeekData | null> {

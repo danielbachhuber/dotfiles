@@ -13,6 +13,17 @@ const sourceStatusSchema = z.object({
 /** A Monday, which is both a week's id and its directory name. */
 const mondaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/**
+ * A week reduced to what the title bar needs. The header and the body mount
+ * separately, so the header gets this rather than fetching a whole week to
+ * print one timestamp.
+ */
+const weekSummarySchema = z.object({
+  monday: mondaySchema,
+  to: daySchema,
+  generatedAt: z.string(),
+});
+
 const docSourceSchema = z.object({
   id: z.string().trim().min(1).max(200),
   label: z.string().trim().max(200),
@@ -34,7 +45,7 @@ export const rpcContract = defineRpcContract({
   weeks_list: {
     input: z.null(),
     output: z.object({
-      weeks: z.array(mondaySchema),
+      weeks: z.array(weekSummarySchema),
       /** The Monday the current week resolves to, gathered or not. */
       currentWeek: mondaySchema,
       /** The Monday before it, so "last week" is one click and not arithmetic. */

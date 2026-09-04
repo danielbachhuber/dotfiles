@@ -268,7 +268,12 @@ export default async function plugin(bb: BbPluginApi) {
           const weeks = await listWeeks(weeksDir);
           return {
             exitCode: 0,
-            stdout: weeks.length === 0 ? "No weeks gathered yet." : weeks.join("\n"),
+            stdout:
+              weeks.length === 0
+                ? "No weeks gathered yet."
+                : weeks
+                    .map((week) => `${week.monday}  gathered ${week.generatedAt}`)
+                    .join("\n"),
           };
         }
         case "generate": {
