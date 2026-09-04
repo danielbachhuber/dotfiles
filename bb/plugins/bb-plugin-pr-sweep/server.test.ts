@@ -251,8 +251,14 @@ describe("workOnThisSubmit is one thread per pull request", () => {
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { input: { type: string; text?: string }[] },
     ]];
-    const sent = args.input.map((item) => item.text ?? "").join("\n");
+    // Joined with nothing, which is how bb concatenates a message's text
+    // items. The blank lines have to already be in them.
+    const sent = args.input.map((item) => item.text ?? "").join("");
     expect(sent).toMatch(/You already have a git worktree/);
+    // No seam: the URL ending the header, and the last word typed, each get
+    // their own blank line rather than running into what follows.
+    expect(sent).toContain("pull/42\n\njust the conflict please");
+    expect(sent).toContain("just the conflict please\n\nI started this");
     expect(sent).toMatch(/my explicit request for this work/);
     expect(sent).toContain("acme/widgets#42");
     // And what was typed survives, between the two ends.

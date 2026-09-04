@@ -170,8 +170,14 @@ describe("server", () => {
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { input: { type: string; text?: string }[] },
     ]];
-    const sent = args.input.map((item) => item.text ?? "").join("\n");
+    // Joined with nothing, which is how bb concatenates a message's text
+    // items. The blank lines have to already be in them.
+    const sent = args.input.map((item) => item.text ?? "").join("");
     expect(sent).toMatch(/Do not commit unless I ask/);
+    // No seam: the URL ending the header, and the last word typed, each get
+    // their own blank line rather than running into what follows.
+    expect(sent).toContain("issues/42\n\nhave a look first");
+    expect(sent).toContain("have a look first\n\nRead it first");
     expect(sent).toContain("acme/widgets#42");
     // And what was typed survives, between the two ends.
     expect(sent).toContain("have a look first");

@@ -13,7 +13,12 @@ import {
   setBoardStatus as applyBoardStatus,
   type BoardProject,
 } from "./issues/project.js";
-import { buildPromptParts, joinPromptParts, threadTitle } from "./issues/prompt.js";
+import {
+  buildPromptParts,
+  headerItem,
+  trailerItem,
+  threadTitle,
+} from "./issues/prompt.js";
 import { matchProjectTargetForRepo, matchProjectForRepo, type ProjectCandidate } from "./issues/spawn-target.js";
 import { MIGRATIONS, createStore } from "./issues/store.js";
 import type { IssueRow } from "./issues/types.js";
@@ -608,13 +613,13 @@ export default async function plugin(bb: BbPluginApi) {
         // The composer only ever held the middle of the prompt, so the two
         // ends are put back here. Its own items sit between them untouched,
         // which is what keeps any @-mention or attachment that was added.
-        const { header, trailer } = buildPromptParts(row);
+        const parts = buildPromptParts(row);
         const thread = await bb.sdk.threads.spawn({
           ...request,
           input: [
-            { type: "text", text: header, mentions: [] },
+            { type: "text", text: headerItem(parts), mentions: [] },
             ...request.input,
-            { type: "text", text: trailer, mentions: [] },
+            { type: "text", text: trailerItem(parts), mentions: [] },
           ],
           title: threadTitle(number, row.title),
         } as Parameters<typeof bb.sdk.threads.spawn>[0]);

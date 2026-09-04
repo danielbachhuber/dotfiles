@@ -14,7 +14,7 @@ import { isAdoptable, solePullRequestReference } from "./sweep/adopt.js";
 import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
-import { buildPromptParts } from "./sweep/prompt.js";
+import { buildPromptParts, headerItem, trailerItem } from "./sweep/prompt.js";
 import {
   actionSummary,
   commentsToRead,
@@ -913,13 +913,13 @@ export default async function plugin(bb: BbPluginApi) {
         // the trailer precisely because they must not depend on anyone leaving
         // them in the box. Its own items sit between them untouched, which is
         // what keeps any @-mention or attachment that was added.
-        const { header, trailer } = buildPromptParts(row);
+        const parts = buildPromptParts(row);
         const thread = await bb.sdk.threads.spawn({
           ...request,
           input: [
-            { type: "text", text: header, mentions: [] },
+            { type: "text", text: headerItem(parts), mentions: [] },
             ...request.input,
-            { type: "text", text: trailer, mentions: [] },
+            { type: "text", text: trailerItem(parts), mentions: [] },
           ],
           // The pull request's own words for its first thread; what this
           // thread is for once another thread already carries them.

@@ -335,8 +335,14 @@ describe("reviewThisSubmit is one thread per review", () => {
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { input: { type: string; text?: string }[] },
     ]];
-    const sent = args.input.map((item) => item.text ?? "").join("\n");
+    // Joined with nothing, which is how bb concatenates a message's text
+    // items. The blank lines have to already be in them.
+    const sent = args.input.map((item) => item.text ?? "").join("");
     expect(sent).toMatch(/Do NOT post anything to GitHub/);
+    // No seam: the URL ending the header, and the last word typed, each get
+    // their own blank line rather than running into what follows.
+    expect(sent).toContain("pull/42\n\njust look at it");
+    expect(sent).toContain("just look at it\n\nReport your findings");
     expect(sent).toContain("acme/widgets#42");
     // And what was typed survives, between the two ends.
     expect(sent).toContain("just look at it");

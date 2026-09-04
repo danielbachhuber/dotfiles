@@ -2,7 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { rpcContract } from "./review/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./review/gh.js";
-import { buildPromptParts } from "./review/prompt.js";
+import { buildPromptParts, headerItem, trailerItem } from "./review/prompt.js";
 import {
   parsePermissionMode,
   parseStaleAfterDays,
@@ -421,13 +421,13 @@ export default async function plugin(bb: BbPluginApi) {
         // the trailer precisely because it must not depend on anyone leaving
         // it in the box. Its own items sit between them untouched, which is
         // what keeps any @-mention or attachment that was added.
-        const { header, trailer } = buildPromptParts(row, Date.now());
+        const parts = buildPromptParts(row, Date.now());
         const thread = await bb.sdk.threads.spawn({
           ...request,
           input: [
-            { type: "text", text: header, mentions: [] },
+            { type: "text", text: headerItem(parts), mentions: [] },
             ...request.input,
-            { type: "text", text: trailer, mentions: [] },
+            { type: "text", text: trailerItem(parts), mentions: [] },
           ],
           title: threadTitle(row.state, number, row.title),
         } as Parameters<typeof bb.sdk.threads.spawn>[0]);

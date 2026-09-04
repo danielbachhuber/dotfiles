@@ -25,6 +25,24 @@ export function joinPromptParts(parts: PromptParts, body = parts.body): string {
 }
 
 /**
+ * The two ends as prompt items, ready to sit either side of what the composer
+ * returned.
+ *
+ * The blank lines are carried here because bb concatenates a message's text
+ * items with no separator at all: without them the URL that ends the header
+ * runs into the first word typed, and the last word typed runs into the
+ * trailer. They cannot live in `header`/`trailer` themselves, which are also
+ * joined by {@link joinPromptParts} and would double up.
+ */
+export function headerItem(parts: PromptParts): string {
+  return `${parts.header}\n\n`;
+}
+
+export function trailerItem(parts: PromptParts): string {
+  return `\n\n${parts.trailer}`;
+}
+
+/**
  * What the sweep found, stated as fact, then the one constraint that matters.
  *
  * The no-posting paragraph is not decoration. Reviewing someone else's pull
