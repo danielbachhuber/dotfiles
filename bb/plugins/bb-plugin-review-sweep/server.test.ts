@@ -286,6 +286,19 @@ describe("reviewThisSubmit is one thread per review", () => {
     expect(args.model).toBe("claude-sonnet-5");
   });
 
+  it("opens the composer on a new worktree, not the main checkout", async () => {
+    const { harness } = await seededHost();
+    const draft = await harness.behavior.callRpc("reviewThisDraft", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    expect(draft.seed!.environment).toEqual({
+      type: "host",
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    });
+  });
+
   it("carries the no-posting instruction into the prompt the composer opens with", async () => {
     // This is the whole safety story for the action, so it is asserted at the
     // wire rather than only in the prompt unit test. It lives on the draft

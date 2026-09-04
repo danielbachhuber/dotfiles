@@ -346,6 +346,18 @@ export default async function plugin(bb: BbPluginApi) {
           model: chosenModel || null,
           permissionMode: parsePermissionMode(permissionMode),
           prompt: buildPrompt(row, Date.now()),
+          // A new worktree by default. A review is someone else's branch,
+          // so the thread has nothing to land and every reason to stay out of
+          // the main checkout while it reads. The composer still offers Work
+          // locally and Existing worktree for the times that is not what you
+          // want.
+          environment: {
+            type: "host",
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "default" },
+            },
+          } as const,
         },
       };
     },

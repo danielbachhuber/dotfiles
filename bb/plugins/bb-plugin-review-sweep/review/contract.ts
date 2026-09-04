@@ -2,6 +2,24 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 /**
+ * The subset of BB's environment union these seeds ever produce. Kept tight
+ * rather than loose: it is this plugin's own output, so a wrong shape is a bug
+ * here, not bad input from elsewhere.
+ */
+const environmentSchema = z.union([
+  z.object({ type: z.literal("project-default") }),
+  z.object({
+    type: z.literal("host"),
+    /** Omitted: the composer resolves the project's own host, as it always has. */
+    hostId: z.string().optional(),
+    workspace: z.object({
+      type: z.literal("managed-worktree"),
+      baseBranch: z.object({ kind: z.literal("default") }),
+    }),
+  }),
+]);
+
+/**
  * What BB's new-thread composer is seeded with. The settings still decide
  * these; the composer only lets one thread differ from them.
  */
@@ -12,6 +30,7 @@ const seedSchema = z.object({
   model: z.string().nullable(),
   permissionMode: z.enum(["accept-edits", "auto", "full"]),
   prompt: z.string(),
+  environment: environmentSchema,
 });
 
 /**

@@ -460,6 +460,13 @@ const SEED = {
   model: null,
   permissionMode: "full" as const,
   prompt: "Review acme/widgets#42.",
+  environment: {
+    type: "host" as const,
+    workspace: {
+      type: "managed-worktree" as const,
+      baseBranch: { kind: "default" as const },
+    },
+  },
 };
 
 describe("ignoring a review", () => {

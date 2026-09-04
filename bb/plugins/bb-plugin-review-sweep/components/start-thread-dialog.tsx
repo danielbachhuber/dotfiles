@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
+  type NewThreadComposerProps,
   type NewThreadRequest,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -23,6 +24,11 @@ export type StartThreadSeed = {
   model: string | null;
   permissionMode: "accept-edits" | "auto" | "full";
   prompt: string;
+  /**
+   * Seeds the environment and branch pickers. Omitted where the plugin has no
+   * opinion, which leaves the composer on its own default.
+   */
+  environment?: NewThreadComposerProps["defaultEnvironment"];
 };
 
 /**
@@ -77,6 +83,7 @@ export function StartThreadDialog({
               defaultProviderId={seed.providerId ?? undefined}
               defaultModel={seed.model ?? undefined}
               defaultPermissionMode={seed.permissionMode}
+              defaultEnvironment={seed.environment}
               initialPrompt={seed.prompt}
               draftKey={draftKey}
               layout="document"
