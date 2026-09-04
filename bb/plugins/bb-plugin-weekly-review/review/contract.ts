@@ -1,11 +1,11 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { daySchema, weekDataSchema } from "./schema.js";
-import { feedbackSchema, interpretationSchema } from "./interpretation.js";
+import { feedbackSchema } from "./agents.js";
 import { SCALAR_KEYS } from "./sources.js";
 
 /** Which of the two agent steps a prompt belongs to. */
-export const promptKindSchema = z.enum(["interpret", "notes", "feedback"]);
+export const promptKindSchema = z.enum(["notes", "feedback"]);
 export type PromptKind = z.infer<typeof promptKindSchema>;
 
 const sourceStatusSchema = z.object({
@@ -84,8 +84,6 @@ export const rpcContract = defineRpcContract({
     input: z.object({ monday: mondaySchema }),
     output: z.object({
       week: weekDataSchema.nullable(),
-      /** The agent's reading, when one has been recorded. */
-      interpretation: interpretationSchema.nullable(),
       /** The agent's read of the hand-written entry, when one has been recorded. */
       feedback: feedbackSchema.nullable(),
       /** This week's entry as written, read fresh from the doc. Null when there is none. */
@@ -97,29 +95,12 @@ export const rpcContract = defineRpcContract({
        * happens. Absent until a step has been started for this week.
        */
       threads: z.object({
-        interpret: z.string().optional(),
         notes: z.string().optional(),
         feedback: z.string().optional(),
       }),
       dir: z.string(),
     }),
   },
-  /**
-   * Hands the gathered week to an agent and returns the thread doing the
-   * reading. The result arrives later, over the realtime signal, when the
-   * agent records it with `bb weekly-review interpret`.
-   */
-  week_interpret: {
-    input: z.object({ monday: mondaySchema }),
-    output: z.object({
-      threadId: z.string(),
-    }),
-  },
-  /**
-   * Sends an agent to collect the week's daily notes, which are reachable over
-   * MCP and so cannot be gathered by the deterministic fetch. It also resolves
-   * the meetings the name matching could not.
-   */
   week_gather_notes: {
     input: z.object({ monday: mondaySchema }),
     output: z.object({ threadId: z.string() }),

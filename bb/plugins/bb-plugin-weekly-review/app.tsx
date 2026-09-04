@@ -20,7 +20,7 @@ import type { rpcContract } from "./server";
 import type { SourceResult, WeekData } from "./review/types.js";
 import { buildDaySlices, weekTotals } from "./review/week.js";
 import { formatDayShort, fromDay } from "./review/dates.js";
-import type { Feedback, Interpretation, NextItem } from "./review/interpretation.js";
+import type { Feedback } from "./review/agents.js";
 import type { TimeEntry } from "./review/time-sections.js";
 import type { Theme } from "./review/themes.js";
 import { buildThemes } from "./review/themes.js";
@@ -84,28 +84,6 @@ function selectedWeek(subPath: string, listing: Listing | null): string | null {
 /* -------------------------------------------------------------------------- */
 /* Small shared pieces                                                        */
 /* -------------------------------------------------------------------------- */
-
-function Section({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count?: number;
-  children: ReactNode;
-}) {
-  return (
-    <section className="mt-6">
-      <h2 className="flex items-baseline gap-2 text-sm font-semibold text-foreground">
-        {title}
-        {count === undefined ? null : (
-          <span className="text-xs font-normal text-muted-foreground">{count}</span>
-        )}
-      </h2>
-      <div className="mt-2">{children}</div>
-    </section>
-  );
-}
 
 function EmptyState({ children }: { children: ReactNode }) {
   return (
@@ -172,31 +150,17 @@ function urlsByNumber(week: WeekData): Map<number, string> {
   return urls;
 }
 
-function RefLinks({ refs, urls }: { refs: number[]; urls: Map<number, string> }) {
-  const linkable = refs.filter((ref) => urls.has(ref));
-  if (linkable.length === 0) return null;
-  return (
-    <p className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1">
-      {linkable.map((ref) => (
-        <Ref key={ref} number={ref} href={urls.get(ref) as string} />
-      ))}
-    </p>
-  );
-}
-
-function NextCard({ item, urls }: { item: NextItem; urls: Map<number, string> }) {
-  return (
-    <li className="py-2.5">
-      <div className="text-sm font-medium">{item.title}</div>
-      {item.why === "" ? null : (
-        <p className="mt-1 text-sm text-muted-foreground">{item.why}</p>
-      )}
-      <RefLinks refs={item.refs} urls={urls} />
-    </li>
-  );
-}
-
 type WeekEntry = { heading: string; text: string; url: string };
+
+type MeetingNote = {
+  day: string;
+  entryNote: string;
+  source: "doc" | "notes";
+  label: string;
+  url: string;
+  heading: string;
+  text: string;
+};
 
 /**
  * That the entry has been checked, and how much came back — nothing more.
@@ -218,20 +182,15 @@ function FeedbackSummary({
     feedback.entryHeading !== undefined &&
     feedback.entryHeading !== entry.heading;
   const counts = [
-    feedback.missing.length === 0
-      ? null
-      : `${feedback.missing.length} not in the entry`,
-    feedback.expand.length === 0
-      ? null
-      : `${feedback.expand.length} worth more detail`,
+    feedback.missing.length === 0 ? null : `${feedback.missing.length} not in the entry`,
+    feedback.expand.length === 0 ? null : `${feedback.expand.length} worth more detail`,
   ].filter((part): part is string => part !== null);
 
   return (
     <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
       Checked{" "}
       {feedback.reviewedAt === undefined ? "at an unknown time" : relative(feedback.reviewedAt)}
-      {counts.length === 0 ? " — nothing flagged" : ` — ${counts.join(", ")}`}. In the
-      thread.
+      {counts.length === 0 ? " — nothing flagged" : ` — ${counts.join(", ")}`}. In the thread.
       {stale ? (
         <span className="ml-1 text-destructive">
           Given on "{feedback.entryHeading}", and the doc now shows "{entry.heading}".
@@ -240,16 +199,6 @@ function FeedbackSummary({
     </div>
   );
 }
-
-type MeetingNote = {
-  day: string;
-  entryNote: string;
-  source: "doc" | "notes";
-  label: string;
-  url: string;
-  heading: string;
-  text: string;
-};
 
 /** A theme's anchor, so the summary above can jump to it. */
 function themeAnchor(title: string): string {
@@ -593,14 +542,12 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const navigate = useBbNavigate();
   const { listing } = useListing();
   const [week, setWeek] = useState<WeekData | null>(null);
-  const [interpretation, setInterpretation] = useState<Interpretation | null>(null);
   const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [threads, setThreads] = useState<Partial<Record<string, string>>>({});
   const [entry, setEntry] = useState<WeekEntry | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [interpreting, setInterpreting] = useState(false);
   const [gatheringNotes, setGatheringNotes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -619,7 +566,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
       (result) => {
         if (!live) return;
         setWeek(result.week);
-        setInterpretation(result.interpretation);
         setMeetingNotes(result.meetingNotes);
         setFeedback(result.feedback);
         setThreads(result.threads);
@@ -640,7 +586,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
 
   // The agent records its reading through the CLI, so the page hears about it
   // the same way it hears about anything else: over the signal.
-  useRealtime("week-interpreted", () => setReload((count) => count + 1));
+  useRealtime("week-reviewed", () => setReload((count) => count + 1));
 
   const askForNotes = async () => {
     if (selected === null || gatheringNotes) return;
@@ -669,20 +615,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
       setReviewing(false);
-    }
-  };
-
-  const askForInterpretation = async () => {
-    if (selected === null || interpreting) return;
-    setInterpreting(true);
-    try {
-      const { threadId } = await rpc.call("week_interpret", { monday: selected });
-      setThreads((current) => ({ ...current, interpret: threadId }));
-      navigate.toThread(threadId);
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setInterpreting(false);
     }
   };
 
@@ -809,43 +741,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
 
             </section>
 
-            {interpretation === null ? (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3">
-                <p className="text-sm text-muted-foreground">
-                  Nothing has read this week yet. An agent can group the work into threads
-                  and say where next week should go.
-                </p>
-                <div className="flex items-center gap-2">
-                  {hasNotes ? null : (
-                    <Button
-                      variant="ghost"
-                      onClick={askForNotes}
-                      disabled={gatheringNotes}
-                    >
-                      <Icon
-                        name={gatheringNotes ? "Spinner" : "FileText"}
-                        className={cn("size-4", gatheringNotes && "animate-spin")}
-                      />
-                      Collect notes
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    onClick={askForInterpretation}
-                    disabled={interpreting}
-                  >
-                    <Icon
-                      name={interpreting ? "Spinner" : "Zap"}
-                      className={cn("size-4", interpreting && "animate-spin")}
-                    />
-                    Interpret
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <p className="mb-4 text-sm leading-relaxed">{interpretation.summary}</p>
-            )}
-
             {totals === null ? null : (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                 <Stat label="Hours" value={totals.hours} />
@@ -861,20 +756,25 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               {week.from} – {week.to}
             </p>
 
-            {interpretation === null || interpretation.next.length === 0 ? null : (
-              <Section title="Where next week should go" count={interpretation.next.length}>
-                <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
-                  {interpretation.next.map((item, index) => (
-                    <NextCard key={index} item={item} urls={urls} />
-                  ))}
-                </ul>
-              </Section>
-            )}
-
             {grouping === null ? null : (
               <>
-                <h2 className="mt-6 text-sm font-semibold text-foreground">
+                <h2 className="mt-6 flex items-center justify-between gap-2 text-sm font-semibold text-foreground">
                   Where the time went
+                  {hasNotes ? null : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs font-normal text-muted-foreground"
+                      onClick={askForNotes}
+                      disabled={gatheringNotes}
+                    >
+                      <Icon
+                        name={gatheringNotes ? "Spinner" : "FileText"}
+                        className={cn("size-3.5", gatheringNotes && "animate-spin")}
+                      />
+                      Collect notes
+                    </Button>
+                  )}
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {grouping.total.toFixed(2)}h across {grouping.themes.length} themes,
@@ -907,54 +807,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                   />
                 )}
               </>
-            )}
-
-            {interpretation === null ? null : (
-              <div className="mt-8 flex items-center gap-3 border-t border-border pt-3">
-                <span className="text-xs text-muted-foreground">
-                  Read{" "}
-                  {interpretation.interpretedAt === undefined
-                    ? "at an unknown time"
-                    : relative(interpretation.interpretedAt)}
-                </span>
-                {threads.interpret === undefined ? null : (
-                  <button
-                    type="button"
-                    onClick={() => navigate.toThread(threads.interpret as string)}
-                    className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                  >
-                    Open the thread
-                  </button>
-                )}
-                {hasNotes ? null : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={askForNotes}
-                    disabled={gatheringNotes}
-                  >
-                    <Icon
-                      name={gatheringNotes ? "Spinner" : "FileText"}
-                      className={cn("size-3.5", gatheringNotes && "animate-spin")}
-                    />
-                    Collect notes
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={askForInterpretation}
-                  disabled={interpreting}
-                >
-                  <Icon
-                    name={interpreting ? "Spinner" : "Zap"}
-                    className={cn("size-3.5", interpreting && "animate-spin")}
-                  />
-                  Read it again
-                </Button>
-              </div>
             )}
 
             <SourceFooter week={week} />
@@ -993,18 +845,6 @@ export default definePluginApp((app) => {
       <PromptSection
         kind="notes"
         placeholders="Sent to the notes thread. {{FROM}} and {{TO}} become the week's dates, {{MEETINGS_COMMAND}} the command that lists its meetings, and {{COMMAND}} the one that records the result."
-      />
-    ),
-  });
-
-  app.slots.settingsSection({
-    id: "prompt",
-    title: "Interpretation prompt",
-    description: "What the agent is asked when it reads a week.",
-    component: () => (
-      <PromptSection
-        kind="interpret"
-        placeholders="Sent to the interpretation thread. {{DIGEST}} becomes the week's digest and {{COMMAND}} the command that records the answer. Everything deterministic is already gathered by the time this runs."
       />
     ),
   });

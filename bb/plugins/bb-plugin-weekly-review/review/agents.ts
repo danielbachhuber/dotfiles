@@ -1,93 +1,19 @@
 /**
- * The agent's reading of a week, and the prompt that asks for it.
+ * What an agent is asked about a week, and the shape of what it sends back.
  *
- * Kept beside the week as `overview.json`, so it is as inspectable and as
- * disposable as the week itself: delete the file and the deterministic page is
- * exactly what it was.
+ * Two jobs, both of them things a script cannot do: fetching the daily notes,
+ * which are only reachable over MCP, and reading the hand-written entry
+ * against the evidence. Everything else the page shows is derived from the
+ * record, so nothing else needs a model.
  */
 import { z } from "zod";
-
-export const nextItemSchema = z.object({
-  title: z.string().trim().min(1).max(120),
-  /** Why this one, stated from the week's evidence rather than in general. */
-  why: z.string().trim().max(400),
-  refs: z.array(z.number().int().positive()).max(20).default([]),
-});
-
-export const interpretationSchema = z.object({
-  /** Two or three sentences: what kind of week this was. */
-  summary: z.string().trim().min(1).max(1200),
-  next: z.array(nextItemSchema).max(20).default([]),
-  /** Stamped on ingest, not by the agent. */
-  interpretedAt: z.string().optional(),
-});
-
-export type NextItem = z.infer<typeof nextItemSchema>;
-export type Interpretation = z.infer<typeof interpretationSchema>;
-
-/**
- * The default prompt. Editable, and stored per install, so this is only ever
- * the starting point — `{{DIGEST}}` and `{{COMMAND}}` are substituted before
- * the thread is spawned.
- */
-export const DEFAULT_PROMPT = `You are reading one week of someone's work and writing the two things a page
-of evidence cannot supply for itself. The week is already grouped by theme and
-already shows where every hour went; do not restate it. Everything below was
-gathered from Harvest, GitHub and Todoist; nothing is missing that you should
-go looking for.
-
-Produce two things.
-
-**summary** — two or three sentences on what kind of week this was. Lead with
-the shape of it, not a count. If most of the hours went to meetings and
-planning while most of the output was pull requests, say so: that gap is the
-most useful sentence you can write.
-
-**next** — where the time should go next, drawn from what this week left open:
-pull requests still unmerged, issues assigned and going stale, work the notes
-say is half done. Say why each one, from this week's evidence rather than in
-general. Rank them.
-
-Leave out anything you cannot support from the digest. Do not invent numbers.
-
----
-
-{{DIGEST}}
-
----
-
-Write the result as JSON matching this shape:
-
-{
-  "summary": "…",
-  "next": [ { "title": "…", "why": "…", "refs": [789] } ]
-}
-
-Write it to a file under /tmp, then record it by running:
-
-{{COMMAND}}
-
-That command validates the JSON and puts it on the page. If it reports a
-validation error, fix the file and run it again.
-
-Then lay the same findings out here, in the thread, so they can be read without
-opening the page: the assessment, then what is missing, then what deserves more
-detail. This is a conversation, not a hand-off. Expect to be asked which of
-these matter, to be pushed back on, and to be asked for the underlying evidence
-behind a particular line.
-
-The entry is being rewritten in the document while you talk. Re-read it with
-\`bb weekly-review entry {{MONDAY}}\` before answering anything that depends on
-what it currently says, and record a fresh assessment with the same command
-when enough has changed to be worth one. Never edit the document yourself.`;
 
 /**
  * The default prompt for collecting the week's daily notes.
  *
- * Kept separate from the interpretation because it is a different kind of job:
- * this one fetches something a script cannot reach and resolves the handful of
- * meetings name matching could not, and nothing it produces is a judgment
- * about the work.
+ * A different kind of job from the feedback: this one fetches something a
+ * script cannot reach and resolves the handful of meetings name matching could
+ * not, and nothing it produces is a judgment about the work.
  */
 export const DEFAULT_NOTES_PROMPT = `Collect this week's daily notes so they can sit beside the meetings they were
 taken in.
@@ -140,10 +66,6 @@ export function renderPrompt(
   }
   return out;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Feedback on a hand-written entry                                           */
-/* -------------------------------------------------------------------------- */
 
 /**
  * The agent's read of an entry that was written by hand.

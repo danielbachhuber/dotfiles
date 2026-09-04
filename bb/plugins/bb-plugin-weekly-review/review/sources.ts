@@ -182,10 +182,6 @@ export function createSourceStore(db: Database): SourceStore {
   };
 }
 
-/**
- * The interpretation prompt predates the notes prompt and is still stored
- * under its original key, so an edited prompt survives the upgrade.
- */
 function promptKey(kind: string): string {
-  return kind === "interpret" ? "interpretPrompt" : `${kind}Prompt`;
+  return `${kind}Prompt`;
 }

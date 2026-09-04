@@ -26,22 +26,18 @@ import {
 import {
   listWeeks,
   readFeedback,
-  readInterpretation,
   readWeek,
   weekDir,
   writeFeedback,
-  writeInterpretation,
 } from "./review/store.js";
 import { run } from "./review/fetch/shell.js";
 import { buildDigest } from "./review/digest.js";
 import {
   DEFAULT_FEEDBACK_PROMPT,
   DEFAULT_NOTES_PROMPT,
-  DEFAULT_PROMPT,
   feedbackSchema,
-  interpretationSchema,
   renderPrompt,
-} from "./review/interpretation.js";
+} from "./review/agents.js";
 import type { PromptKind } from "./review/contract.js";
 import { reflectNoteSchema } from "./review/schema.js";
 import { datedSections, matchDoc, matchNote, sectionNear, entriesWithoutNotes } from "./review/meeting-notes.js";
@@ -53,8 +49,8 @@ export { rpcContract };
 
 /** Published after a week is written, so every open panel refetches. */
 const WEEK_GENERATED = "week-generated";
-/** Published after an agent records its reading of a week. */
-const WEEK_INTERPRETED = "week-interpreted";
+/** Published after an agent records its read of the written entry. */
+const WEEK_REVIEWED = "week-reviewed";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -75,17 +71,17 @@ export default async function plugin(bb: BbPluginApi) {
       label: "Script that prints a Google Doc as text",
       default: join(homedir(), ".claude", "scripts", "fetch-google-doc.ts"),
     },
-    interpretProviderId: {
+    agentProviderId: {
       type: "string",
-      label: "Provider for the interpretation thread",
-      // The interpretation thread runs `bb weekly-review interpret` to record
-      // its answer, so it needs a provider that can run a shell command.
-      // Blank falls back to bb's default, which may not be one.
+      label: "Provider for the agent threads",
+      // An agent thread records its answer by running a bb command, so it
+      // needs a provider that can run one. Blank falls back to bb's default,
+      // which may not be.
       default: "claude-code",
     },
-    interpretProjectId: {
+    agentProjectId: {
       type: "string",
-      label: "Project the interpretation thread is filed under",
+      label: "Project the agent threads are filed under",
       // Blank uses the first project bb lists, which is the right answer on a
       // single-project install and a coin toss otherwise.
       default: "",
@@ -254,7 +250,6 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   const DEFAULT_PROMPTS: Record<PromptKind, string> = {
-    interpret: DEFAULT_PROMPT,
     notes: DEFAULT_NOTES_PROMPT,
     feedback: DEFAULT_FEEDBACK_PROMPT,
   };
@@ -300,34 +295,6 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * Hands a gathered week to an agent.
-   *
-   * The interpretation is a judgment, not a fetch, so it is a separate step
-   * with its own button: everything deterministic is already on the page
-   * before a single token is spent, and a week can be read again with a
-   * different prompt without re-hitting four APIs.
-   */
-  async function interpret(monday: string): Promise<{ threadId: string }> {
-    const { weeksDir } = await tools();
-    const week = await readWeek(weeksDir, monday);
-    if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
-
-    const providerId = (await settings.get()).interpretProviderId.trim();
-
-    return spawnAgent(
-      monday,
-      "interpret",
-      providerId,
-      renderPrompt(describePrompt("interpret").prompt, {
-        DIGEST: buildDigest(week),
-        COMMAND: `bb weekly-review interpret ${monday} --file <path-to-your-json>`,
-      }),
-      `Weekly review — ${monday}`,
-      `interpreting ${monday}`,
-    );
-  }
-
-  /**
    * Sends an agent for the week's daily notes.
    *
    * Separate from the interpretation, and before it: the notes are evidence,
@@ -339,7 +306,7 @@ export default async function plugin(bb: BbPluginApi) {
     const week = await readWeek(weeksDir, monday);
     if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
 
-    const providerId = (await settings.get()).interpretProviderId.trim();
+    const providerId = (await settings.get()).agentProviderId.trim();
 
     return spawnAgent(
       monday,
@@ -376,7 +343,7 @@ export default async function plugin(bb: BbPluginApi) {
       );
     }
 
-    const providerId = (await settings.get()).interpretProviderId.trim();
+    const providerId = (await settings.get()).agentProviderId.trim();
 
     return spawnAgent(
       monday,
@@ -417,7 +384,7 @@ export default async function plugin(bb: BbPluginApi) {
       ...(entry === null ? {} : { entryHeading: entry.heading }),
     });
     if (threadId !== undefined) sources.writeThread(monday, "feedback", threadId);
-    bb.realtime.publish(WEEK_INTERPRETED, { monday });
+    bb.realtime.publish(WEEK_REVIEWED, { monday });
     return written;
   }
 
@@ -475,7 +442,7 @@ export default async function plugin(bb: BbPluginApi) {
       bb.log.warn(`could not resolve the personal project: ${String(error)}`);
     }
 
-    const configured = (await settings.get()).interpretProjectId.trim();
+    const configured = (await settings.get()).agentProjectId.trim();
     if (configured !== "") {
       return {
         projectId: configured,
@@ -525,26 +492,6 @@ export default async function plugin(bb: BbPluginApi) {
     return parsed.data.length;
   }
 
-  /** Validates and records an agent's reading. Shared by the CLI and nothing else. */
-  async function recordInterpretation(monday: string, path: string): Promise<string> {
-    const { weeksDir } = await tools();
-    const parsed = interpretationSchema.safeParse(JSON.parse(await readFile(path, "utf8")));
-    if (!parsed.success) {
-      throw new Error(
-        `That is not a valid interpretation: ${parsed.error.issues
-          .slice(0, 5)
-          .map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`)
-          .join("; ")}`,
-      );
-    }
-    const written = await writeInterpretation(weeksDir, monday, {
-      ...parsed.data,
-      interpretedAt: new Date().toISOString(),
-    });
-    bb.realtime.publish(WEEK_INTERPRETED, { monday });
-    return written;
-  }
-
   bb.rpc.register(rpcContract, {
     weeks_list: async () => {
       const { weeksDir } = await tools();
@@ -559,9 +506,8 @@ export default async function plugin(bb: BbPluginApi) {
     },
     week_get: async ({ monday }) => {
       const { weeksDir } = await tools();
-      const [week, interpretation, feedback] = await Promise.all([
+      const [week, feedback] = await Promise.all([
         readWeek(weeksDir, monday),
-        readInterpretation(weeksDir, monday),
         readFeedback(weeksDir, monday),
       ]);
       const [meetingNotes, entry] = await Promise.all([
@@ -570,7 +516,6 @@ export default async function plugin(bb: BbPluginApi) {
       ]);
       return {
         week,
-        interpretation,
         feedback,
         entry,
         meetingNotes,
@@ -578,7 +523,6 @@ export default async function plugin(bb: BbPluginApi) {
         dir: weekDir(weeksDir, monday),
       };
     },
-    week_interpret: ({ monday }) => interpret(monday),
     week_gather_notes: ({ monday }) => gatherNotes(monday),
     week_feedback: ({ monday }) => reviewEntry(monday),
 
@@ -616,9 +560,8 @@ export default async function plugin(bb: BbPluginApi) {
     "  bb weekly-review meetings <monday>",
     "  bb weekly-review notes <monday> --file <path-to-json>",
     "  bb weekly-review entry <monday>",
-    "  bb weekly-review interpret <monday> --file <path-to-json>",
     "  bb weekly-review feedback <monday> --file <path-to-json>",
-    "  bb weekly-review prompt [interpret|notes|feedback] [reset]",
+    "  bb weekly-review prompt [notes|feedback] [reset]",
     "  bb weekly-review source list",
     `  bb weekly-review source set <${SCALAR_KEYS.join("|")}> <value>`,
     "  bb weekly-review source add-doc <google-doc-id> <label...>",
@@ -715,11 +658,6 @@ export default async function plugin(bb: BbPluginApi) {
         usage: "bb weekly-review entry <monday>",
       },
       {
-        name: "interpret",
-        summary: "Record an agent's reading of a week from a JSON file",
-        usage: "bb weekly-review interpret <monday> --file <path-to-json>",
-      },
-      {
         name: "feedback",
         summary: "Record an agent's read of the written entry from a JSON file",
         usage: "bb weekly-review feedback <monday> --file <path-to-json>",
@@ -727,7 +665,7 @@ export default async function plugin(bb: BbPluginApi) {
       {
         name: "prompt",
         summary: "Show or reset the prompt an agent step is given",
-        usage: "bb weekly-review prompt [interpret|notes|feedback] [reset]",
+        usage: "bb weekly-review prompt [notes|feedback] [reset]",
       },
       {
         name: "source",
@@ -786,24 +724,6 @@ export default async function plugin(bb: BbPluginApi) {
           }
           return { exitCode: 0, stdout: buildDigest(week) };
         }
-        case "interpret": {
-          const monday = positional[0];
-          const file = flag("file");
-          if (monday === undefined || file === undefined) {
-            return {
-              exitCode: 1,
-              stderr: "Usage: bb weekly-review interpret <monday> --file <path-to-json>",
-            };
-          }
-          try {
-            const written = await recordInterpretation(monday, file);
-            return { exitCode: 0, stdout: `Recorded the reading of ${monday} at ${written}` };
-          } catch (error) {
-            // The agent reads this and fixes its file, so the reason has to
-            // survive as the whole message.
-            return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };
-          }
-        }
         case "entry": {
           const { weeksDir } = await tools();
           const monday = positional[0] ?? resolveRange().from;
@@ -833,6 +753,8 @@ export default async function plugin(bb: BbPluginApi) {
             const written = await recordFeedback(monday, file, ctx.threadId);
             return { exitCode: 0, stdout: `Recorded feedback on ${monday} at ${written}` };
           } catch (error) {
+            // The agent reads this and fixes its file, so the reason has to
+            // survive as the whole message.
             return {
               exitCode: 1,
               stderr: error instanceof Error ? error.message : String(error),
@@ -840,11 +762,7 @@ export default async function plugin(bb: BbPluginApi) {
           }
         }
         case "prompt": {
-          const kind: PromptKind = positional.includes("notes")
-            ? "notes"
-            : positional.includes("feedback")
-              ? "feedback"
-              : "interpret";
+          const kind: PromptKind = positional.includes("notes") ? "notes" : "feedback";
           if (positional.includes("reset")) {
             sources.writePrompt(kind, "");
             return { exitCode: 0, stdout: `Restored the default ${kind} prompt.` };

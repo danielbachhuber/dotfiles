@@ -119,16 +119,15 @@ where does the entry say something the evidence says more about. The second is
 where the value is — a line reading "worked on feature toggles" is true, and
 the digest knows it took 3.3 hours across three days and closed four issues.
 
-**Check my entry** opens the thread it started. The assessment is a
-conversation to have while the entry is being rewritten, not a report to
+It opens the thread it started, and the page keeps a link back. The assessment
+is a conversation to have while the entry is being rewritten, not a report to
 receive: ask which findings matter, push back, ask for the evidence behind a
-line. The agent re-reads the document before answering anything that depends on
-what it currently says, and records a fresh assessment when enough has changed
-to warrant one. The page keeps a link back to that thread.
+line. The agent re-reads the document before answering anything that turns on
+what the entry currently says, and records a fresh assessment when enough has
+changed to warrant one.
 
-The page shows only that the entry was checked and how much came back. The
-findings are worth arguing with while the entry is being rewritten, and a page
-cannot be argued with.
+The page itself shows only that the entry was checked and how much came back.
+The findings are worth arguing with, and a page cannot be argued with.
 
 It proposes no replacement prose, and never edits the document. Feedback lands
 beside the week as `feedback.json`, stamped with the heading of the entry it
@@ -139,26 +138,6 @@ rather than quietly wrong.
 bb weekly-review entry <monday>                          # what the agent will read
 bb weekly-review feedback <monday> --file <path-to-json>  # how it records the result
 ```
-
-## The interpretation step
-
-Everything above is deterministic and runs without a model, including the
-grouping. What is left for an agent is the part evidence cannot supply for
-itself: what kind of week this was, and where the time should go next.
-
-Pressing **Interpret** hands the gathered week to an agent in a spawned thread:
-the whole digest, inline, with an editable prompt around it. The agent writes
-JSON and records it with `bb weekly-review interpret <monday> --file <path>`,
-which validates it against a schema and puts it on the page. A failed
-validation reports what was wrong in a form the agent can act on and try again.
-
-The result lands beside the week as `overview.json`. Delete that file and the
-page loses a summary and a list of what to do next, and nothing else.
-
-The prompt is editable on this plugin's page in Tools, or with
-`bb weekly-review prompt reset` to restore the default. `{{DIGEST}}` and
-`{{COMMAND}}` are substituted before the thread is spawned. Read what the agent
-will see with `bb weekly-review digest <monday>`.
 
 ## Slack
 
@@ -177,12 +156,11 @@ bb weekly-review list
 bb weekly-review generate [<monday>|--from YYYY-MM-DD --to YYYY-MM-DD]
 bb weekly-review path [<monday>]
 bb weekly-review digest <monday>
-bb weekly-review interpret <monday> --file <path-to-json>
 bb weekly-review meetings <monday>
 bb weekly-review notes <monday> --file <path-to-json>
 bb weekly-review entry <monday>
 bb weekly-review feedback <monday> --file <path-to-json>
-bb weekly-review prompt [interpret|notes|feedback] [reset]
+bb weekly-review prompt [notes|feedback] [reset]
 bb weekly-review source list | set <key> <value> | add-doc <id> <label> | remove-doc <id|label>
 ```
 
@@ -196,7 +174,6 @@ Weeks are identified by their Monday, which is also the directory name.
 ```
 data/weeks/2026-08-31/
   week.json        everything the gather produced
-  overview.json    the agent's reading of the week (optional)
   feedback.json    the agent's read of your written entry (optional)
   docs/*.txt       cached text of the reference docs
   reflect.json     written by the agent step (optional)

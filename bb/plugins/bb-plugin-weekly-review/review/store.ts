@@ -3,7 +3,6 @@
  *
  *   <weeksDir>/2026-08-31/week.json      everything the gather produced
  *   <weeksDir>/2026-08-31/docs/*.txt     cached text of the reference docs
- *   <weeksDir>/2026-08-31/overview.json  the agent's reading of the week (optional)
  *   <weeksDir>/2026-08-31/feedback.json  the agent's read of the written entry (optional)
  *   <weeksDir>/2026-08-31/reflect.json   written by the agent step (optional)
  *   <weeksDir>/2026-08-31/slack.json     written by the agent step (optional)
@@ -18,12 +17,7 @@ import { join } from "node:path";
 import type { z } from "zod";
 import type { Day, SourceResult, WeekData } from "./types.js";
 import { reflectNoteSchema, slackThreadSchema, sourceResult, weekDataSchema } from "./schema.js";
-import {
-  feedbackSchema,
-  interpretationSchema,
-  type Feedback,
-  type Interpretation,
-} from "./interpretation.js";
+import { feedbackSchema, type Feedback } from "./agents.js";
 
 const MONDAY_DIR = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -119,26 +113,6 @@ async function readJson<T extends z.ZodTypeAny>(
   }
   const parsed = schema.safeParse(value);
   return parsed.success ? parsed.data : null;
-}
-
-/** The agent's reading of a week, or null when it has not been asked for one. */
-export async function readInterpretation(
-  weeksDir: string,
-  monday: Day,
-): Promise<Interpretation | null> {
-  return readJson(join(weekDir(weeksDir, monday), "overview.json"), interpretationSchema);
-}
-
-export async function writeInterpretation(
-  weeksDir: string,
-  monday: Day,
-  interpretation: Interpretation,
-): Promise<string> {
-  const dir = weekDir(weeksDir, monday);
-  await mkdir(dir, { recursive: true });
-  const path = join(dir, "overview.json");
-  await writeFile(path, JSON.stringify(interpretation, null, 2), "utf8");
-  return path;
 }
 
 /** The agent's read of the hand-written entry, or null when none was asked for. */
