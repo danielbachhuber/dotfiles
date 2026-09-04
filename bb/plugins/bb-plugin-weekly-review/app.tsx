@@ -287,6 +287,53 @@ type MeetingNote = {
   text: string;
 };
 
+/** A theme's anchor, so the summary above can jump to it. */
+function themeAnchor(title: string): string {
+  return `theme-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+/**
+ * The themes at a glance, before any of them is read in detail.
+ *
+ * Twelve themes is more than fits on a screen once each one has its days
+ * underneath, so the shape of the week — which three things took half of it —
+ * is otherwise only visible by scrolling and adding up. Each row jumps to its
+ * section.
+ */
+function ThemeSummary({ themes, total }: { themes: Theme[]; total: number }) {
+  const jump = (title: string) => {
+    document.getElementById(themeAnchor(title))?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+  return (
+    <ul className="mt-2 overflow-hidden rounded-lg border border-border bg-card px-3">
+      {themes.map((theme) => (
+        <li key={theme.title} className="border-t border-border/60 first:border-t-0">
+          <button
+            type="button"
+            onClick={() => jump(theme.title)}
+            className="flex w-full items-baseline gap-3 py-1.5 text-left text-sm hover:text-foreground"
+          >
+            <span className="w-14 shrink-0 text-right font-medium tabular-nums">
+              {theme.hours.toFixed(2)}h
+            </span>
+            <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {total === 0 ? "" : `${Math.round((theme.hours / total) * 100)}%`}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{theme.title}</span>
+            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+              {theme.days.length}d · {theme.entryCount}{" "}
+              {theme.entryCount === 1 ? "entry" : "entries"}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * A theme: what the work was about, day by day.
  *
@@ -307,7 +354,7 @@ function ThemeBlock({
   notesFor: (entry: TimeEntry) => MeetingNote[];
 }) {
   return (
-    <section className="mt-6">
+    <section className="mt-6 scroll-mt-3" id={themeAnchor(theme.title)}>
       <h2 className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
         <span className="min-w-0 flex-1">{theme.title}</span>
         <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
@@ -858,6 +905,15 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                   {grouping.total.toFixed(2)}h across {grouping.themes.length} themes,
                   grouped by what the work was rather than how it was booked.
                 </p>
+
+                <ThemeSummary
+                  themes={
+                    grouping.everythingElse === null
+                      ? grouping.themes
+                      : [...grouping.themes, grouping.everythingElse]
+                  }
+                  total={grouping.total}
+                />
 
                 {grouping.themes.map((theme) => (
                   <ThemeBlock

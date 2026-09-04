@@ -14,7 +14,8 @@ time entries, pull requests opened and merged, reviews, issues filed, Slack
 threads, and daily notes. A pull request opened Monday and merged Thursday
 appears on both days; opened and merged the same day collapses to one row.
 
-**Where the time went** — the body of the page, grouped by what the work was
+**Where the time went** — the body of the page, opening with every theme and
+its hours on one list, then each theme in full. Grouped by what the work was
 about rather than by how it was booked. One-on-ones, Open Source Roadmap,
 Phase 3 review, Code review, and an Everything else for the tail. Under each
 theme the days it happened on, and under each day how long, what kind of time
