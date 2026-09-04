@@ -404,7 +404,7 @@ function Action({
           <TooltipTrigger asChild>
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               className="size-8 shrink-0 p-0"
               aria-label={`Open the thread for #${row.number}`}
               onClick={() => onOpen(row.threadId!)}
@@ -453,7 +453,7 @@ function Action({
         <span className="inline-block">
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
             className="size-8 shrink-0 p-0"
             disabled={!row.canSpawn || isStarting}
             aria-label={isStarting ? "Starting…" : `${action} on #${row.number}`}
