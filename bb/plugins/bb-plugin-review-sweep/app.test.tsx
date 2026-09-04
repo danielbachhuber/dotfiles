@@ -645,3 +645,25 @@ describe("sync header", () => {
   });
 });
 
+describe("loading state", () => {
+  // Never resolves, so the panel stays in the state it shows before its rows
+  // arrive.
+  const pending = () => new Promise<never>(() => {});
+
+  it("counts in the same notation the empty state settles in", async () => {
+    const slot = render({} as Record<string, unknown>, { listRows: pending });
+    const frame = await slot.findByRole("status");
+    expect(frame).toHaveAttribute("aria-busy", "true");
+    // Six digits turning: two counts either side of the hunk header.
+    expect(frame.querySelectorAll(".review-sweep-roll")).toHaveLength(6);
+  });
+
+  it("says what it is doing once, in the panel's own words", async () => {
+    const slot = render({} as Record<string, unknown>, { listRows: pending });
+    expect(
+      await slot.findByText("Sweeping the reviews waiting on you"),
+    ).toBeInTheDocument();
+    expect(slot.queryByText("Loading…")).toBeNull();
+  });
+});
+

@@ -21,6 +21,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  LoadingGraphic,
+  usePrefersReducedMotion,
+} from "@/components/ui/loading-graphic";
 import { Icon } from "@/components/ui/icon";
 import {
   StartThreadDialog,
@@ -439,6 +443,89 @@ function SyncHeader() {
   );
 }
 
+/**
+ * What this panel is waiting for, drawn as the board it is about to read.
+ *
+ * Three columns filling one at a time, which is what a sweep of the board
+ * actually is: the plugin reads it stage by stage, it does not shuffle cards
+ * around. The colours are not decoration — each card is the colour
+ * `statusDot` gives that stage, ready then in progress then in review, so the
+ * glyph is already teaching the legend the table below uses.
+ *
+ * Only the stage being read stays lit; the ones behind it dim rather than
+ * disappear. Three chips at full strength at once would be a rainbow, and
+ * would lose the sense of the sweep moving.
+ *
+ * One 2.4s cycle shared by every card, expressed as fractions of it, so the
+ * loop restarts as a whole and nothing snaps back on its own.
+ */
+function SweepingBoard() {
+  const still = usePrefersReducedMotion();
+
+  // Where each card lands, and when it is the one being read. Held at 0.45
+  // afterwards: read, not forgotten.
+  const STAGES = [
+    { fill: "fill-emerald-500", at: "0;0.1;0.15;0.3;0.35;0.86;0.96;1" },
+    { fill: "fill-sky-500", at: "0;0.3;0.35;0.5;0.55;0.86;0.96;1" },
+    { fill: "fill-amber-500", at: "0;0.5;0.55;0.7;0.8;0.86;0.96;1" },
+  ];
+
+  return (
+    <LoadingGraphic caption="Sweeping your board">
+      <svg
+        role="img"
+        aria-label="A board filling one column at a time"
+        viewBox="0 0 168 60"
+        className="h-[3.75rem] w-[10.5rem] text-muted-foreground"
+        fill="none"
+      >
+        {STAGES.map((stage, index) => {
+          const x = 4 + index * 56;
+          const last = index === STAGES.length - 1;
+          return (
+            <g key={stage.fill}>
+              <rect
+                x={x}
+                y={4}
+                width={48}
+                height={52}
+                rx={7}
+                stroke="currentColor"
+                strokeOpacity={0.22}
+              />
+              <rect
+                x={x + 8}
+                y={16}
+                width={32}
+                height={14}
+                rx={3}
+                className={stage.fill}
+                opacity={still ? (last ? 1 : 0.45) : 0}
+              >
+                {still ? null : (
+                  <animate
+                    attributeName="opacity"
+                    dur="2.4s"
+                    repeatCount="indefinite"
+                    // The last card has no successor to dim for, so it holds
+                    // full strength until the whole glyph fades.
+                    values={
+                      last
+                        ? "0;0;1;1;1;1;0;0"
+                        : "0;0;1;1;0.45;0.45;0;0"
+                    }
+                    keyTimes={stage.at}
+                  />
+                )}
+              </rect>
+            </g>
+          );
+        })}
+      </svg>
+    </LoadingGraphic>
+  );
+}
+
 function Panel() {
   const { listing, reload, rpc } = useListing();
   const [busy, setBusy] = useState(false);
@@ -568,8 +655,7 @@ function Panel() {
     }
   }, [reload, rpc]);
 
-  if (!listing)
-    return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (!listing) return <SweepingBoard />;
 
   // The repository only earns a column when it actually varies.
   const showRepo = new Set(listing.rows.map((row) => row.repo)).size > 1;

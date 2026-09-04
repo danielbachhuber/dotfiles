@@ -1181,3 +1181,25 @@ describe("harvest", () => {
     expect(slot.queryByRole("button", { name: /timer running/i })).toBeNull();
   });
 });
+
+describe("loading state", () => {
+  // Never resolves, so the panel stays in the state it shows before its rows
+  // arrive.
+  const pending = () => new Promise<never>(() => {});
+
+  it("draws its own subject rather than a spinner", async () => {
+    const slot = render({} as Record<string, unknown>, { listRows: pending });
+    const frame = await slot.findByRole("status");
+    expect(frame).toHaveAttribute("aria-busy", "true");
+    expect(await slot.findByRole("img", { name: "A branch leaving the trunk, gathering commits, and merging back" })).toBeInTheDocument();
+  });
+
+  it("says what it is doing once, in the panel's own words", async () => {
+    const slot = render({} as Record<string, unknown>, { listRows: pending });
+    // role="status" carries the caption to a screen reader, so there is no
+    // second hidden copy of it to read out.
+    expect(await slot.findByText("Sweeping your open pull requests")).toBeInTheDocument();
+    expect(slot.queryByText("Loading…")).toBeNull();
+  });
+});
+

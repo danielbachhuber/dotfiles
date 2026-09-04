@@ -43,6 +43,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  LoadingGraphic,
+  usePrefersReducedMotion,
+} from "@/components/ui/loading-graphic";
+import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
   actionSummary,
@@ -603,6 +607,134 @@ function SyncHeader() {
   );
 }
 
+/**
+ * What this panel is waiting for, drawn as the thing it is waiting on.
+ *
+ * A pull request is a branch that leaves the trunk, collects commits and comes
+ * back, so that is what the wait shows: the branch draws itself, three commits
+ * land on it in turn, and the merge point arrives last and in colour. The one
+ * accent in the whole panel-load is the merge — the moment every row in the
+ * table below is working toward.
+ *
+ * Timings are fractions of a single 2.4s cycle rather than separate durations,
+ * so every part of the glyph restarts together and the loop has no seam.
+ */
+function SweepingPullRequests() {
+  const still = usePrefersReducedMotion();
+
+  return (
+    <LoadingGraphic caption="Sweeping your open pull requests">
+      <svg
+        role="img"
+        aria-label="A branch leaving the trunk, gathering commits, and merging back"
+        viewBox="0 0 132 64"
+        className="h-[4.5rem] w-[9.5rem] text-muted-foreground"
+        fill="none"
+      >
+        {/* The trunk, which is always there and never animates. */}
+        <path
+          d="M8 46H124"
+          stroke="currentColor"
+          strokeOpacity={0.3}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+        />
+
+        {/* Where the branch leaves. */}
+        <circle cx={30} cy={46} r={3.5} fill="currentColor" fillOpacity={0.7} opacity={still ? 1 : 0}>
+          {still ? null : (
+            <animate
+              attributeName="opacity"
+              dur="2.4s"
+              repeatCount="indefinite"
+              values="0;0;1;1;0;0"
+              keyTimes="0;0.02;0.06;0.86;0.96;1"
+            />
+          )}
+        </circle>
+
+        <path
+          d="M30 46C44 46 44 22 58 22H82C96 22 96 46 110 46"
+          stroke="currentColor"
+          strokeOpacity={0.55}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeDasharray={92}
+          strokeDashoffset={still ? 0 : 92}
+        >
+          {still ? null : (
+            <>
+              <animate
+                attributeName="stroke-dashoffset"
+                dur="2.4s"
+                repeatCount="indefinite"
+                values="92;92;0;0;0"
+                keyTimes="0;0.05;0.42;0.86;1"
+              />
+              <animate
+                attributeName="opacity"
+                dur="2.4s"
+                repeatCount="indefinite"
+                values="1;1;0;0"
+                keyTimes="0;0.86;0.96;1"
+              />
+            </>
+          )}
+        </path>
+
+        {/* The commits, landing in the order they would be pushed. */}
+        {[
+          { cx: 58, at: "0.3;0.34" },
+          { cx: 70, at: "0.38;0.42" },
+          { cx: 82, at: "0.46;0.5" },
+        ].map(({ cx, at }) => (
+          <circle
+            key={cx}
+            cx={cx}
+            cy={22}
+            r={3.5}
+            fill="currentColor"
+            fillOpacity={0.7}
+            opacity={still ? 1 : 0}
+          >
+            {still ? null : (
+              <animate
+                attributeName="opacity"
+                dur="2.4s"
+                repeatCount="indefinite"
+                values="0;0;1;1;0;0"
+                keyTimes={`0;${at};0.86;0.96;1`}
+              />
+            )}
+          </circle>
+        ))}
+
+        {/* The merge: the only colour, and the last thing to arrive. */}
+        <circle cx={110} cy={46} r={4.5} className="fill-emerald-500" opacity={still ? 1 : 0}>
+          {still ? null : (
+            <>
+              <animate
+                attributeName="opacity"
+                dur="2.4s"
+                repeatCount="indefinite"
+                values="0;0;1;1;0;0"
+                keyTimes="0;0.58;0.63;0.86;0.96;1"
+              />
+              <animate
+                attributeName="r"
+                dur="2.4s"
+                repeatCount="indefinite"
+                values="1;1;5.5;4.5;4.5;4.5"
+                keyTimes="0;0.58;0.63;0.7;0.96;1"
+              />
+            </>
+          )}
+        </circle>
+      </svg>
+    </LoadingGraphic>
+  );
+}
+
 function Panel() {
   const { listing, reload, rpc } = useListing();
   const harvestClient = useHarvestClient(rpc);
@@ -715,7 +847,7 @@ function Panel() {
     }
   }, [reload, rpc]);
 
-  if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (!listing) return <SweepingPullRequests />;
 
   const inSection = (section: string) =>
     listing.rows.filter(

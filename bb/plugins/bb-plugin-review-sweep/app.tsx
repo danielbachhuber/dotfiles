@@ -42,6 +42,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  LoadingGraphic,
+  usePrefersReducedMotion,
+} from "@/components/ui/loading-graphic";
+import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
   SNOOZE_LABEL,
@@ -459,6 +463,112 @@ function Section({
 }
 
 /**
+ * The odometer the rolling digits spin on.
+ *
+ * Ten digits stacked in a one-character window, stepped past it once per
+ * cycle. `steps(10)` rather than a smooth translate, so each digit sits
+ * still for its moment instead of smearing — a counter, not a blur.
+ *
+ * Class names are prefixed because a plain `<style>` is not scoped the way
+ * the plugin's compiled stylesheet is.
+ */
+const ODOMETER_CSS = `
+.review-sweep-roll {
+  display: inline-block;
+  width: 1ch;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: -0.12em;
+}
+.review-sweep-roll-strip {
+  display: block;
+  animation-name: review-sweep-roll;
+  animation-timing-function: steps(10);
+  animation-iteration-count: infinite;
+}
+.review-sweep-roll-digit {
+  display: block;
+  height: 1em;
+  line-height: 1em;
+}
+@keyframes review-sweep-roll {
+  from { transform: translateY(0); }
+  to { transform: translateY(-10em); }
+}
+`;
+
+/** One rolling digit. Each gets its own period, so the six never lock in step. */
+function RollingDigit({ period }: { period: number }) {
+  return (
+    <span className="review-sweep-roll">
+      <span
+        className="review-sweep-roll-strip"
+        style={{ animationDuration: `${period}ms` }}
+      >
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
+          <span key={digit} className="review-sweep-roll-digit">
+            {digit}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * What this panel is waiting for, in the same notation as what it says when
+ * there is nothing to wait for.
+ *
+ * `NothingToReview` below settles this exact glyph at `-0,0 +0,0`. Here the
+ * counts are still turning, so the two states are one picture in two moments:
+ * a diff being measured, and a diff that measured to nothing. Same face, same
+ * size, same colours — git's own red and green — so arriving at the empty
+ * state reads as the counter stopping rather than as a different screen.
+ *
+ * Reduced motion settles it on real-looking counts rather than on zero, which
+ * would be indistinguishable from having nothing to review.
+ */
+function SweepingReviews() {
+  const still = usePrefersReducedMotion();
+
+  const removed = still ? "18,4" : null;
+  const added = still ? "26,9" : null;
+
+  return (
+    <LoadingGraphic caption="Sweeping the reviews waiting on you">
+      {still ? null : <style>{ODOMETER_CSS}</style>}
+      <p
+        aria-hidden="true"
+        className="font-mono text-2xl tracking-tight text-muted-foreground/60 sm:text-3xl"
+      >
+        <span>@@ </span>
+        <span className="text-rose-500">
+          -
+          {removed ?? (
+            <>
+              <RollingDigit period={620} />
+              <RollingDigit period={760} />,
+              <RollingDigit period={540} />
+            </>
+          )}
+        </span>{" "}
+        <span className="text-emerald-500">
+          +
+          {added ?? (
+            <>
+              <RollingDigit period={700} />
+              <RollingDigit period={580} />,
+              <RollingDigit period={820} />
+            </>
+          )}
+        </span>
+        <span> @@</span>
+      </p>
+    </LoadingGraphic>
+  );
+}
+
+/**
  * The empty state, drawn in the vernacular of the thing it is about.
  *
  * A tray, an inbox or a checkmark would say "nothing here" for any panel in
@@ -664,7 +774,7 @@ function Panel() {
     }
   }, [reload, rpc]);
 
-  if (!listing) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (!listing) return <SweepingReviews />;
 
   const inSection = (section: string) =>
     listing.rows.filter(
