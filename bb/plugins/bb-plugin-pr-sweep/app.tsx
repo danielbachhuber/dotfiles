@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -16,6 +16,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CopyLink } from "@/components/ui/copy-link";
+import { HarvestRowClock } from "bb-plugin-harvest/clock";
+import type { HarvestTimerClient } from "bb-plugin-harvest/picker";
+import { timerDefaultsForItem } from "bb-plugin-harvest/github";
 import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
 import { OpenPullRequestPage } from "./sweep/open-panel.js";
@@ -83,6 +86,7 @@ type Listing = {
   failedRepos: string[];
   truncated: boolean;
   lastError: string | null;
+  harvest: { available: boolean; running: RunningReference };
 };
 
 const FLAG_LABELS: Record<string, string> = {
@@ -99,6 +103,52 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 /** Checks, most consequential count first. Zeroes are omitted, not printed. */
+type RunningReference = { externalId: string; groupId: string | null } | null;
+
+interface HarvestPanelState {
+  available: boolean;
+  running: RunningReference;
+  client: HarvestTimerClient;
+  onStarted: () => void;
+}
+
+/**
+ * Whether the running timer belongs to this row.
+ *
+ * The group is part of the comparison because Harvest can only filter
+ * references by id: without it, every repository's #42 would light up
+ * together.
+ */
+function isRunningFor(running: RunningReference, row: Row): boolean {
+  if (running === null) return false;
+  if (running.externalId !== String(row.number)) return false;
+
+  const { groupId } = timerDefaultsForItem(row).externalReference;
+  return running.groupId === null || running.groupId === groupId;
+}
+
+/**
+ * Adapt this panel's proxy methods onto the picker's transport-agnostic
+ * client, which is what lets the picker source be shared verbatim with the
+ * Harvest plugin.
+ */
+function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): HarvestTimerClient {
+  return useMemo(
+    () => ({
+      assignments: () => rpc.call("harvestAssignments", null),
+      trackedHours: (input) =>
+        rpc.call("harvestTrackedHours", {
+          externalId: input.externalId,
+          groupId: input.groupId ?? null,
+        }),
+      startTimer: (input) => rpc.call("harvestStartTimer", input),
+      lastSelection: (input) => rpc.call("harvestLastSelection", input),
+    }),
+    [rpc],
+  );
+}
+
+
 function checksLabel(checks: Row["checks"]): string {
   const parts: string[] = [];
   if (checks.fail) parts.push(`${checks.fail} fail`);
@@ -393,6 +443,7 @@ function PrTable({
   onWork,
   onOpen,
   onArchive,
+  harvest,
 }: {
   rows: Row[];
   showRepo: boolean;
@@ -400,6 +451,7 @@ function PrTable({
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
   onArchive: (row: Row) => void;
+  harvest: HarvestPanelState;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border">
@@ -439,6 +491,15 @@ function PrTable({
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   {showRepo ? <span className="truncate">{row.repo}</span> : null}
                   <CopyLink title={`${row.title} (#${row.number})`} url={row.url} />
+                  {harvest.available ? (
+                    <HarvestRowClock
+                      surface="pull-requests"
+                      row={row}
+                      isRunning={isRunningFor(harvest.running, row)}
+                      client={harvest.client}
+                      onStarted={harvest.onStarted}
+                    />
+                  ) : null}
                 </span>
               </TableCell>
               <TableCell className="align-top">
@@ -475,6 +536,7 @@ function Section({
   onWork,
   onOpen,
   onArchive,
+  harvest,
 }: {
   title: string;
   rows: Row[];
@@ -483,6 +545,7 @@ function Section({
   onWork: (row: Row) => void;
   onOpen: (threadId: string) => void;
   onArchive: (row: Row) => void;
+  harvest: HarvestPanelState;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -491,6 +554,7 @@ function Section({
         {title} ({rows.length})
       </h2>
       <PrTable
+        harvest={harvest}
         rows={rows}
         showRepo={showRepo}
         starting={starting}
@@ -536,6 +600,16 @@ function SyncHeader() {
 
 function Panel() {
   const { listing, reload, rpc } = useListing();
+  const harvestClient = useHarvestClient(rpc);
+  const harvest: HarvestPanelState = {
+    available: listing?.harvest.available === true,
+    running: listing?.harvest.running ?? null,
+    // Starting a timer changes which row is lit, and that state arrives with
+    // the listing, so the listing is what has to be re-read.
+    client: harvestClient,
+    onStarted: reload,
+  };
+
   const navigate = useBbNavigate();
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState<Set<string>>(() => new Set());
@@ -650,6 +724,7 @@ function Panel() {
             rows={inSection(section)}
             showRepo={showRepo}
             starting={starting}
+            harvest={harvest}
             onWork={onWork}
             onOpen={onOpen}
             onArchive={onArchive}

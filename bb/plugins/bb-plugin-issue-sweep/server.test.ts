@@ -19,6 +19,39 @@ describe("server", () => {
     );
   });
 
+  it("refuses a draft for an issue the sweep does not have", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "issue-sweep" });
+    await plugin(bb);
+
+    expect(await harness.behavior.callRpc("startThreadDraft", {
+      repo: "acme/widgets",
+      number: 41,
+    })).toEqual({
+      existingThreadId: null,
+      reason: "#41 is no longer in the sweep.",
+      seed: null,
+    });
+  });
+
+  it("never spawns for an issue that left the sweep between draft and submit", async () => {
+    // The composer can sit open for as long as the user likes, so the row is
+    // re-read at submit rather than trusted from the draft.
+    const { bb, harness } = createFakePluginHost({ pluginId: "issue-sweep" });
+    await plugin(bb);
+
+    const result = await harness.behavior.callRpc("startThreadSubmit", {
+      repo: "acme/widgets",
+      number: 41,
+      request: {
+        projectId: "proj_widgets",
+        input: [{ type: "text", text: "Work on it.", mentions: [] }],
+      },
+    });
+
+    expect(result).toMatchObject({ threadId: null, existing: false });
+    expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+  });
+
   it("returns an empty list before the first sweep", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "issue-sweep" });
     await plugin(bb);

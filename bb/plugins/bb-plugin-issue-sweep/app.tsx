@@ -5,6 +5,7 @@ import {
   useRealtime,
   useRpc,
   UrlLink,
+  type NewThreadRequest,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,12 +22,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Icon } from "@/components/ui/icon";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  HarvestTimerPicker,
-  type HarvestTimerClient,
-} from "@/components/timer-picker";
-import { timerDefaultsForIssue } from "./harvest/reference.js";
+  StartThreadDialog,
+  type StartThreadSeed,
+} from "@/components/start-thread-dialog";
+import { HarvestRowClock } from "bb-plugin-harvest/clock";
+import type { HarvestTimerClient } from "bb-plugin-harvest/picker";
+import { timerDefaultsForItem } from "bb-plugin-harvest/github";
 import { commentsLabel, relativeTime, subtasksLabel } from "./issues/format.js";
 import type { rpcContract } from "./server.js";
 import { countedRows, sectionOrder } from "./issues/board.js";
@@ -220,7 +222,7 @@ function isRunningFor(running: RunningReference, row: Row): boolean {
   if (running === null) return false;
   if (running.externalId !== String(row.number)) return false;
 
-  const { groupId } = timerDefaultsForIssue(row).externalReference;
+  const { groupId } = timerDefaultsForItem(row).externalReference;
   return running.groupId === null || running.groupId === groupId;
 }
 
@@ -245,60 +247,6 @@ function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): H
   );
 }
 
-/**
- * The per-row Harvest control.
- *
- * Issue Sweep draws its own clock rather than rendering the Harvest plugin's,
- * because bb plugins cannot render each other's React components. The popover
- * it opens is the shared picker source, wired to Issue Sweep's proxy methods
- * through the injected client.
- */
-function HarvestClock({
-  row,
-  isRunning,
-  client,
-  onStarted,
-}: {
-  row: Row;
-  isRunning: boolean;
-  client: HarvestTimerClient;
-  onStarted: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const defaults = timerDefaultsForIssue(row);
-
-  // The row already holds a title link, a copy button, a status picker and a
-  // thread action, so the clock has to say which issue it belongs to.
-  const label = isRunning
-    ? `Harvest timer running for #${row.number}`
-    : `Track time for #${row.number}`;
-
-  return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={label}
-          className={`size-4 ${isRunning ? "text-primary" : "text-muted-foreground"}`}
-        >
-          <Icon name="Clock" className="size-3.5" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[26rem] p-0">
-        <HarvestTimerPicker
-          client={client}
-          defaults={defaults}
-          onStarted={() => {
-            setIsOpen(false);
-            onStarted();
-          }}
-          onCancel={() => setIsOpen(false)}
-        />
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /**
  * Start or open the thread for one issue.
@@ -424,7 +372,8 @@ function IssueTable({
                       url={row.url}
                     />
                     {harvest.available ? (
-                      <HarvestClock
+                      <HarvestRowClock
+                        surface="issues"
                         row={row}
                         isRunning={isRunningFor(harvest.running, row)}
                         client={harvest.client}
@@ -514,25 +463,35 @@ function Panel() {
     onStarted: reload,
   };
 
+  // The issue whose composer is open, with the seeds the backend resolved for
+  // it. Null when the dialog is closed.
+  const [draft, setDraft] = useState<{ row: Row; seed: StartThreadSeed } | null>(
+    null,
+  );
+
   const onStart = useCallback(
     (row: Row) => {
       const key = `${row.repo}#${row.number}`;
       // Marked before awaiting anything, so the button changes on the same tick
-      // as the click rather than after the spawn returns.
+      // as the click rather than after the draft returns.
       setStarting((keys) => new Set(keys).add(key));
 
       void (async () => {
         try {
-          const result = await rpc.call("startThread", {
+          const result = await rpc.call("startThreadDraft", {
             repo: row.repo,
             number: row.number,
           });
-          if (!result.threadId) {
+          // An issue that already has a thread never composes a second one.
+          if (result.existingThreadId) {
+            navigate.toThread(result.existingThreadId);
+            return;
+          }
+          if (result.seed === null) {
             toast.error(result.reason ?? "Could not start a thread.");
             return;
           }
-          if (!result.existing) toast.success(`Started a thread for ${key}`);
-          await reload();
+          setDraft({ row, seed: result.seed });
         } finally {
           setStarting((keys) => {
             const next = new Set(keys);
@@ -542,7 +501,29 @@ function Panel() {
         }
       })();
     },
-    [reload, rpc],
+    [navigate, rpc],
+  );
+
+  const onSubmitDraft = useCallback(
+    async (request: NewThreadRequest) => {
+      if (!draft) return;
+      const { repo, number } = draft.row;
+      const key = `${repo}#${number}`;
+      const result = await rpc.call("startThreadSubmit", {
+        repo,
+        number,
+        request: request as never,
+      });
+      if (!result.threadId) {
+        toast.error(result.reason ?? "Could not start a thread.");
+        // Thrown so the composer keeps the draft rather than clearing it.
+        throw new Error(result.reason ?? "Could not start a thread.");
+      }
+      setDraft(null);
+      if (!result.existing) toast.success(`Started a thread for ${key}`);
+      await reload();
+    },
+    [draft, reload, rpc],
   );
 
   const onPick = useCallback(
@@ -661,6 +642,24 @@ function Panel() {
           )}
         </div>
       </div>
+
+      <StartThreadDialog
+        open={draft !== null}
+        onOpenChange={(next) => {
+          if (!next) setDraft(null);
+        }}
+        heading={
+          draft ? `Start a thread for #${draft.row.number}` : "Start a thread"
+        }
+        description={
+          draft
+            ? draft.row.title
+            : "Edit the prompt and the execution options before starting."
+        }
+        draftKey={draft ? `issue-sweep:${draft.row.repo}#${draft.row.number}` : ""}
+        seed={draft?.seed ?? null}
+        onSubmit={onSubmitDraft}
+      />
     </TooltipProvider>
   );
 }

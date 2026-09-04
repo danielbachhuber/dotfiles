@@ -356,6 +356,15 @@ describe("sidebar badge", () => {
   });
 });
 
+/** What `startThreadDraft` hands the composer. */
+const SEED = {
+  projectId: "proj_widgets",
+  providerId: "claude-code",
+  model: null,
+  permissionMode: "full" as const,
+  prompt: "Work on acme/widgets#1.",
+};
+
 describe("thread action", () => {
   it("offers to start a thread when the issue has none", async () => {
     const slot = render(listing());
@@ -374,7 +383,9 @@ describe("thread action", () => {
     expect(await slot.findByRole("button", { name: "Start" })).toBeDisabled();
   });
 
-  it("starts one thread for the issue that was clicked", async () => {
+  it("asks for a draft for the issue that was clicked", async () => {
+    // Start no longer spawns. It fetches the seeds and opens BB's composer,
+    // so the assertion is about which row the seeds were asked for.
     const calls: unknown[] = [];
     const slot = render(
       listing({
@@ -384,9 +395,9 @@ describe("thread action", () => {
         ],
       }),
       {
-        startThread: (input: unknown) => {
+        startThreadDraft: (input: unknown) => {
           calls.push(input);
-          return { threadId: "thr_new", existing: false, reason: null };
+          return { existingThreadId: null, reason: null, seed: SEED };
         },
       },
     );
@@ -398,14 +409,48 @@ describe("thread action", () => {
     expect(calls[0]).toEqual({ repo: "acme/widgets", number: 2 });
   });
 
-  it("disables the button while the spawn is in flight", async () => {
+  it("opens the composer naming the issue, rather than spawning", async () => {
+    const slot = render(
+      listing({ rows: [rowFixture({ number: 7, title: "Second" })] }),
+      {
+        startThreadDraft: () => ({
+          existingThreadId: null,
+          reason: null,
+          seed: SEED,
+        }),
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Start" }));
+
+    expect(await slot.findByText("Start a thread for #7")).toBeInTheDocument();
+  });
+
+  it("refuses without opening the composer when the server says why", async () => {
+    const slot = render(listing(), {
+      startThreadDraft: () => ({
+        existingThreadId: null,
+        reason: "No bb project is checked out for acme/widgets.",
+        seed: null,
+      }),
+    });
+
+    fireEvent.click(await slot.findByRole("button", { name: "Start" }));
+
+    await waitFor(() =>
+      expect(slot.queryByText(/^Start a thread for/)).toBeNull(),
+    );
+  });
+
+  it("disables the button while the draft is in flight", async () => {
     // A second click before the first returns is how two threads got created
     // for one row in pr-sweep.
     let release: (() => void) | null = null;
     const slot = render(listing(), {
-      startThread: () =>
+      startThreadDraft: () =>
         new Promise((resolve) => {
-          release = () => resolve({ threadId: "thr_new", existing: false, reason: null });
+          release = () =>
+            resolve({ existingThreadId: null, reason: null, seed: SEED });
         }),
     });
 

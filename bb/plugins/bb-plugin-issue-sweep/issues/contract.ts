@@ -1,6 +1,30 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
+/**
+ * What BB's new-thread composer is seeded with. The settings still decide
+ * these; the composer only lets one thread differ from them.
+ */
+const seedSchema = z.object({
+  projectId: z.string(),
+  /** Blank in settings arrives as null: "let BB choose". */
+  providerId: z.string().nullable(),
+  model: z.string().nullable(),
+  permissionMode: z.enum(["accept-edits", "auto", "full"]),
+  prompt: z.string(),
+});
+
+/**
+ * BB's composer resolves a complete NewThreadRequest and guarantees it is
+ * JSON-serializable, so this validates only the fields the plugin reads and
+ * forwards the rest verbatim. `threads.spawn` validates the remainder
+ * server-side, which is where that check belongs.
+ */
+const newThreadRequestSchema = z.looseObject({
+  projectId: z.string().min(1),
+  input: z.array(z.looseObject({ type: z.string() })).min(1),
+});
+
 const rowSchema = z.object({
   repo: z.string(),
   number: z.number(),
@@ -79,11 +103,34 @@ export const rpcContract = defineRpcContract({
    * them as one gesture.
    */
   /**
-   * Starts a thread for an issue, or returns the one already linked to it.
-   * Idempotent by design: two fast clicks must not produce two threads.
+   * Everything the panel needs to open BB's composer for an issue, without
+   * starting anything. Answers one of three ways: the issue already has a
+   * thread, nothing can be started and here is why, or here are the seeds.
    */
-  startThread: {
+  startThreadDraft: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
+    output: z.object({
+      /** The thread already linked to this issue; the panel opens it. */
+      existingThreadId: z.string().nullable(),
+      /** Why nothing can be started, or null. */
+      reason: z.string().nullable(),
+      /** Null whenever `existingThreadId` or `reason` is set. */
+      seed: seedSchema.nullable(),
+    }),
+  },
+  /**
+   * Starts a thread from what the composer resolved, or returns the one
+   * already linked to the issue. Idempotent by design: two fast submits must
+   * not produce two threads.
+   */
+  startThreadSubmit: {
+    input: z
+      .object({
+        repo: z.string(),
+        number: z.number(),
+        request: newThreadRequestSchema,
+      })
+      .strict(),
     output: z.object({
       threadId: z.string().nullable(),
       /** True when an existing thread was returned rather than a new one started. */
@@ -119,7 +166,11 @@ export const rpcContract = defineRpcContract({
   },
   harvestLastSelection: {
     input: z.object({ scope: z.string().nullable() }).strict(),
-    output: z.object({ projectId: z.number(), taskId: z.number() }).nullable(),
+    // `exact` must be declared, or zod silently strips it and the picker
+    // cannot tell a surface's own history from the global fallback.
+    output: z
+      .object({ projectId: z.number(), taskId: z.number(), exact: z.boolean() })
+      .nullable(),
   },
   harvestStartTimer: {
     input: z

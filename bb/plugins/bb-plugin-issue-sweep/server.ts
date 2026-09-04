@@ -1,5 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { createHarvestBridge } from "./harvest/bridge.js";
+import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { isAdoptable, soleIssueReference } from "./issues/adopt.js";
 import { rpcContract } from "./issues/contract.js";
 import { parseStatusOrder, shouldAutoApply } from "./issues/board.js";
@@ -514,7 +514,45 @@ export default async function plugin(bb: BbPluginApi) {
       return harvest.startTimer(input);
     },
 
-    async startThread({ repo, number }) {
+    async startThreadDraft({ repo, number }) {
+      const existingThreadId = store.threadFor(repo, number);
+      if (existingThreadId) return { existingThreadId, reason: null, seed: null };
+
+      const row = store.readRows().find((entry) => entry.repo === repo && entry.number === number);
+      if (!row) {
+        return {
+          existingThreadId: null,
+          reason: `#${number} is no longer in the sweep.`,
+          seed: null,
+        };
+      }
+
+      const projectId = matchProjectForRepo(repo, await projectCandidates());
+      if (!projectId) {
+        return {
+          existingThreadId: null,
+          reason: `No bb project is checked out for ${repo}.`,
+          seed: null,
+        };
+      }
+
+      const { providerId, model, permissionMode } = await settings.get();
+      const chosenModel = model.trim();
+
+      return {
+        existingThreadId: null,
+        reason: null,
+        seed: {
+          projectId,
+          providerId: providerId || null,
+          model: chosenModel || null,
+          permissionMode: parsePermissionMode(permissionMode),
+          prompt: buildPrompt(row),
+        },
+      };
+    },
+
+    async startThreadSubmit({ repo, number, request }) {
       const key = `${repo}#${number}`;
 
       const inFlight = spawning.get(key);
@@ -531,34 +569,16 @@ export default async function plugin(bb: BbPluginApi) {
           return { threadId: null, existing: false, reason: `#${number} is no longer in the sweep.` };
         }
 
-        const projectId = matchProjectForRepo(repo, await projectCandidates());
-        if (!projectId) {
-          return { threadId: null, existing: false, reason: `No bb project is checked out for ${repo}.` };
-        }
-
-        const { providerId, model, permissionMode } = await settings.get();
-        const mode = parsePermissionMode(permissionMode);
-        const chosenModel = model.trim();
-
+        // Everything the composer resolved — project, environment, provider,
+        // model, reasoning, permission mode, execution provenance — is
+        // forwarded untouched. Only the title is the plugin's business: the
+        // composer has no field for one, and the sidebar should name the issue.
         const thread = await bb.sdk.threads.spawn({
-          projectId,
-          // The project's own default rather than a worktree forced from here:
-          // an issue has no branch to land on, so there is nothing this plugin
-          // knows about the workspace that the project's setting does not.
-          environment: { type: "project-default" },
-          ...(providerId ? { providerId } : {}),
-          ...(chosenModel ? { model: chosenModel } : {}),
-          permissionMode: mode,
-          prompt: buildPrompt(row),
+          ...request,
           title: threadTitle(number, row.title),
-        });
+        } as Parameters<typeof bb.sdk.threads.spawn>[0]);
 
-        bb.log.info(
-          `started ${thread.id} for ${key}` +
-            ` on ${providerId || "the default provider"}` +
-            (chosenModel ? ` with ${chosenModel}` : "") +
-            `, permission mode ${mode}`,
-        );
+        bb.log.info(`started ${thread.id} for ${key} in ${request.projectId}`);
         store.linkThread(repo, number, thread.id, Date.now());
 
         // Starting work is the one moment the plugin knows more than the board

@@ -46,9 +46,29 @@ function listing(overrides: Record<string, unknown> = {}) {
     failedRepos: [],
     truncated: false,
     lastError: null,
+    // No Harvest plugin by default, which is the state the panel has to stay
+    // fully usable in.
+    harvest: { available: false, running: null },
     ...overrides,
   };
 }
+
+const HARVEST_RPC = {
+  harvestAssignments: () => ({
+    projects: [
+      {
+        id: 11,
+        name: "Internal",
+        code: "INT",
+        clientName: "Acme",
+        tasks: [{ id: 22, name: "Development" }],
+      },
+    ],
+  }),
+  harvestTrackedHours: () => ({ hours: 0 }),
+  harvestLastSelection: () => null,
+  harvestStartTimer: () => ({ entry: null }),
+};
 
 let mounted: { lifecycle: { unmount: () => void } } | null = null;
 
@@ -1090,5 +1110,52 @@ describe("a pull request with more than one thread", () => {
         threadId: "thr_1",
       }),
     );
+  });
+});
+
+describe("harvest", () => {
+  const available = (extra = {}) =>
+    listing({ harvest: { available: true, running: null, ...extra } });
+
+  it("offers no clock when the Harvest plugin is not installed", async () => {
+    const slot = render(listing(), HARVEST_RPC);
+    await waitFor(() => expect(slot.queryByRole("table")).toBeTruthy());
+
+    // The panel has to stay fully useful with no Harvest plugin present.
+    expect(slot.queryByRole("button", { name: /track time/i })).toBeNull();
+  });
+
+  it("offers a clock on each row when Harvest is available", async () => {
+    const slot = render(available(), HARVEST_RPC);
+    expect(
+      await slot.findByRole("button", { name: /track time for #42/i }),
+    ).toBeTruthy();
+  });
+
+  it("marks the row whose timer is running", async () => {
+    const slot = render(
+      listing({
+        harvest: { available: true, running: { externalId: "42", groupId: "widgets" } },
+      }),
+      HARVEST_RPC,
+    );
+
+    expect(
+      await slot.findByRole("button", { name: /timer running for #42/i }),
+    ).toBeTruthy();
+  });
+
+  it("does not mark a row when the running timer is the same number in another repo", async () => {
+    // Harvest can only filter references by id, so the group has to be part of
+    // the comparison or every repository's #42 would light up together.
+    const slot = render(
+      listing({
+        harvest: { available: true, running: { externalId: "42", groupId: "somewhere-else" } },
+      }),
+      HARVEST_RPC,
+    );
+
+    await waitFor(() => expect(slot.queryByRole("table")).toBeTruthy());
+    expect(slot.queryByRole("button", { name: /timer running/i })).toBeNull();
   });
 });

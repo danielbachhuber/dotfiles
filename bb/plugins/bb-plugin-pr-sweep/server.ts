@@ -11,6 +11,7 @@ import {
 } from "./sweep/open-pr.js";
 import { parseRemoteSlug } from "./sweep/spawn-target.js";
 import { isAdoptable, solePullRequestReference } from "./sweep/adopt.js";
+import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
 import { buildPrompt } from "./sweep/prompt.js";
@@ -598,7 +599,34 @@ export default async function plugin(bb: BbPluginApi) {
     }
   }
 
+  const harvest = createHarvestBridge(bb);
+
+  /**
+   * Harvest's contribution to the listing: whether the clock should render at
+   * all, and which row it should be lit on.
+   */
+  async function harvestListingState() {
+    if (!(await harvest.available())) return { available: false, running: null };
+    return { available: true, running: await harvest.runningReference() };
+  }
+
   bb.rpc.register(rpcContract, {
+    harvestAssignments() {
+      return harvest.assignments();
+    },
+
+    harvestTrackedHours({ externalId, groupId }) {
+      return harvest.trackedHours({ externalId, groupId });
+    },
+
+    harvestLastSelection({ scope }) {
+      return harvest.lastSelection({ scope });
+    },
+
+    harvestStartTimer(input) {
+      return harvest.startTimer(input);
+    },
+
     async listRows() {
       const meta = store.readMeta();
       const rows = store.readRows();
@@ -629,6 +657,7 @@ export default async function plugin(bb: BbPluginApi) {
         failedRepos: meta.failedRepos,
         truncated: meta.truncated,
         lastError: meta.lastError,
+        harvest: await harvestListingState(),
       };
     },
 
