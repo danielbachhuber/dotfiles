@@ -384,24 +384,37 @@ describe("action", () => {
     expect(slot.queryByRole("menuitem", { name: /ignore/i })).toBeNull();
   });
 
-  it("calls reviewThis when the action is clicked", async () => {
+  it("asks for a draft when the action is clicked, rather than spawning", async () => {
     const slot = render(listing(), {
-      reviewThis: () => ({ threadId: "thr_1", existing: false, reason: null }),
+      reviewThisDraft: () => ({ existingThreadId: null, reason: null, seed: SEED }),
     });
     (await slot.findByRole("button", { name: /^Start thread$/ })).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const call = slot.inspection.rpcCalls.find((entry) => entry.method === "reviewThis");
+    const call = slot.inspection.rpcCalls.find((entry) => entry.method === "reviewThisDraft");
     expect(call?.input).toEqual({ repo: "acme/widgets", number: 42 });
+    expect(
+      slot.inspection.rpcCalls.some((entry) => entry.method === "reviewThisSubmit"),
+    ).toBe(false);
   });
 
-  it("disables the button and says Starting while the thread is created", async () => {
+  it("opens the composer naming the review", async () => {
+    const slot = render(listing(), {
+      reviewThisDraft: () => ({ existingThreadId: null, reason: null, seed: SEED }),
+    });
+    (await slot.findByRole("button", { name: /^Start thread$/ })).click();
+    expect(
+      await slot.findByText("Start a review thread for #42"),
+    ).toBeInTheDocument();
+  });
+
+  it("disables the button and says Starting while the draft is fetched", async () => {
     let release: (() => void) | undefined;
     const slot = render(listing(), {
-      reviewThis: async () => {
+      reviewThisDraft: async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
-        return { threadId: "thr_1", existing: false, reason: null };
+        return { existingThreadId: null, reason: null, seed: SEED };
       },
     });
 
@@ -414,11 +427,11 @@ describe("action", () => {
   it("does not fire a second call when the button is clicked twice", async () => {
     let release: (() => void) | undefined;
     const slot = render(listing(), {
-      reviewThis: async () => {
+      reviewThisDraft: async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
-        return { threadId: "thr_1", existing: false, reason: null };
+        return { existingThreadId: null, reason: null, seed: SEED };
       },
     });
 
@@ -428,11 +441,22 @@ describe("action", () => {
     button.click();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(slot.inspection.rpcCalls.filter((call) => call.method === "reviewThis")).toHaveLength(1);
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "reviewThisDraft"),
+    ).toHaveLength(1);
 
     release?.();
   });
 });
+
+/** What `reviewThisDraft` hands the composer. */
+const SEED = {
+  projectId: "proj_widgets",
+  providerId: "claude-code",
+  model: null,
+  permissionMode: "full" as const,
+  prompt: "Review acme/widgets#42.",
+};
 
 describe("ignoring a review", () => {
   it("offers Ignore for 48 hours in the row menu", async () => {

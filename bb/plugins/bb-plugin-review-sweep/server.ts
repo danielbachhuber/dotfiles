@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { rpcContract } from "./review/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./review/gh.js";
 import { buildPrompt } from "./review/prompt.js";
@@ -189,7 +190,34 @@ export default async function plugin(bb: BbPluginApi) {
     }));
   }
 
+  const harvest = createHarvestBridge(bb);
+
+  /**
+   * Harvest's contribution to the listing: whether the clock should render at
+   * all, and which row it should be lit on.
+   */
+  async function harvestListingState() {
+    if (!(await harvest.available())) return { available: false, running: null };
+    return { available: true, running: await harvest.runningReference() };
+  }
+
   bb.rpc.register(rpcContract, {
+    harvestAssignments() {
+      return harvest.assignments();
+    },
+
+    harvestTrackedHours({ externalId, groupId }) {
+      return harvest.trackedHours({ externalId, groupId });
+    },
+
+    harvestLastSelection({ scope }) {
+      return harvest.lastSelection({ scope });
+    },
+
+    harvestStartTimer(input) {
+      return harvest.startTimer(input);
+    },
+
     async listRows() {
       const meta = store.readMeta();
       const rows = store.readRows();
@@ -218,6 +246,7 @@ export default async function plugin(bb: BbPluginApi) {
         sweptAt: meta.sweptAt,
         truncated: meta.truncated,
         lastError: meta.lastError,
+        harvest: await harvestListingState(),
         staleAfterDays: parseStaleAfterDays(staleAfterDays),
       };
     },
@@ -281,11 +310,51 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true };
     },
 
-    async reviewThis({ repo, number }) {
+    async reviewThisDraft({ repo, number }) {
+      const existingThreadId = store.threadFor(repo, number);
+      if (existingThreadId) return { existingThreadId, reason: null, seed: null };
+
+      const row = store
+        .readRows()
+        .find((entry) => entry.repo === repo && entry.number === number);
+      if (!row) {
+        return {
+          existingThreadId: null,
+          reason: "That review request is no longer in the sweep.",
+          seed: null,
+        };
+      }
+
+      const projectId = matchProjectForRepo(repo, await projectCandidates());
+      if (!projectId) {
+        return {
+          existingThreadId: null,
+          reason: `No bb project is checked out for ${repo}.`,
+          seed: null,
+        };
+      }
+
+      const { providerId, model, permissionMode } = await settings.get();
+      const chosenModel = model.trim();
+
+      return {
+        existingThreadId: null,
+        reason: null,
+        seed: {
+          projectId,
+          providerId: providerId || null,
+          model: chosenModel || null,
+          permissionMode: parsePermissionMode(permissionMode),
+          prompt: buildPrompt(row, Date.now()),
+        },
+      };
+    },
+
+    async reviewThisSubmit({ repo, number, request }) {
       const key = `${repo}#${number}`;
 
       // One thread per review, enforced on three levels: the durable link
-      // below, this in-flight map for clicks that race before the first spawn
+      // below, this in-flight map for submits that race before the first spawn
       // returns, and a disabled button in the panel. The link alone is not
       // enough — two clicks a few hundred ms apart both read "no link yet".
       const inFlight = spawning.get(key);
@@ -308,34 +377,17 @@ export default async function plugin(bb: BbPluginApi) {
           };
         }
 
-        const projectId = matchProjectForRepo(repo, await projectCandidates());
-        if (!projectId) {
-          return {
-            threadId: null,
-            existing: false,
-            reason: `No bb project is checked out for ${repo}.`,
-          };
-        }
-
-        const { providerId, model, permissionMode } = await settings.get();
-        const mode = parsePermissionMode(permissionMode);
-        const chosenModel = model.trim();
-
+        // Everything the composer resolved — project, environment, provider,
+        // model, reasoning, permission mode, execution provenance — is
+        // forwarded untouched. Only the title is the plugin's business: the
+        // composer has no field for one, and the sidebar should name the
+        // review.
         const thread = await bb.sdk.threads.spawn({
-          projectId,
-          environment: { type: "project-default" },
-          ...(providerId ? { providerId } : {}),
-          ...(chosenModel ? { model: chosenModel } : {}),
-          permissionMode: mode,
-          prompt: buildPrompt(row, Date.now()),
+          ...request,
           title: threadTitle(row.state, number, row.title),
-        });
-        bb.log.info(
-          `started ${thread.id} for ${key}` +
-            ` on ${providerId || "the default provider"}` +
-            (chosenModel ? ` with ${chosenModel}` : "") +
-            `, permission mode ${mode}`,
-        );
+        } as Parameters<typeof bb.sdk.threads.spawn>[0]);
+
+        bb.log.info(`started ${thread.id} for ${key} in ${request.projectId}`);
         store.linkThread(repo, number, thread.id, Date.now());
         bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
         return { threadId: thread.id, existing: false, reason: null };

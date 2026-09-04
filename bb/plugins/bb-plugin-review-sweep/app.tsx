@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
   useRealtime,
   useRpc,
   UrlLink,
+  type NewThreadRequest,
   type PluginThreadHeaderActionProps,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CopyLink } from "@/components/ui/copy-link";
+import { HarvestRowClock } from "bb-plugin-harvest/clock";
+import type { HarvestTimerClient } from "bb-plugin-harvest/picker";
+import { timerDefaultsForItem } from "bb-plugin-harvest/github";
 import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
 import { Icon } from "@/components/ui/icon";
+import {
+  StartThreadDialog,
+  type StartThreadSeed,
+} from "@/components/start-thread-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,6 +79,7 @@ type Listing = {
   truncated: boolean;
   lastError: string | null;
   staleAfterDays: number;
+  harvest: { available: boolean; running: RunningReference };
 };
 
 const STATE_LABELS: Record<Row["state"], string> = {
@@ -90,6 +99,52 @@ const TONE_CLASSES = {
   attention: "bg-sky-500/15 text-sky-700 dark:text-sky-400",
   stale: "bg-destructive/10 text-destructive",
 } as const;
+
+type RunningReference = { externalId: string; groupId: string | null } | null;
+
+interface HarvestPanelState {
+  available: boolean;
+  running: RunningReference;
+  client: HarvestTimerClient;
+  onStarted: () => void;
+}
+
+/**
+ * Whether the running timer belongs to this row.
+ *
+ * The group is part of the comparison because Harvest can only filter
+ * references by id: without it, every repository's #42 would light up
+ * together.
+ */
+function isRunningFor(running: RunningReference, row: Row): boolean {
+  if (running === null) return false;
+  if (running.externalId !== String(row.number)) return false;
+
+  const { groupId } = timerDefaultsForItem(row).externalReference;
+  return running.groupId === null || running.groupId === groupId;
+}
+
+/**
+ * Adapt this panel's proxy methods onto the picker's transport-agnostic
+ * client, which is what lets the picker source be shared verbatim with the
+ * Harvest plugin.
+ */
+function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): HarvestTimerClient {
+  return useMemo(
+    () => ({
+      assignments: () => rpc.call("harvestAssignments", null),
+      trackedHours: (input) =>
+        rpc.call("harvestTrackedHours", {
+          externalId: input.externalId,
+          groupId: input.groupId ?? null,
+        }),
+      startTimer: (input) => rpc.call("harvestStartTimer", input),
+      lastSelection: (input) => rpc.call("harvestLastSelection", input),
+    }),
+    [rpc],
+  );
+}
+
 
 function useListing() {
   const rpc = useRpc<typeof rpcContract>();
@@ -245,6 +300,7 @@ function ReviewTable({
   onArchive,
   onSnooze,
   onUnsnooze,
+  harvest,
 }: {
   rows: Row[];
   showRepo: boolean;
@@ -256,6 +312,7 @@ function ReviewTable({
   onArchive: (row: Row) => void;
   onSnooze: (row: Row) => void;
   onUnsnooze: (row: Row) => void;
+  harvest: HarvestPanelState;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-border">
@@ -312,6 +369,16 @@ function ReviewTable({
                         .join(" · ")}
                     </span>
                     <CopyLink title={`${row.title} (#${row.number})`} url={row.url} />
+                  {harvest.available ? (
+                    <HarvestRowClock
+                      surface="reviews"
+                      preferredTaskName="Code Review"
+                      row={row}
+                      isRunning={isRunningFor(harvest.running, row)}
+                      client={harvest.client}
+                      onStarted={harvest.onStarted}
+                    />
+                  ) : null}
                   </span>
                 </TableCell>
                 <TableCell className="align-top">
@@ -378,6 +445,7 @@ function Section({
   onArchive: (row: Row) => void;
   onSnooze: (row: Row) => void;
   onUnsnooze: (row: Row) => void;
+  harvest: HarvestPanelState;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -463,6 +531,16 @@ function SyncHeader() {
 
 function Panel() {
   const { listing, reload, rpc } = useListing();
+  const harvestClient = useHarvestClient(rpc);
+  const harvest: HarvestPanelState = {
+    available: listing?.harvest.available === true,
+    running: listing?.harvest.running ?? null,
+    // Starting a timer changes which row is lit, and that state arrives with
+    // the listing, so the listing is what has to be re-read.
+    client: harvestClient,
+    onStarted: reload,
+  };
+
   const navigate = useBbNavigate();
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState<Set<string>>(() => new Set());
@@ -478,6 +556,12 @@ function Panel() {
     [navigate],
   );
 
+  // The review whose composer is open, with the seeds the backend resolved for
+  // it. Null when the dialog is closed.
+  const [draft, setDraft] = useState<{ row: Row; seed: StartThreadSeed } | null>(
+    null,
+  );
+
   const onReview = useCallback(
     (row: Row) => {
       const key = `${row.repo}#${row.number}`;
@@ -487,13 +571,20 @@ function Panel() {
 
       void (async () => {
         try {
-          const result = await rpc.call("reviewThis", { repo: row.repo, number: row.number });
-          if (result.threadId) {
-            if (!result.existing) toast.success(`Started a review thread for ${key}`);
-            await reload();
-          } else {
-            toast.error(result.reason ?? "Could not start a thread.");
+          const result = await rpc.call("reviewThisDraft", {
+            repo: row.repo,
+            number: row.number,
+          });
+          // A review that already has a thread never composes a second one.
+          if (result.existingThreadId) {
+            navigate.toThread(result.existingThreadId);
+            return;
           }
+          if (result.seed === null) {
+            toast.error(result.reason ?? "Could not start a thread.");
+            return;
+          }
+          setDraft({ row, seed: result.seed });
         } finally {
           setStarting((current) => {
             const next = new Set(current);
@@ -503,7 +594,29 @@ function Panel() {
         }
       })();
     },
-    [reload, rpc],
+    [navigate, rpc],
+  );
+
+  const onSubmitDraft = useCallback(
+    async (request: NewThreadRequest) => {
+      if (!draft) return;
+      const { repo, number } = draft.row;
+      const key = `${repo}#${number}`;
+      const result = await rpc.call("reviewThisSubmit", {
+        repo,
+        number,
+        request: request as never,
+      });
+      if (!result.threadId) {
+        toast.error(result.reason ?? "Could not start a thread.");
+        // Thrown so the composer keeps the draft rather than clearing it.
+        throw new Error(result.reason ?? "Could not start a thread.");
+      }
+      setDraft(null);
+      if (!result.existing) toast.success(`Started a review thread for ${key}`);
+      await reload();
+    },
+    [draft, reload, rpc],
   );
 
   const onArchive = useCallback(
@@ -588,6 +701,7 @@ function Panel() {
               showRepo={showRepo}
               staleAfterDays={listing.staleAfterDays}
               now={now}
+              harvest={harvest}
               starting={starting}
               onReview={onReview}
               onOpen={onOpen}
@@ -598,6 +712,26 @@ function Panel() {
           ))}
         </div>
       </div>
+
+      <StartThreadDialog
+        open={draft !== null}
+        onOpenChange={(next) => {
+          if (!next) setDraft(null);
+        }}
+        heading={
+          draft ? `Start a review thread for #${draft.row.number}` : "Start a thread"
+        }
+        description={
+          draft
+            ? draft.row.title
+            : "Edit the prompt and the execution options before starting."
+        }
+        draftKey={
+          draft ? `review-sweep:${draft.row.repo}#${draft.row.number}` : ""
+        }
+        seed={draft?.seed ?? null}
+        onSubmit={onSubmitDraft}
+      />
     </TooltipProvider>
   );
 }

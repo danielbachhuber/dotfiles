@@ -61,6 +61,39 @@ async function seededHost(
   return { ...fixture, liveThreads };
 }
 
+/**
+ * The whole panel gesture in one call: fetch the seeds, then submit them back
+ * untouched, which is what happens when the user accepts BB's composer as it
+ * opens. Tests that care about the seeds call `reviewThisDraft` directly;
+ * tests that care about the spawn go through here.
+ */
+async function reviewThis(
+  harness: Awaited<ReturnType<typeof seededHost>>["harness"],
+  { repo, number }: { repo: string; number: number },
+) {
+  const draft = await harness.behavior.callRpc("reviewThisDraft", { repo, number });
+  if (draft.existingThreadId) {
+    return { threadId: draft.existingThreadId, existing: true, reason: null };
+  }
+  if (!draft.seed) return { threadId: null, existing: false, reason: draft.reason };
+
+  // Stands in for what BB's composer resolves from those seeds. Only the
+  // fields the plugin's own schema reads are asserted anywhere; the rest is
+  // forwarded verbatim, so a faithful shape is enough.
+  return await harness.behavior.callRpc("reviewThisSubmit", {
+    repo,
+    number,
+    request: {
+      projectId: draft.seed.projectId,
+      providerId: draft.seed.providerId ?? undefined,
+      model: draft.seed.model ?? undefined,
+      permissionMode: draft.seed.permissionMode,
+      environment: { type: "project-default" },
+      input: [{ type: "text", text: draft.seed.prompt, mentions: [] }],
+    },
+  });
+}
+
 describe("server", () => {
   it("registers the rpc methods, the service, and the settings", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: PLUGIN_ID });
@@ -70,7 +103,8 @@ describe("server", () => {
       expect.arrayContaining([
         "listRows",
         "refresh",
-        "reviewThis",
+        "reviewThisDraft",
+        "reviewThisSubmit",
         "archiveThread",
         "snooze",
         "unsnooze",
@@ -160,37 +194,49 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    const result = await harness.behavior.callRpc("reviewThis", {
+    // The refusal lands on the draft, before the composer ever opens: there
+    // is no project to compose into, so there is nothing to show.
+    const result = await harness.behavior.callRpc("reviewThisDraft", {
       repo: "acme/widgets",
       number: 1,
     });
-    expect(result.threadId).toBeNull();
+    expect(result.seed).toBeNull();
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
 
   it("declines to spawn for a review no longer in the sweep", async () => {
     const { harness } = await seededHost();
-    const result = await harness.behavior.callRpc("reviewThis", {
+    const result = await harness.behavior.callRpc("reviewThisDraft", {
       repo: "acme/widgets",
       number: 999,
     });
     expect(result.reason).toMatch(/no longer in the sweep/);
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
+
+  it("never spawns for a review that left the sweep while the composer was open", async () => {
+    // The composer can sit open for as long as the user likes, so the row is
+    // re-read at submit rather than trusted from the draft.
+    const { harness } = await seededHost();
+    const result = await harness.behavior.callRpc("reviewThisSubmit", {
+      repo: "acme/widgets",
+      number: 999,
+      request: {
+        projectId: "proj_widgets",
+        input: [{ type: "text", text: "Review it.", mentions: [] }],
+      },
+    });
+    expect(result.reason).toMatch(/no longer in the sweep/);
+    expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+  });
 });
 
-describe("reviewThis is one thread per review", () => {
+describe("reviewThisSubmit is one thread per review", () => {
   it("spawns once and reuses the thread on a second click", async () => {
     const { harness } = await seededHost();
 
-    const first = await harness.behavior.callRpc("reviewThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
-    const second = await harness.behavior.callRpc("reviewThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const first = await reviewThis(harness, { repo: "acme/widgets", number: 42 });
+    const second = await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     expect(first.existing).toBe(false);
     expect(second.existing).toBe(true);
@@ -202,8 +248,8 @@ describe("reviewThis is one thread per review", () => {
     const { harness } = await seededHost();
 
     const [first, second] = await Promise.all([
-      harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 }),
-      harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 }),
+      reviewThis(harness, { repo: "acme/widgets", number: 42 }),
+      reviewThis(harness, { repo: "acme/widgets", number: 42 }),
     ]);
 
     expect(second.threadId).toBe(first.threadId);
@@ -212,7 +258,7 @@ describe("reviewThis is one thread per review", () => {
 
   it("titles the thread with the action, number and PR gist, not the repository", async () => {
     const { harness } = await seededHost({ row: { state: "re-review" } });
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     // callsTo returns each call's argument list, so [0] is spawn's only arg.
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[{ title: string }]];
@@ -222,7 +268,7 @@ describe("reviewThis is one thread per review", () => {
 
   it("pins the provider that can actually see the code-review skill", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { providerId?: string; model?: string },
@@ -234,26 +280,30 @@ describe("reviewThis is one thread per review", () => {
 
   it("honours a configured model", async () => {
     const { harness } = await seededHost({ settings: { model: " claude-sonnet-5 " } });
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[{ model?: string }]];
     expect(args.model).toBe("claude-sonnet-5");
   });
 
-  it("carries the no-posting instruction into the spawned prompt", async () => {
+  it("carries the no-posting instruction into the prompt the composer opens with", async () => {
     // This is the whole safety story for the action, so it is asserted at the
-    // wire rather than only in the prompt unit test.
+    // wire rather than only in the prompt unit test. It lives on the draft
+    // now: the composer submits `input`, and what it opens with is the last
+    // point the plugin decides the words.
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    const draft = await harness.behavior.callRpc("reviewThisDraft", {
+      repo: "acme/widgets",
+      number: 42,
+    });
 
-    const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[{ prompt: string }]];
-    expect(args.prompt).toMatch(/Do NOT post anything to GitHub/);
-    expect(args.prompt).toContain("acme/widgets#42");
+    expect(draft.seed!.prompt).toMatch(/Do NOT post anything to GitHub/);
+    expect(draft.seed!.prompt).toContain("acme/widgets#42");
   });
 
   it("reports the linked thread on the row", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     const listing = await harness.behavior.callRpc("listRows", null);
     expect(listing.rows[0]).toMatchObject({ number: 42, threadId: "thr_1" });
@@ -261,7 +311,7 @@ describe("reviewThis is one thread per review", () => {
 
   it("frees the row when its thread is deleted", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     await harness.behavior.emitThreadEvent("thread.deleted", {
       thread: makeThreadResponse({ id: "thr_1" }),
@@ -269,7 +319,7 @@ describe("reviewThis is one thread per review", () => {
 
     expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBeNull();
 
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(2);
   });
 
@@ -281,7 +331,7 @@ describe("reviewThis is one thread per review", () => {
       settings: { ghPath: "/nonexistent/gh-does-not-exist" },
     });
 
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
     expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBe("thr_1");
 
     liveThreads.length = 0;
@@ -295,7 +345,7 @@ describe("reviewThis is one thread per review", () => {
 describe("permission mode", () => {
   async function spawnedWith(settings: Record<string, string>) {
     const { harness } = await seededHost({ settings });
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { permissionMode?: string },
     ]];
@@ -320,7 +370,7 @@ describe("permission mode", () => {
 describe("archiveThread", () => {
   it("archives the linked thread and frees the row", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("reviewThis", { repo: "acme/widgets", number: 42 });
+    await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     const result = await harness.behavior.callRpc("archiveThread", {
       repo: "acme/widgets",
@@ -346,10 +396,7 @@ describe("archiveThread", () => {
 describe("pullRequestForThread", () => {
   it("returns the pull request for a thread this plugin started", async () => {
     const { harness } = await seededHost();
-    const spawn = await harness.behavior.callRpc("reviewThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const spawn = await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     expect(
       await harness.behavior.callRpc("pullRequestForThread", { threadId: spawn.threadId! }),
@@ -373,10 +420,7 @@ describe("pullRequestForThread", () => {
     // Submitting the review drops the request out of the sweep, which is
     // exactly when the thread is most likely to still be open.
     const { bb, harness } = await seededHost();
-    const spawn = await harness.behavior.callRpc("reviewThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const spawn = await reviewThis(harness, { repo: "acme/widgets", number: 42 });
 
     createStore(bb.storage.database() as never).replaceAll({
       rows: [],
