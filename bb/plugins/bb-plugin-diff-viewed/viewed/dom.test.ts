@@ -54,22 +54,9 @@ function renderCard(options: CardOptions): void {
       </span>
     </div>`;
   const host = document.createElement("div");
-  if (timeline) {
-    host.setAttribute("data-timeline-file-diff", "");
-    host.innerHTML = card;
-    document.body.append(host);
-    return;
-  }
-  const panel =
-    document.querySelector("[data-secondary-panel-tab-content]") ??
-    (() => {
-      const created = document.createElement("div");
-      created.setAttribute("data-secondary-panel-tab-content", "");
-      document.body.append(created);
-      return created;
-    })();
+  if (timeline) host.setAttribute("data-timeline-file-diff", "");
   host.innerHTML = card;
-  panel.append(host);
+  document.body.append(host);
 }
 
 afterEach(() => {
@@ -77,7 +64,7 @@ afterEach(() => {
 });
 
 describe("findCards", () => {
-  it("finds a changes-panel card and reads its path and fingerprint", () => {
+  it("finds a card and reads its path and fingerprint", () => {
     renderCard({ path: "client/app/_layout.tsx", stats: "+1 -1" });
     const cards = findCards(document);
     expect(cards).toHaveLength(1);
@@ -102,14 +89,34 @@ describe("findCards", () => {
   });
 
   it("ignores a disclosure button that is not a diff card header", () => {
-    const panel = document.createElement("div");
-    panel.setAttribute("data-secondary-panel-tab-content", "");
-    panel.innerHTML = `<button aria-expanded="true" aria-label="Collapse sidebar"></button>`;
-    document.body.append(panel);
+    const stray = document.createElement("div");
+    stray.innerHTML = `<button aria-expanded="true" aria-label="Collapse sidebar"></button>`;
+    document.body.append(stray);
     expect(findCards(document)).toHaveLength(0);
   });
 
-  it("returns every card in the panel", () => {
+  it("ignores a two-child row that is not laid out like a card header", () => {
+    const row = document.createElement("div");
+    // Same button and shape, but no justify-between: not bb's card header.
+    row.className = "flex items-center";
+    row.innerHTML = `
+      <span><button aria-expanded="true" aria-label="Collapse thing"></button></span>
+      <span>+1 -1</span>`;
+    document.body.append(row);
+    expect(findCards(document)).toHaveLength(0);
+  });
+
+  it("finds a card that sits in no container of its own", () => {
+    // Regression: an earlier version required the card to be inside
+    // [data-secondary-panel-tab-content], which is bb's *tab strip*, not the
+    // tab's content. Nothing matched, on any screen.
+    renderCard({ path: "docs/architecture/api-v2-milestones.md", stats: "+3 -3" });
+    expect(findCards(document).map((card) => card.path)).toEqual([
+      "docs/architecture/api-v2-milestones.md",
+    ]);
+  });
+
+  it("returns every card on the page", () => {
     renderCard({ path: "a.ts" });
     renderCard({ path: "b.ts" });
     expect(findCards(document).map((card) => card.path)).toEqual([
@@ -250,14 +257,9 @@ describe("readToolbar", () => {
 });
 
 describe("findToolbar", () => {
-  it("finds the toolbar, which lives outside the panel content", () => {
+  it("finds the toolbar", () => {
     renderToolbar();
-    renderCard({ path: "a.ts" });
     expect(findToolbar(document)).not.toBeNull();
-    const panel = document.querySelector(
-      "[data-secondary-panel-tab-content]",
-    ) as HTMLElement;
-    expect(findToolbar(panel)).toBeNull();
   });
 
   it("returns null when there is no changes toolbar on the page", () => {

@@ -1,9 +1,9 @@
 // Reading and decorating bb's diff card headers.
 //
 // bb owns this DOM. Everything here anchors on the most stable thing bb
-// actually emits — the container data attributes, the collapse control's
-// accessible name and `aria-expanded`, and the header's two-child structure —
-// and never on a minified class name. Read GitDiffCardHeader in
+// actually emits — the toolbar's `data-testid`, accessible names,
+// `aria-expanded`/`aria-pressed`, and the header's two-child structure — and
+// never on a minified class name. Read GitDiffCardHeader in
 // app/dist/assets before changing an assumption here; the header renders as:
 //
 //   <div class="… items-center justify-between …">        <- headerRow
@@ -26,8 +26,8 @@ import type { ToolbarClick, ToolbarState } from "./prefs";
 export const OWNED_ATTR = "data-diff-viewed-owned";
 /** Set on a header row whose file is marked viewed. Drives the dimming. */
 export const VIEWED_ATTR = "data-diff-viewed";
-/** The changes panel. Timeline diffs are deliberately out of scope. */
-export const PANEL_SELECTOR = "[data-secondary-panel-tab-content]";
+/** Timeline diffs, which are deliberately out of scope: the same path recurs
+ * once per message there, so one mark could not mean anything useful. */
 const TIMELINE_SELECTOR = "[data-timeline-file-diff]";
 
 /** One diff card header, resolved to the parts this plugin touches. */
@@ -41,16 +41,20 @@ export interface DiffCard extends FileMarkTarget {
 
 /**
  * Resolve a collapse control to the card it belongs to, or null when the
- * element is not a diff card header after all. The structural checks are the
- * point: a bare `aria-expanded` selector would also match unrelated
- * disclosures bb may add later.
+ * element is not a diff card header after all.
+ *
+ * There is deliberately no "must be inside the changes panel" check: the card
+ * list has no container attribute of its own, and requiring one that only
+ * looked right is what made an earlier version of this plugin match nothing at
+ * all. The structural checks below carry that weight instead, and they are
+ * strict enough that a bare `aria-expanded` disclosure elsewhere in the app
+ * cannot pass.
  */
 export function resolveCard(toggle: Element): DiffCard | null {
   if (!(toggle instanceof HTMLButtonElement)) return null;
   const expanded = toggle.getAttribute("aria-expanded");
   if (expanded !== "true" && expanded !== "false") return null;
   if (toggle.closest(TIMELINE_SELECTOR) !== null) return null;
-  if (toggle.closest(PANEL_SELECTOR) === null) return null;
 
   const left = toggle.parentElement;
   if (left === null || left.firstElementChild !== toggle) return null;
@@ -86,7 +90,7 @@ function readFingerprint(actions: HTMLElement): string {
   return fingerprintFromStats(statText);
 }
 
-/** Every diff card currently in the changes panel, in document order. */
+/** Every diff card currently rendered, in document order. */
 export function findCards(root: ParentNode): DiffCard[] {
   const cards: DiffCard[] = [];
   for (const toggle of root.querySelectorAll("button[aria-expanded]")) {
@@ -168,8 +172,9 @@ export const STYLE_TEXT = `
 
 /**
  * The changes-panel toolbar — the row holding collapse-all, wrap, and the
- * view-mode pair. It sits above the file cards and outside the tab content
- * element, so it has to be found from the document rather than from the panel.
+ * view-mode pair. Its presence is also how this plugin knows the changes panel
+ * is open at all, since the file card list below it carries no attribute of
+ * its own.
  */
 export const TOOLBAR_SELECTOR = '[data-testid="git-diff-toolbar-actions"]';
 

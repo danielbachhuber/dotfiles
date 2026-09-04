@@ -20,11 +20,10 @@ The script anchors only on things bb emits deliberately:
 
 | Anchor | Used for |
 | --- | --- |
-| `[data-secondary-panel-tab-content]` | Scoping to the changes panel |
 | `[data-timeline-file-diff]` | Skipping timeline diffs |
 | `aria-label="Collapse <path>"` | Reading each card's file path |
 | `aria-expanded` | Reading and driving collapse |
-| `[data-testid="git-diff-toolbar-actions"]` | Finding the toolbar |
+| `[data-testid="git-diff-toolbar-actions"]` | Finding the toolbar, and knowing the changes panel is open |
 | `aria-label="Wrap diff lines"` and `"Disable diff line wrap"` | The wrap button, whose label flips with its state |
 | `aria-label="Stacked diff view"` / `"Split diff view"` | The view-mode pair |
 | `aria-pressed` | Reading every toolbar control's state |
@@ -32,6 +31,14 @@ The script anchors only on things bb emits deliberately:
 No minified class names. If bb changes the header and the anchors stop
 matching, the plugin decorates nothing and bb behaves exactly as it does
 without it.
+
+There is deliberately no "card must be inside container X" check. bb's file
+card list carries no attribute of its own, and `data-secondary-panel-tab-content`
+— which reads like the right one — is the *tab strip's* inner container, not a
+tab's content. Requiring it matched nothing on any screen. The structural checks
+in `resolveCard` carry that weight instead: the collapse button must be the
+first child of the header's left span, and the header row must have exactly two
+children and `justify-between`.
 
 `viewed/dom.test.ts` holds fixtures of the header and toolbar DOM as bb renders
 them. After a bb upgrade, those are the tests that fail first; re-read
