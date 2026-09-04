@@ -40,6 +40,37 @@ export type StartThreadSeed = {
 };
 
 /**
+ * A 32-bit digest of the seeded text, as a short base-36 string. Not a
+ * checksum anyone depends on — just enough to tell one seeding from another.
+ */
+function digest(text: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * The key BB persists this dialog's draft under.
+ *
+ * Per row, so editing one row's steer does not leak into the next row's. Per
+ * seeding as well, because `initialPrompt` only seeds a draft that is still
+ * empty: without the digest, a draft saved from an earlier open shadows the
+ * seed forever, and a row whose findings have changed — or whose prompt this
+ * plugin has since rewritten — keeps showing the old text with no way back.
+ *
+ * So an edit survives reopening the same row while the panel still says the
+ * same thing, and is dropped once it no longer does. That is the right way
+ * round: an edit is an argument with a particular steer, and it stops meaning
+ * anything when that steer changes.
+ */
+export function draftKeyFor(row: string, seededPrompt: string): string {
+  return `${row}:${digest(seededPrompt)}`;
+}
+
+/**
  * BB's own new-thread composer in a dialog: the prompt editor with @-mentions
  * and attachments, the provider/model/reasoning picker, and the row beneath
  * with project, environment, branch-from and permission mode. The plugin
@@ -64,11 +95,8 @@ export function StartThreadDialog({
    */
   description: string;
   /**
-   * Drafts persist per key and are shared by every composer using the same
-   * one, so this is per row: editing one row's prompt must not leak into the
-   * next row's. The cost is that an edited-then-abandoned draft outlives the
-   * sweep that would have regenerated the prompt — which is the right way
-   * round, since the edit is the user's and the seed is not.
+   * Identifies the row. The key actually used adds a digest of what was
+   * seeded — see {@link draftKeyFor}.
    */
   draftKey: string;
   seed: StartThreadSeed | null;
@@ -117,7 +145,7 @@ export function StartThreadDialog({
               defaultEnvironment={seed.environment}
               initialPrompt={seed.prompt}
               placeholder="What should this thread do?"
-              draftKey={draftKey}
+              draftKey={draftKeyFor(draftKey, seed.prompt)}
               layout="document"
               focusRequest={focusRequest}
               onSubmit={onSubmit}
