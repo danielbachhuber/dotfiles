@@ -458,6 +458,12 @@ const SEED = {
   model: null,
   permissionMode: "full" as const,
   prompt: "Review acme/widgets#42.",
+  preview: {
+    title: "Add the widget endpoint",
+    number: 42,
+    url: "https://github.com/acme/widgets/pull/42",
+    meta: "acme/widgets · by octocat",
+  },
   environment: {
     type: "host" as const,
     workspace: {

@@ -2,7 +2,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { rpcContract } from "./review/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./review/gh.js";
-import { buildPrompt } from "./review/prompt.js";
+import { buildPromptParts } from "./review/prompt.js";
 import {
   parsePermissionMode,
   parseStaleAfterDays,
@@ -218,6 +218,11 @@ export default async function plugin(bb: BbPluginApi) {
       return harvest.startTimer(input);
     },
 
+    async harvestStopTimer(input) {
+      await harvest.stopTimer(input);
+      return null;
+    },
+
     async listRows() {
       const meta = store.readMeta();
       const rows = store.readRows();
@@ -345,7 +350,15 @@ export default async function plugin(bb: BbPluginApi) {
           providerId: providerId || null,
           model: chosenModel || null,
           permissionMode: parsePermissionMode(permissionMode),
-          prompt: buildPrompt(row, Date.now()),
+          prompt: buildPromptParts(row, Date.now()).body,
+          preview: {
+            title: row.title,
+            number: row.number,
+            url: row.url,
+            meta: [row.repo, `by ${row.author}`, row.isDraft ? "draft" : null]
+              .filter(Boolean)
+              .join(" · "),
+          },
           // A new worktree by default. A review is someone else's branch,
           // so the thread has nothing to land and every reason to stay out of
           // the main checkout while it reads. The composer still offers Work
@@ -394,8 +407,19 @@ export default async function plugin(bb: BbPluginApi) {
         // forwarded untouched. Only the title is the plugin's business: the
         // composer has no field for one, and the sidebar should name the
         // review.
+        // The composer only ever held the middle of the prompt, so the two
+        // ends are put back here — including the no-posting rule, which is in
+        // the trailer precisely because it must not depend on anyone leaving
+        // it in the box. Its own items sit between them untouched, which is
+        // what keeps any @-mention or attachment that was added.
+        const { header, trailer } = buildPromptParts(row, Date.now());
         const thread = await bb.sdk.threads.spawn({
           ...request,
+          input: [
+            { type: "text", text: header, mentions: [] },
+            ...request.input,
+            { type: "text", text: trailer, mentions: [] },
+          ],
           title: threadTitle(row.state, number, row.title),
         } as Parameters<typeof bb.sdk.threads.spawn>[0]);
 

@@ -13,7 +13,7 @@ import {
   setBoardStatus as applyBoardStatus,
   type BoardProject,
 } from "./issues/project.js";
-import { buildPrompt, threadTitle } from "./issues/prompt.js";
+import { buildPromptParts, joinPromptParts, threadTitle } from "./issues/prompt.js";
 import { matchProjectForRepo, type ProjectCandidate } from "./issues/spawn-target.js";
 import { MIGRATIONS, createStore } from "./issues/store.js";
 import type { IssueRow } from "./issues/types.js";
@@ -514,6 +514,11 @@ export default async function plugin(bb: BbPluginApi) {
       return harvest.startTimer(input);
     },
 
+    async harvestStopTimer(input) {
+      await harvest.stopTimer(input);
+      return null;
+    },
+
     async startThreadDraft({ repo, number }) {
       const existingThreadId = store.threadFor(repo, number);
       if (existingThreadId) return { existingThreadId, reason: null, seed: null };
@@ -547,7 +552,13 @@ export default async function plugin(bb: BbPluginApi) {
           providerId: providerId || null,
           model: chosenModel || null,
           permissionMode: parsePermissionMode(permissionMode),
-          prompt: buildPrompt(row),
+          prompt: buildPromptParts(row).body,
+          preview: {
+            title: row.title,
+            number: row.number,
+            url: row.url,
+            meta: [row.repo, row.boardStatus].filter(Boolean).join(" · "),
+          },
           // A new worktree by default. An issue names work that has not
           // started, so there is no branch to land on and nothing to be gained
           // from sharing the main checkout with whatever else is going on
@@ -585,8 +596,17 @@ export default async function plugin(bb: BbPluginApi) {
         // model, reasoning, permission mode, execution provenance — is
         // forwarded untouched. Only the title is the plugin's business: the
         // composer has no field for one, and the sidebar should name the issue.
+        // The composer only ever held the middle of the prompt, so the two
+        // ends are put back here. Its own items sit between them untouched,
+        // which is what keeps any @-mention or attachment that was added.
+        const { header, trailer } = buildPromptParts(row);
         const thread = await bb.sdk.threads.spawn({
           ...request,
+          input: [
+            { type: "text", text: header, mentions: [] },
+            ...request.input,
+            { type: "text", text: trailer, mentions: [] },
+          ],
           title: threadTitle(number, row.title),
         } as Parameters<typeof bb.sdk.threads.spawn>[0]);
 

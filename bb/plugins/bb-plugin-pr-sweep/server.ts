@@ -14,7 +14,7 @@ import { isAdoptable, solePullRequestReference } from "./sweep/adopt.js";
 import { createHarvestBridge } from "bb-plugin-harvest/bridge";
 import { rpcContract } from "./sweep/contract.js";
 import { GhUnavailableError, createGhRunner, runSweep } from "./sweep/gh.js";
-import { buildPrompt } from "./sweep/prompt.js";
+import { buildPromptParts } from "./sweep/prompt.js";
 import {
   actionSummary,
   commentsToRead,
@@ -627,6 +627,11 @@ export default async function plugin(bb: BbPluginApi) {
       return harvest.startTimer(input);
     },
 
+    async harvestStopTimer(input) {
+      await harvest.stopTimer(input);
+      return null;
+    },
+
     async listRows() {
       const meta = store.readMeta();
       const rows = store.readRows();
@@ -858,7 +863,15 @@ export default async function plugin(bb: BbPluginApi) {
           // the composer is where you disagree with it for one thread.
           model: modelForFlags(row.flags, models) || null,
           permissionMode: parsePermissionMode(permissionMode),
-          prompt: buildPrompt(row),
+          prompt: buildPromptParts(row).body,
+          preview: {
+            title: row.title,
+            number: row.number,
+            url: row.url,
+            meta: [row.repo, ...row.flags, row.isDraft ? "draft" : null]
+              .filter(Boolean)
+              .join(" · "),
+          },
         },
       };
     },
@@ -895,8 +908,19 @@ export default async function plugin(bb: BbPluginApi) {
         // forwarded untouched. Only the title is the plugin's business: the
         // composer has no field for one, and the sidebar should say what this
         // thread is for.
+        // The composer only ever held the middle of the prompt, so the two
+        // ends are put back here — including the worktree rules, which are in
+        // the trailer precisely because they must not depend on anyone leaving
+        // them in the box. Its own items sit between them untouched, which is
+        // what keeps any @-mention or attachment that was added.
+        const { header, trailer } = buildPromptParts(row);
         const thread = await bb.sdk.threads.spawn({
           ...request,
+          input: [
+            { type: "text", text: header, mentions: [] },
+            ...request.input,
+            { type: "text", text: trailer, mentions: [] },
+          ],
           // The pull request's own words for its first thread; what this
           // thread is for once another thread already carries them.
           title: await titleForNewThread(row, actionSummary(row.flags, commentsToRead(row))),

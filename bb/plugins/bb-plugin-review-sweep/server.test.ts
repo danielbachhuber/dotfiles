@@ -299,19 +299,38 @@ describe("reviewThisSubmit is one thread per review", () => {
     });
   });
 
-  it("carries the no-posting instruction into the prompt the composer opens with", async () => {
+  it("carries the no-posting instruction even though the composer never shows it", async () => {
     // This is the whole safety story for the action, so it is asserted at the
-    // wire rather than only in the prompt unit test. It lives on the draft
-    // now: the composer submits `input`, and what it opens with is the last
-    // point the plugin decides the words.
+    // wire. It is deliberately NOT in the seed the composer opens with: the
+    // rule must hold whatever gets typed in that box, which is exactly why it
+    // sits in the trailer the server reassembles at submit.
     const { harness } = await seededHost();
+
     const draft = await harness.behavior.callRpc("reviewThisDraft", {
       repo: "acme/widgets",
       number: 42,
     });
+    expect(draft.seed!.prompt).not.toMatch(/Do NOT post anything to GitHub/);
 
-    expect(draft.seed!.prompt).toMatch(/Do NOT post anything to GitHub/);
-    expect(draft.seed!.prompt).toContain("acme/widgets#42");
+    // Submitted with the box emptied to nothing but a stray word, the way a
+    // user who deleted the seeded text would.
+    await harness.behavior.callRpc("reviewThisSubmit", {
+      repo: "acme/widgets",
+      number: 42,
+      request: {
+        projectId: "proj_widgets",
+        input: [{ type: "text", text: "just look at it", mentions: [] }],
+      },
+    });
+
+    const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
+      { input: { type: string; text?: string }[] },
+    ]];
+    const sent = args.input.map((item) => item.text ?? "").join("\n");
+    expect(sent).toMatch(/Do NOT post anything to GitHub/);
+    expect(sent).toContain("acme/widgets#42");
+    // And what was typed survives, between the two ends.
+    expect(sent).toContain("just look at it");
   });
 
   it("reports the linked thread on the row", async () => {

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import {
   experimental_NewThreadComposer as NewThreadComposer,
+  UrlLink,
   type NewThreadComposerProps,
   type NewThreadRequest,
 } from "@get-bb/plugin-sdk/app";
@@ -29,6 +30,13 @@ export type StartThreadSeed = {
    * opinion, which leaves the composer on its own default.
    */
   environment?: NewThreadComposerProps["defaultEnvironment"];
+  /** The row itself, drawn as a card. Facts, not instructions: not editable. */
+  preview: {
+    title: string;
+    number: number;
+    url: string;
+    meta: string;
+  };
 };
 
 /**
@@ -50,6 +58,10 @@ export function StartThreadDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   heading: string;
+  /**
+   * For screen readers only. The card below carries the visible context, so
+   * this says what the dialog is for rather than repeating the row's title.
+   */
   description: string;
   /**
    * Drafts persist per key and are shared by every composer using the same
@@ -74,10 +86,29 @@ export function StartThreadDialog({
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{heading}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogDescription className="sr-only">{description}</DialogDescription>
         </DialogHeader>
         {seed === null ? null : (
-          <div className="max-h-[65vh] overflow-y-auto">
+          <div className="max-h-[65vh] space-y-3 overflow-y-auto">
+            {/*
+              What the thread is for, as a card rather than as the first
+              paragraph of an editable prompt. It identifies the row, so there
+              is nothing to steer in it and editing it could only break the
+              link between the thread and the row it came from.
+            */}
+            <div className="rounded-lg border border-border p-3 text-sm">
+              <UrlLink
+                href={seed.preview.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium hover:underline"
+              >
+                {seed.preview.title} (#{seed.preview.number})
+              </UrlLink>
+              {seed.preview.meta ? (
+                <p className="mt-1 text-xs text-muted-foreground">{seed.preview.meta}</p>
+              ) : null}
+            </div>
             <NewThreadComposer
               defaultProjectId={seed.projectId}
               defaultProviderId={seed.providerId ?? undefined}
@@ -85,6 +116,7 @@ export function StartThreadDialog({
               defaultPermissionMode={seed.permissionMode}
               defaultEnvironment={seed.environment}
               initialPrompt={seed.prompt}
+              placeholder="What should this thread do?"
               draftKey={draftKey}
               layout="document"
               focusRequest={focusRequest}

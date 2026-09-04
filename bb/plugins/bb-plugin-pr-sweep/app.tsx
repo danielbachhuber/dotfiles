@@ -944,11 +944,7 @@ function Panel() {
         heading={
           draft ? `Start a thread for #${draft.row.number}` : "Start a thread"
         }
-        description={
-          draft
-            ? draft.row.title
-            : "Edit the prompt and the execution options before starting."
-        }
+        description="Edit what this thread should do, then start it."
         draftKey={draft ? `pr-sweep:${draft.row.repo}#${draft.row.number}` : ""}
         seed={draft?.seed ?? null}
         onSubmit={onSubmitDraft}

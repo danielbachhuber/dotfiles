@@ -363,6 +363,12 @@ const SEED = {
   model: null,
   permissionMode: "full" as const,
   prompt: "Work on acme/widgets#1.",
+  preview: {
+    title: "Add the widget endpoint",
+    number: 1,
+    url: "https://github.com/acme/widgets/issues/1",
+    meta: "acme/widgets · Ready",
+  },
   environment: {
     type: "host" as const,
     workspace: {

@@ -227,6 +227,38 @@ describe("workOnThisSubmit is one thread per pull request", () => {
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(1);
   });
 
+  it("puts the worktree rules back even when the composer's box was emptied", async () => {
+    // The composer only ever holds the middle of the prompt. These rules are
+    // in the trailer precisely so they hold whatever gets typed — an agent
+    // that builds its worktree in /tmp leaves work bb cannot see.
+    const { harness } = await seededHost();
+
+    const draft = await harness.behavior.callRpc("workOnThisDraft", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+    expect(draft.seed!.prompt).not.toMatch(/You already have a git worktree/);
+
+    await harness.behavior.callRpc("workOnThisSubmit", {
+      repo: "acme/widgets",
+      number: 42,
+      request: {
+        projectId: "proj_a",
+        input: [{ type: "text", text: "just the conflict please", mentions: [] }],
+      },
+    });
+
+    const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
+      { input: { type: string; text?: string }[] },
+    ]];
+    const sent = args.input.map((item) => item.text ?? "").join("\n");
+    expect(sent).toMatch(/You already have a git worktree/);
+    expect(sent).toMatch(/my explicit request for this work/);
+    expect(sent).toContain("acme/widgets#42");
+    // And what was typed survives, between the two ends.
+    expect(sent).toContain("just the conflict please");
+  });
+
   it("titles the thread with the number and PR gist, not the repository or the flag", async () => {
     const { harness } = await seededHost();
     await workOnThis(harness, { repo: "acme/widgets", number: 42 });

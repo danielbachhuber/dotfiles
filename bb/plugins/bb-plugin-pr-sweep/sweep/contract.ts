@@ -2,6 +2,19 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 /**
+ * The row, drawn above the composer as a card. Facts about the item, not
+ * instructions about it: nothing here is editable, because editing it could
+ * only break the link between the thread and the row it came from.
+ */
+const previewSchema = z.object({
+  title: z.string(),
+  number: z.number(),
+  url: z.string(),
+  /** One muted line beneath the title; each panel decides what earns a place. */
+  meta: z.string(),
+});
+
+/**
  * What BB's new-thread composer is seeded with. The settings still decide
  * these — including the per-flag model from "Model by action" — and the
  * composer only lets one thread differ from them.
@@ -12,7 +25,9 @@ const seedSchema = z.object({
   providerId: z.string().nullable(),
   model: z.string().nullable(),
   permissionMode: z.enum(["accept-edits", "auto", "full"]),
+  /** Only the "what to do" half; the rest is reassembled at submit. */
   prompt: z.string(),
+  preview: previewSchema,
 });
 
 /**
@@ -81,7 +96,16 @@ export const rpcContract = defineRpcContract({
          * cannot subscribe to the Harvest plugin's broadcast.
          */
         running: z
-          .object({ externalId: z.string(), groupId: z.string().nullable() })
+          .object({
+            externalId: z.string(),
+            groupId: z.string().nullable(),
+            // Declared explicitly: zod strips unknown keys, so an omitted
+            // field here silently disappears and the chip cannot tick.
+            entryId: z.number(),
+            startedAt: z.string().nullable(),
+            projectName: z.string(),
+            taskName: z.string(),
+          })
           .nullable(),
       }),
     }),
@@ -119,6 +143,10 @@ export const rpcContract = defineRpcContract({
     output: z
       .object({ projectId: z.number(), taskId: z.number(), exact: z.boolean() })
       .nullable(),
+  },
+  harvestStopTimer: {
+    input: z.object({ entryId: z.number() }).strict(),
+    output: z.null(),
   },
   harvestStartTimer: {
     input: z

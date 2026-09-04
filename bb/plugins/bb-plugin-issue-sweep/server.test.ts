@@ -20,6 +20,45 @@ describe("server", () => {
     );
   });
 
+  /** A host with one issue in the sweep and a project it can spawn into. */
+  async function seededHost() {
+    const fixture = createFakePluginHost({
+      pluginId: "issue-sweep",
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: { spawn: async () => ({ id: "thr_1" }), list: async () => [] },
+      },
+    });
+    await plugin(fixture.bb);
+    createStore(fixture.bb.storage.database() as never).replaceAll({
+      rows: [
+        {
+          repo: "acme/widgets",
+          number: 42,
+          title: "Add the widget endpoint",
+          url: "https://github.com/acme/widgets/issues/42",
+          labels: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          commentsCount: 0,
+          blockedBy: 0,
+          closingPr: null,
+          subtasks: null,
+          boardStatus: "Ready",
+          onBoard: true,
+        },
+      ],
+      truncated: false,
+      failedRepos: [],
+      sweptAt: Date.now(),
+    });
+    return fixture;
+  }
+
   it("opens the composer on a new worktree, not the main checkout", async () => {
     // An issue has no branch to land on, so the thread gets its own worktree
     // rather than the checkout everything else is using.
@@ -70,6 +109,48 @@ describe("server", () => {
     expect(draft.seed!.projectId).toBe("proj_a");
     // Still a draft: nothing is created until the composer is submitted.
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+  });
+
+  it("shows the issue as a card and offers only the steer for editing", async () => {
+    const { harness } = await seededHost();
+    const draft = await harness.behavior.callRpc("startThreadDraft", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    // The identifiers are the card, not the first paragraph of the prompt.
+    expect(draft.seed!.preview).toMatchObject({
+      title: "Add the widget endpoint",
+      number: 42,
+      url: "https://github.com/acme/widgets/issues/42",
+    });
+    expect(draft.seed!.prompt).not.toContain("https://github.com");
+    expect(draft.seed!.prompt).not.toMatch(/Do not commit unless I ask/);
+  });
+
+  it("puts the commit rules back even when the composer's box was emptied", async () => {
+    // The composer only ever holds the middle of the prompt, so the standing
+    // rule against committing without an ask cannot depend on anyone leaving
+    // the seeded text alone.
+    const { harness } = await seededHost();
+
+    await harness.behavior.callRpc("startThreadSubmit", {
+      repo: "acme/widgets",
+      number: 42,
+      request: {
+        projectId: "proj_a",
+        input: [{ type: "text", text: "have a look first", mentions: [] }],
+      },
+    });
+
+    const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
+      { input: { type: string; text?: string }[] },
+    ]];
+    const sent = args.input.map((item) => item.text ?? "").join("\n");
+    expect(sent).toMatch(/Do not commit unless I ask/);
+    expect(sent).toContain("acme/widgets#42");
+    // And what was typed survives, between the two ends.
+    expect(sent).toContain("have a look first");
   });
 
   it("refuses a draft for an issue the sweep does not have", async () => {

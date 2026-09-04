@@ -584,6 +584,12 @@ const SEED = {
   model: "claude-sonnet-5",
   permissionMode: "full" as const,
   prompt: "Resolve the conflict on acme/widgets#42.",
+  preview: {
+    title: "Add the widget endpoint",
+    number: 42,
+    url: "https://github.com/acme/widgets/pull/42",
+    meta: "acme/widgets · conflict",
+  },
 };
 
 describe("thread header action", () => {

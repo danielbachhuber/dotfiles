@@ -2,6 +2,29 @@ import { commentsToRead, workSteps } from "./actions.js";
 import type { ClassifiedRow, Flag } from "./types.js";
 
 /**
+ * A prompt in the three pieces the panel needs it in.
+ *
+ * `header` identifies the pull request and is drawn as a preview card rather
+ * than text you could edit — retyping it could only ever break the link between
+ * the thread and the row. `body` is the panel's opinion about what to do, which
+ * is the part worth steering, so it is what the composer opens with. `trailer`
+ * is the standing procedure, which is the same every time and so is worth
+ * neither the reading nor the screen space.
+ *
+ * All three reach the agent; only `body` reaches the composer.
+ */
+export interface PromptParts {
+  header: string;
+  body: string;
+  trailer: string;
+}
+
+/** The three pieces as one prompt, with `body` overridable by what was typed. */
+export function joinPromptParts(parts: PromptParts, body = parts.body): string {
+  return [parts.header, "", body, "", parts.trailer].join("\n");
+}
+
+/**
  * What the sweep found, stated as fact. Deliberately not prescriptive: the
  * skill named at the top of the prompt owns the method, and a second, looser
  * account of the same workflow here would compete with it.
@@ -42,43 +65,16 @@ function describeFlag(flag: Flag, row: ClassifiedRow): string | null {
   }
 }
 
-export function buildPrompt(row: ClassifiedRow): string {
+export function buildPromptParts(row: ClassifiedRow): PromptParts {
   const steps = workSteps(row.flags, commentsToRead(row));
 
-  if (steps.length === 0) {
-    return [
-      `Look at pull request ${row.repo}#${row.number}: "${row.title}".`,
-      row.url,
-      "",
-      "A deterministic sweep flagged nothing on it. Use the `pr-sweep` skill to check whether that is right.",
-    ].join("\n");
-  }
-
-  // Numbered because the steps are sequential, not a menu: resolving a conflict
-  // changes the code that review feedback refers to, and a fixed CI run changes
-  // what is left to answer. One thread walks them in this order.
-  const numbered = steps.flatMap(({ flag, skill }, index) => {
-    const finding = describeFlag(flag, row);
-    return [
-      `${index + 1}. ${finding ?? flag}`,
-      `   Use the \`${skill}\` skill.`,
-    ];
-  });
-
-  const usesPrSweep = steps.some((step) => step.skill === "pr-sweep");
-
-  return [
-    `Work through pull request ${row.repo}#${row.number}: "${row.title}".`,
-    row.url,
-    "",
-    steps.length === 1
-      ? "A deterministic sweep found one thing:"
-      : `A deterministic sweep found ${steps.length} things, worst first. Finish each step, including its commit and push, before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
-    ...numbered,
-    "",
-    // Standing user instructions forbid committing without an explicit ask and
-    // outrank a skill, so without this the thread does the work and stops at a
-    // staged merge. Clicking the row's action is that ask.
+  // The same standing procedure every time, which is why it is neither
+  // read nor worth the screen space in the composer. It still reaches the
+  // agent in full.
+  const trailer = [
+    // Standing user instructions forbid committing without an explicit ask
+    // and outrank a skill, so without this the thread does the work and stops
+    // at a staged merge. Clicking the row's action is that ask.
     "I started this from the PR Sweep panel, which is my explicit request for this work. Follow each skill all the way through, including its commit, push, and reply steps. You do not need to ask me before committing or pushing to this PR's own branch.",
     "Still ask me first before: force-pushing, rewriting any pushed commit, or merging the PR.",
     "",
@@ -87,13 +83,56 @@ export function buildPrompt(row: ClassifiedRow): string {
     // agent that was already in one to build a second at an arbitrary /tmp
     // path, where bb could not see the work and the diff panel read "no
     // changes".
-    "You already have a git worktree: the one this thread starts in. It is on a new branch, not this pull request's, so check the branch before editing anything. Get onto the PR's head branch — the skills above tell you how.",
+    "You already have a git worktree: the one this thread starts in. It is on a new branch, not this pull request's, so check the branch before editing anything. Get onto the PR's head branch — the steps above tell you how.",
     "If a skill has you create a worktree, create it at a path INSIDE the one you start in, using a relative path such as `.claude/worktrees/pr-<n>`. bb owns the directory this thread runs in and deletes it when the thread is archived, so a worktree inside it is cleaned up with everything else. One created somewhere else, `/tmp` especially, outlives the thread, stays invisible to bb's diff, and has to be found and removed by hand. Never point `git worktree add` at the directory you are already in.",
-    ...(usesPrSweep
-      ? [
-          "",
-          "For any step above whose skill is `pr-sweep`, that skill is triage rather than a fixed workflow, so show me the evidence — the failing log, the thread bodies — before proposing work.",
-        ]
-      : []),
-  ].join("\n");
+  ];
+
+  if (steps.length === 0) {
+    return {
+      header: [`Look at pull request ${row.repo}#${row.number}: "${row.title}".`, row.url].join(
+        "\n",
+      ),
+      body: "A deterministic sweep flagged nothing on it. Use the `pr-sweep` skill to check whether that is right.",
+      trailer: trailer.join("\n"),
+    };
+  }
+
+  // Numbered because the steps are sequential, not a menu: resolving a
+  // conflict changes the code that review feedback refers to, and a fixed CI
+  // run changes what is left to answer. One thread walks them in this order.
+  const numbered = steps.flatMap(({ flag, skill }, index) => {
+    const finding = describeFlag(flag, row);
+    return [`${index + 1}. ${finding ?? flag}`, `   Use the \`${skill}\` skill.`];
+  });
+
+  const usesPrSweep = steps.some((step) => step.skill === "pr-sweep");
+
+  return {
+    header: [`Work through pull request ${row.repo}#${row.number}: "${row.title}".`, row.url].join(
+      "\n",
+    ),
+
+    // What the sweep found and which skill answers each finding. This is
+    // the panel's opinion rather than a fact about the pull request, so it
+    // is the half that opens in the composer for you to disagree with.
+    body: [
+      steps.length === 1
+        ? "A deterministic sweep found one thing:"
+        : `A deterministic sweep found ${steps.length} things, worst first. Finish each step, including its commit and push, before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
+      ...numbered,
+      ...(usesPrSweep
+        ? [
+            "",
+            "For any step above whose skill is `pr-sweep`, that skill is triage rather than a fixed workflow, so show me the evidence — the failing log, the thread bodies — before proposing work.",
+          ]
+        : []),
+    ].join("\n"),
+
+    trailer: trailer.join("\n"),
+  };
+}
+
+/** The whole prompt, for anything that wants it in one piece. */
+export function buildPrompt(row: ClassifiedRow): string {
+  return joinPromptParts(buildPromptParts(row));
 }
