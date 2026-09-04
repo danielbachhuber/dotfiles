@@ -9,7 +9,7 @@ import {
   snoozeUntil,
   threadTitle,
 } from "./review/actions.js";
-import { matchProjectForRepo, type ProjectCandidate } from "./review/spawn-target.js";
+import { matchProjectTargetForRepo, matchProjectForRepo, type ProjectCandidate } from "./review/spawn-target.js";
 import { MIGRATIONS, createStore } from "./review/store.js";
 
 export { rpcContract };
@@ -184,10 +184,18 @@ export default async function plugin(bb: BbPluginApi) {
    */
   async function projectCandidates(): Promise<ProjectCandidate[]> {
     const projects = await bb.sdk.projects.list();
-    return projects.map((project) => ({
-      id: project.id,
-      remoteUrls: project.gitRemoteUrl ? [project.gitRemoteUrl] : [],
-    }));
+    return projects.map((project) => {
+      // The default checkout's host, or the first with one. Needed because a
+      // seeded worktree environment is rejected without it — see
+      // ProjectCandidate.hostId.
+      const sources = (project.sources ?? []).filter((entry) => entry.hostId);
+      const source = sources.find((entry) => entry.isDefault) ?? sources[0];
+      return {
+        id: project.id,
+        remoteUrls: project.gitRemoteUrl ? [project.gitRemoteUrl] : [],
+        ...(source ? { hostId: source.hostId } : {}),
+      };
+    });
   }
 
   const harvest = createHarvestBridge(bb);
@@ -330,8 +338,8 @@ export default async function plugin(bb: BbPluginApi) {
         };
       }
 
-      const projectId = matchProjectForRepo(repo, await projectCandidates());
-      if (!projectId) {
+      const target = matchProjectTargetForRepo(repo, await projectCandidates());
+      if (!target) {
         return {
           existingThreadId: null,
           reason: `No bb project is checked out for ${repo}.`,
@@ -346,7 +354,7 @@ export default async function plugin(bb: BbPluginApi) {
         existingThreadId: null,
         reason: null,
         seed: {
-          projectId,
+          projectId: target.id,
           providerId: providerId || null,
           model: chosenModel || null,
           permissionMode: parsePermissionMode(permissionMode),
@@ -370,6 +378,7 @@ export default async function plugin(bb: BbPluginApi) {
               type: "managed-worktree",
               baseBranch: { kind: "default" },
             },
+            ...(target.hostId ? { hostId: target.hostId } : {}),
           } as const,
         },
       };

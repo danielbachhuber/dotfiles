@@ -27,7 +27,11 @@ describe("server", () => {
       sdk: {
         projects: {
           list: async () => [
-            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+            {
+              id: "proj_a",
+              gitRemoteUrl: "git@github.com:acme/widgets.git",
+              sources: [{ hostId: "host_1", path: "/checkout", isDefault: true }],
+            },
           ],
         },
         threads: { spawn: async () => ({ id: "thr_1" }), list: async () => [] },
@@ -62,7 +66,33 @@ describe("server", () => {
   it("opens the composer on a new worktree, not the main checkout", async () => {
     // An issue has no branch to land on, so the thread gets its own worktree
     // rather than the checkout everything else is using.
-    const { bb, harness } = createFakePluginHost({
+    const { harness } = await seededHost();
+
+    const draft = await harness.behavior.callRpc("startThreadDraft", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    expect(draft.seed).not.toBeNull();
+    // hostId included deliberately. bb's schema declares it optional and then
+    // refuses the environment without it — "hostId is required unless
+    // workspace.type is personal" — and in the composer that refusal is
+    // silent: the picker just falls back to the local checkout.
+    expect(draft.seed!.environment).toEqual({
+      type: "host",
+      hostId: "host_1",
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    });
+    expect(draft.seed!.projectId).toBe("proj_a");
+    // Still a draft: nothing is created until the composer is submitted.
+    expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+  });
+
+  it("still opens the composer when the project reports no host", async () => {
+    // hostId is best-effort: a project bb has not resolved a checkout host for
+    // must not cost you the dialog. The composer falls back to its own default
+    // environment, which is what it did before any of this was seeded.
+    const fixture = createFakePluginHost({
       pluginId: "issue-sweep",
       sdk: {
         projects: {
@@ -72,8 +102,8 @@ describe("server", () => {
         },
       },
     });
-    await plugin(bb);
-    createStore(bb.storage.database() as never).replaceAll({
+    await plugin(fixture.bb);
+    createStore(fixture.bb.storage.database() as never).replaceAll({
       rows: [
         {
           repo: "acme/widgets",
@@ -96,19 +126,13 @@ describe("server", () => {
       sweptAt: Date.now(),
     });
 
-    const draft = await harness.behavior.callRpc("startThreadDraft", {
+    const draft = await fixture.harness.behavior.callRpc("startThreadDraft", {
       repo: "acme/widgets",
       number: 42,
     });
 
     expect(draft.seed).not.toBeNull();
-    expect(draft.seed!.environment).toEqual({
-      type: "host",
-      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
-    });
-    expect(draft.seed!.projectId).toBe("proj_a");
-    // Still a draft: nothing is created until the composer is submitted.
-    expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+    expect(draft.seed!.environment).not.toHaveProperty("hostId");
   });
 
   it("shows the issue as a card and offers only the steer for editing", async () => {

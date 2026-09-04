@@ -5,7 +5,11 @@ import type { ClassifiedRow } from "./review/types.js";
 import plugin from "./server.js";
 
 const PLUGIN_ID = "review-sweep";
-const PROJECT = { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] };
+const PROJECT = {
+  id: "proj_a",
+  gitRemoteUrl: "git@github.com:acme/widgets.git",
+  sources: [{ hostId: "host_1", path: "/checkout", isDefault: true }],
+};
 
 let spawnCount = 0;
 
@@ -293,8 +297,13 @@ describe("reviewThisSubmit is one thread per review", () => {
       number: 42,
     });
 
+    // hostId included deliberately. bb's schema declares it optional and then
+    // refuses the environment without it — "hostId is required unless
+    // workspace.type is personal" — and in the composer that refusal is
+    // silent: the picker just falls back to the local checkout.
     expect(draft.seed!.environment).toEqual({
       type: "host",
+      hostId: "host_1",
       workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
     });
   });

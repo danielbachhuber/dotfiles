@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { matchProjectForRepo, parseRemoteSlug } from "./projects.js";
+import {
+  matchProjectForRepo,
+  matchProjectTargetForRepo,
+  parseRemoteSlug,
+} from "./projects.js";
 
 describe("parseRemoteSlug", () => {
   it("parses an SSH remote", () => {
@@ -47,5 +51,34 @@ describe("matchProjectForRepo", () => {
 
   it("returns null for an empty candidate list", () => {
     expect(matchProjectForRepo("acme/widgets", [])).toBeNull();
+  });
+});
+
+describe("matchProjectTargetForRepo", () => {
+  const candidates = [
+    {
+      id: "proj_a",
+      remoteUrls: ["git@github.com:acme/widgets.git"],
+      hostId: "host_1",
+    },
+    { id: "proj_b", remoteUrls: ["git@github.com:acme/gadgets.git"] },
+  ];
+
+  it("carries the host, which a seeded worktree environment is rejected without", () => {
+    expect(matchProjectTargetForRepo("acme/widgets", candidates)).toEqual({
+      id: "proj_a",
+      hostId: "host_1",
+    });
+  });
+
+  it("still matches a project whose host was not gathered", () => {
+    expect(matchProjectTargetForRepo("acme/gadgets", candidates)).toEqual({
+      id: "proj_b",
+      hostId: null,
+    });
+  });
+
+  it("returns null for a repository with no project", () => {
+    expect(matchProjectTargetForRepo("acme/nothing", candidates)).toBeNull();
   });
 });
