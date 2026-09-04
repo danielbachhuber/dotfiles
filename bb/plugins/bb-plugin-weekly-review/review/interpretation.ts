@@ -17,6 +17,16 @@ export const bodyOfWorkSchema = z.object({
   hours: z.number().nonnegative().optional(),
   /** Issue and pull request numbers this covers, so the page can link them. */
   refs: z.array(z.number().int().positive()).max(60).default([]),
+  /**
+   * Time entries that belong here but name no issue or pull request — the
+   * meetings, the planning, the reviews. Matched verbatim on the day and the
+   * entry's own text, the same escape hatch a daily note uses. Entries that do
+   * name a number are claimed through `refs` and need not be listed.
+   */
+  entries: z
+    .array(z.object({ day: z.string(), label: z.string() }))
+    .max(120)
+    .default([]),
 });
 
 export const nextItemSchema = z.object({
@@ -57,12 +67,24 @@ planning while most of the output was pull requests, say so: that gap is the
 most useful sentence you can write.
 
 **bodiesOfWork** — the substantial threads of work, largest first. A body of
-work is a set of pull requests and issues that were the same effort, not a
-single pull request and not a commit scope. Titles that repeat a phrase are
-usually one body of work. Name each one in the words the work itself used, say
-what happened in a sentence or two, mark whether it shipped or is still in
-progress, and list every issue and pull request number it covers. Attach hours
-only where the digest attributes them.
+work is a set of pull requests, issues, meetings and hours that were the same
+effort, not a single pull request and not a commit scope. Titles that repeat a
+phrase are usually one body of work. Name each one in the words the work itself
+used, say what happened in a sentence or two, and mark whether it shipped or is
+still in progress.
+
+Every body of work claims its evidence twice over. \`refs\` is every issue and
+pull request number it covers. \`entries\` is every time entry that belongs to it
+but names no number — the meetings, the planning, the reviews — copied verbatim
+from the "Time entries, with notes" list as \`{ "day": "…", "label": "…" }\`,
+where the label is the entry's text exactly as printed. An entry that does name
+a number is already claimed through \`refs\`; do not list it again.
+
+This is what turns the page from a time sheet into an account of the week, so
+be thorough with \`entries\`. Meetings are work. A recurring standup and a
+one-off review are not the same body of work; a series of conversations
+pushing one decision forward is. Anything genuinely miscellaneous can be left
+out and will be shown on its own.
 
 **next** — where the time should go next, drawn from what this week left open:
 pull requests still unmerged, issues assigned and going stale, work the notes

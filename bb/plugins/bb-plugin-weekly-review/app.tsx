@@ -34,10 +34,12 @@ import {
   STALE_DAYS,
 } from "./review/week.js";
 import { formatDayLong, formatDayShort, fromDay, toDay } from "./review/dates.js";
-import type { BodyOfWork, Interpretation, NextItem } from "./review/interpretation.js";
+import type { Interpretation, NextItem } from "./review/interpretation.js";
 import { attributeTime, inFlight } from "./review/overview.js";
 import type { TimeEntry, TimeSection } from "./review/time-sections.js";
 import { timeSections } from "./review/time-sections.js";
+import type { WorkGroup } from "./review/work-groups.js";
+import { groupByWork } from "./review/work-groups.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -201,7 +203,7 @@ function urlsByNumber(week: WeekData): Map<number, string> {
   return urls;
 }
 
-const STATUS_TONE: Record<BodyOfWork["status"], string> = {
+const STATUS_TONE: Record<WorkGroup["status"], string> = {
   shipped: "border-transparent bg-primary/15 text-primary",
   "in progress": "border-border bg-transparent text-muted-foreground",
   blocked: "border-transparent bg-destructive/15 text-destructive",
@@ -217,28 +219,6 @@ function RefLinks({ refs, urls }: { refs: number[]; urls: Map<number, string> })
         <Ref key={ref} number={ref} href={urls.get(ref) as string} />
       ))}
     </p>
-  );
-}
-
-function BodyOfWorkCard({ body, urls }: { body: BodyOfWork; urls: Map<number, string> }) {
-  return (
-    <li className="py-2.5">
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 flex-1 text-sm font-medium">{body.title}</span>
-        {body.hours === undefined ? null : (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-            {body.hours.toFixed(1)}h
-          </span>
-        )}
-        <Badge className={cn("shrink-0 text-[10px] uppercase", STATUS_TONE[body.status])}>
-          {body.status}
-        </Badge>
-      </div>
-      {body.detail === "" ? null : (
-        <p className="mt-1 text-sm text-muted-foreground">{body.detail}</p>
-      )}
-      <RefLinks refs={body.refs} urls={urls} />
-    </li>
   );
 }
 
@@ -332,6 +312,80 @@ function TimeEntryRow({
   );
 }
 
+/**
+ * A body of work: what it was, what it cost, and everything that belongs to it.
+ *
+ * The hours come from the entries actually assigned rather than from the
+ * interpretation's own claim, so the number on the page is one the time sheet
+ * supports.
+ */
+function WorkGroupBlock({
+  group,
+  urls,
+  notesFor,
+}: {
+  group: WorkGroup;
+  urls: Map<number, string>;
+  notesFor: (entry: TimeEntry) => MeetingNote[];
+}) {
+  const refs = [
+    ...group.pullRequests.map((pr) => pr.number),
+    ...group.issues.map((issue) => issue.number),
+    ...group.reviews.map((review) => review.number),
+  ];
+  const linked = refs.filter((ref) => !group.entries.some((entry) => entry.reference === ref));
+
+  return (
+    <section className="mt-6">
+      <h2 className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
+        <span className="min-w-0 flex-1">{group.title}</span>
+        {group.hours === 0 ? null : (
+          <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
+            {group.hours.toFixed(1)}h
+          </span>
+        )}
+        <Badge className={cn("shrink-0 text-[10px] uppercase", STATUS_TONE[group.status])}>
+          {group.status}
+        </Badge>
+      </h2>
+
+      {group.detail === "" ? null : (
+        <p className="mt-1 text-sm text-muted-foreground">{group.detail}</p>
+      )}
+
+      {group.tasks.length === 0 ? null : (
+        <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+          {group.tasks.map((task) => (
+            <span key={task.task}>
+              <span className="tabular-nums">{task.hours.toFixed(1)}h</span> {task.task}
+            </span>
+          ))}
+        </p>
+      )}
+
+      {group.entries.length === 0 ? null : (
+        <ul className="mt-2 divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
+          {group.entries.map((entry, index) => (
+            <TimeEntryRow
+              key={`${entry.day}-${index}`}
+              entry={entry}
+              url={entry.reference === null ? undefined : urls.get(entry.reference)}
+              notes={notesFor(entry)}
+            />
+          ))}
+        </ul>
+      )}
+
+      {/* Numbers with no logged time against them: shipped, but off the clock. */}
+      {linked.length === 0 ? null : (
+        <div className="mt-2">
+          <RefLinks refs={linked} urls={urls} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** A category of logged time, with everything that went into it. */
 function TimeSectionBlock({
   section,
@@ -347,7 +401,8 @@ function TimeSectionBlock({
       <h2 className="flex items-baseline gap-2 text-sm font-semibold text-foreground">
         {section.task}
         <span className="text-xs font-normal tabular-nums text-muted-foreground">
-          {section.hours.toFixed(1)}h · {Math.round(section.share * 100)}% ·{" "}
+          {section.hours.toFixed(1)}h
+          {section.share === 0 ? "" : ` · ${Math.round(section.share * 100)}%`} ·{" "}
           {section.entries.length} {section.entries.length === 1 ? "entry" : "entries"}
         </span>
       </h2>
@@ -775,6 +830,12 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     [week, slices],
   );
   const sections = useMemo(() => (week === null ? [] : timeSections(week)), [week]);
+  // Bodies of work are the spine once a week has been read. Until then there
+  // is nothing to group by but the categories the time was booked to.
+  const grouping = useMemo(
+    () => (week === null || interpretation === null ? null : groupByWork(week, interpretation)),
+    [week, interpretation],
+  );
   const time = useMemo(() => (week === null ? null : attributeTime(week)), [week]);
   const flight = useMemo(() => (week === null ? null : inFlight(week)), [week]);
   const backlog = useMemo(
@@ -890,16 +951,6 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               {week.from} – {week.to}
             </p>
 
-            {interpretation === null || interpretation.bodiesOfWork.length === 0 ? null : (
-              <Section title="Bodies of work" count={interpretation.bodiesOfWork.length}>
-                <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
-                  {interpretation.bodiesOfWork.map((body, index) => (
-                    <BodyOfWorkCard key={index} body={body} urls={urls} />
-                  ))}
-                </ul>
-              </Section>
-            )}
-
             {interpretation === null || interpretation.next.length === 0 ? null : (
               <Section title="Where next week should go" count={interpretation.next.length}>
                 <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
@@ -913,22 +964,63 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
             {sections.length === 0 ? null : (
               <>
                 <h2 className="mt-6 text-sm font-semibold text-foreground">
-                  Where the time went
+                  {grouping === null ? "Where the time went" : "Bodies of work"}
                 </h2>
-                {time === null ? null : (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {time.total.toFixed(1)}h across {sections.length} categories.{" "}
-                    {time.attributed.toFixed(1)}h named a specific issue or pull request.
-                  </p>
+                <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                  {time === null ? null : <span>{time.total.toFixed(1)}h</span>}
+                  {sections.map((section) => (
+                    <span key={section.task}>
+                      <span className="tabular-nums text-foreground">
+                        {section.hours.toFixed(1)}h
+                      </span>{" "}
+                      {section.task}
+                    </span>
+                  ))}
+                </p>
+
+                {grouping === null ? (
+                  sections.map((section) => (
+                    <TimeSectionBlock
+                      key={section.task}
+                      section={section}
+                      urls={urls}
+                      notesFor={notesFor}
+                    />
+                  ))
+                ) : (
+                  <>
+                    {grouping.groups.map((group, index) => (
+                      <WorkGroupBlock
+                        key={index}
+                        group={group}
+                        urls={urls}
+                        notesFor={notesFor}
+                      />
+                    ))}
+
+                    {grouping.ungrouped.length === 0 ? null : (
+                      <>
+                        <h2 className="mt-8 flex items-baseline gap-2 text-sm font-semibold text-foreground">
+                          Everything else
+                          <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                            {grouping.ungroupedHours.toFixed(1)}h
+                          </span>
+                        </h2>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Time no body of work claimed, still grouped by how it was booked.
+                        </p>
+                        {grouping.ungrouped.map((section) => (
+                          <TimeSectionBlock
+                            key={section.task}
+                            section={section}
+                            urls={urls}
+                            notesFor={notesFor}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </>
                 )}
-                {sections.map((section) => (
-                  <TimeSectionBlock
-                    key={section.task}
-                    section={section}
-                    urls={urls}
-                    notesFor={notesFor}
-                  />
-                ))}
               </>
             )}
 

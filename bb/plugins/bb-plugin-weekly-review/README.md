@@ -14,10 +14,20 @@ time entries, pull requests opened and merged, reviews, issues filed, Slack
 threads, and daily notes. A pull request opened Monday and merged Thursday
 appears on both days; opened and merged the same day collapses to one row.
 
-**Where the time went** — one section per Harvest category, most hours first,
-with every entry underneath it: each meeting and how long it ran, each stretch
-of development and which issue it was against. A meeting carries the notes
-someone took in it, lifted out of whichever reference doc holds them.
+**Bodies of work** — the spine, once a week has been read. Each thread of work
+carries the hours it cost, the meetings and development and review that made it
+up, and the issues and pull requests it covers. A category answers "how much of
+the week was meetings"; it cannot answer "what did the feature-toggle migration
+cost", because that migration was meetings and planning and development and
+review and the time sheet files those four apart.
+
+Time no body of work claimed falls to **Everything else**, still grouped by how
+it was booked. Grouped and ungrouped hours add up to the week's total exactly.
+
+Until a week is interpreted there is nothing to group by but the categories, so
+the page falls back to one section per Harvest category, most hours first.
+Either way each entry shows when it was, how long it ran, and what it was
+against, and a meeting carries the notes someone took in it.
 
 **Standing context** — everything without one: completed tasks (Todoist exposes
 no completion timestamp, so they sit at week level), issues assigned to you with
@@ -113,7 +123,15 @@ which validates it against a schema and puts it on the page. A failed
 validation reports what was wrong in a form the agent can act on and try again.
 
 The result lands beside the week as `overview.json`. Delete that file and the
-deterministic page is exactly what it was.
+deterministic page is exactly what it was, grouped by category again.
+
+Assignment follows the same rule as the meeting notes: deterministic where the
+record allows it, explicit where it does not. A time entry naming `#5837`
+belongs to whichever body claims 5837 and needs no judgment. An entry reading
+`Phase 3 review` belongs wherever the interpreter puts it, listed verbatim in
+that body's `entries`. Hours shown are summed from the entries actually
+assigned rather than from the interpretation's own claim, so the number on the
+page is one the time sheet supports.
 
 The prompt is editable on this plugin's page in Tools, or with
 `bb weekly-review prompt reset` to restore the default. `{{DIGEST}}` and
