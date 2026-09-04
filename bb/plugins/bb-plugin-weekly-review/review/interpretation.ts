@@ -68,8 +68,18 @@ Write it to a file under /tmp, then record it by running:
 {{COMMAND}}
 
 That command validates the JSON and puts it on the page. If it reports a
-validation error, fix the file and run it again. Report what you recorded, then
-stop.`;
+validation error, fix the file and run it again.
+
+Then lay the same findings out here, in the thread, so they can be read without
+opening the page: the assessment, then what is missing, then what deserves more
+detail. This is a conversation, not a hand-off. Expect to be asked which of
+these matter, to be pushed back on, and to be asked for the underlying evidence
+behind a particular line.
+
+The entry is being rewritten in the document while you talk. Re-read it with
+\`bb weekly-review entry {{MONDAY}}\` before answering anything that depends on
+what it currently says, and record a fresh assessment with the same command
+when enough has changed to be worth one. Never edit the document yourself.`;
 
 /**
  * The default prompt for collecting the week's daily notes.
@@ -233,5 +243,15 @@ Write it to a file under /tmp, then record it by running:
 {{COMMAND}}
 
 That command validates the JSON and puts it on the page. If it reports a
-validation error, fix the file and run it again. Report what you recorded, then
-stop.`;
+validation error, fix the file and run it again.
+
+Then lay the same findings out here, in the thread, so they can be read without
+opening the page: the assessment, then what is missing, then what deserves more
+detail. This is a conversation, not a hand-off. Expect to be asked which of
+these matter, to be pushed back on, and to be asked for the underlying evidence
+behind a particular line.
+
+The entry is being rewritten in the document while you talk. Re-read it with
+\`bb weekly-review entry {{MONDAY}}\` before answering anything that depends on
+what it currently says, and record a fresh assessment with the same command
+when enough has changed to be worth one. Never edit the document yourself.`;

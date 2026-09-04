@@ -626,11 +626,13 @@ function WeeklyReviewHeader({ subPath }: PluginNavPanelProps) {
 
 function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc<typeof rpcContract>();
+  const navigate = useBbNavigate();
   const { listing } = useListing();
   const [week, setWeek] = useState<WeekData | null>(null);
   const [interpretation, setInterpretation] = useState<Interpretation | null>(null);
   const [meetingNotes, setMeetingNotes] = useState<MeetingNote[]>([]);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [threads, setThreads] = useState<Partial<Record<string, string>>>({});
   const [entry, setEntry] = useState<WeekEntry | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -656,6 +658,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
         setInterpretation(result.interpretation);
         setMeetingNotes(result.meetingNotes);
         setFeedback(result.feedback);
+        setThreads(result.threads);
         setEntry(result.entry);
         setError(null);
         setLoading(false);
@@ -680,9 +683,8 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     setGatheringNotes(true);
     try {
       const { threadId } = await rpc.call("week_gather_notes", { monday: selected });
-      toast.success("Collecting the week's notes", {
-        description: `Thread ${threadId} is pulling them; they appear on their meetings when it lands.`,
-      });
+      setThreads((current) => ({ ...current, notes: threadId }));
+      navigate.toThread(threadId);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -695,12 +697,13 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     setReviewing(true);
     try {
       const { threadId } = await rpc.call("week_feedback", { monday: selected });
-      toast.success("Checking your entry", {
-        description: `Thread ${threadId} is reading it against the week.`,
-      });
+      setThreads((current) => ({ ...current, feedback: threadId }));
+      // Straight into the thread. The assessment is a conversation to have
+      // while the entry is being rewritten, not a report to receive, and this
+      // page is where it started rather than where it belongs.
+      navigate.toThread(threadId);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
-    } finally {
       setReviewing(false);
     }
   };
@@ -710,9 +713,8 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     setInterpreting(true);
     try {
       const { threadId } = await rpc.call("week_interpret", { monday: selected });
-      toast.success("Reading the week", {
-        description: `Thread ${threadId} is interpreting it; the overview appears here when it lands.`,
-      });
+      setThreads((current) => ({ ...current, interpret: threadId }));
+      navigate.toThread(threadId);
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -799,6 +801,15 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                     >
                       Open the doc
                     </UrlLink>
+                  )}
+                  {threads.feedback === undefined ? null : (
+                    <button
+                      type="button"
+                      onClick={() => navigate.toThread(threads.feedback as string)}
+                      className="text-xs font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      Open the thread
+                    </button>
                   )}
                   <Button
                     variant="outline"
@@ -947,6 +958,15 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                     ? "at an unknown time"
                     : relative(interpretation.interpretedAt)}
                 </span>
+                {threads.interpret === undefined ? null : (
+                  <button
+                    type="button"
+                    onClick={() => navigate.toThread(threads.interpret as string)}
+                    className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    Open the thread
+                  </button>
+                )}
                 {hasNotes ? null : (
                   <Button
                     variant="ghost"

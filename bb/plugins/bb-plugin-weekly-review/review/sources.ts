@@ -22,6 +22,15 @@ export const MIGRATIONS = [
      label    TEXT NOT NULL,
      position INTEGER NOT NULL
    )`,
+  // The thread each agent step is running in, so the page can hand the user
+  // back to the conversation rather than only to its result.
+  `CREATE TABLE agent_threads (
+     monday     TEXT NOT NULL,
+     kind       TEXT NOT NULL,
+     thread_id  TEXT NOT NULL,
+     started_at TEXT NOT NULL,
+     PRIMARY KEY (monday, kind)
+   )`,
 ];
 
 export interface DocSource {
@@ -75,6 +84,9 @@ export interface SourceStore {
    */
   readPrompt(kind: string, fallback: string): string;
   writePrompt(kind: string, prompt: string): void;
+  /** The thread an agent step is running in, newest wins. */
+  readThreads(monday: string): Record<string, string>;
+  writeThread(monday: string, kind: string, threadId: string): void;
 }
 
 export function createSourceStore(db: Database): SourceStore {
@@ -96,6 +108,13 @@ export function createSourceStore(db: Database): SourceStore {
     ),
     deleteDoc: db.prepare("DELETE FROM docs WHERE id = ?"),
     clearDocs: db.prepare("DELETE FROM docs"),
+    readThreads: db.prepare("SELECT kind, thread_id FROM agent_threads WHERE monday = ?"),
+    writeThread: db.prepare(
+      `INSERT INTO agent_threads (monday, kind, thread_id, started_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(monday, kind) DO UPDATE SET
+         thread_id = excluded.thread_id,
+         started_at = excluded.started_at`,
+    ),
   };
 
   const replace = db.transaction((docs: DocSource[]) => {
@@ -147,6 +166,18 @@ export function createSourceStore(db: Database): SourceStore {
 
     writePrompt(kind, prompt) {
       statements.writeSetting.run(promptKey(kind), prompt);
+    },
+
+    readThreads(monday) {
+      const rows = statements.readThreads.all(monday) as Array<{
+        kind: string;
+        thread_id: string;
+      }>;
+      return Object.fromEntries(rows.map((row) => [row.kind, row.thread_id]));
+    },
+
+    writeThread(monday, kind, threadId) {
+      statements.writeThread.run(monday, kind, threadId, new Date().toISOString());
     },
   };
 }

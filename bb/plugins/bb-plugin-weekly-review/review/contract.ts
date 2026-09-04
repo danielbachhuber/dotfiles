@@ -91,6 +91,16 @@ export const rpcContract = defineRpcContract({
       /** This week's entry as written, read fresh from the doc. Null when there is none. */
       entry: z.object({ heading: z.string(), text: z.string(), url: z.string() }).nullable(),
       meetingNotes: z.array(meetingNoteSchema),
+      /**
+       * The thread each agent step is running in. The page hands the user
+       * back to the conversation, which is where refining the entry actually
+       * happens. Absent until a step has been started for this week.
+       */
+      threads: z.object({
+        interpret: z.string().optional(),
+        notes: z.string().optional(),
+        feedback: z.string().optional(),
+      }),
       dir: z.string(),
     }),
   },

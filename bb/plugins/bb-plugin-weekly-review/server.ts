@@ -315,6 +315,8 @@ export default async function plugin(bb: BbPluginApi) {
     const providerId = (await settings.get()).interpretProviderId.trim();
 
     return spawnAgent(
+      monday,
+      "interpret",
       providerId,
       renderPrompt(describePrompt("interpret").prompt, {
         DIGEST: buildDigest(week),
@@ -340,6 +342,8 @@ export default async function plugin(bb: BbPluginApi) {
     const providerId = (await settings.get()).interpretProviderId.trim();
 
     return spawnAgent(
+      monday,
+      "notes",
       providerId,
       renderPrompt(describePrompt("notes").prompt, {
         FROM: week.from,
@@ -375,10 +379,13 @@ export default async function plugin(bb: BbPluginApi) {
     const providerId = (await settings.get()).interpretProviderId.trim();
 
     return spawnAgent(
+      monday,
+      "feedback",
       providerId,
       renderPrompt(describePrompt("feedback").prompt, {
         ENTRY: `### ${entry.heading}\n\n${entry.text}`,
         DIGEST: buildDigest(week),
+        MONDAY: monday,
         COMMAND: `bb weekly-review feedback ${monday} --file <path-to-your-json>`,
       }),
       `Weekly review feedback — ${monday}`,
@@ -387,7 +394,11 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /** Validates and records the agent's read of the entry. */
-  async function recordFeedback(monday: string, path: string): Promise<string> {
+  async function recordFeedback(
+    monday: string,
+    path: string,
+    threadId?: string,
+  ): Promise<string> {
     const { weeksDir } = await tools();
     const parsed = feedbackSchema.safeParse(JSON.parse(await readFile(path, "utf8")));
     if (!parsed.success) {
@@ -405,11 +416,14 @@ export default async function plugin(bb: BbPluginApi) {
       reviewedAt: new Date().toISOString(),
       ...(entry === null ? {} : { entryHeading: entry.heading }),
     });
+    if (threadId !== undefined) sources.writeThread(monday, "feedback", threadId);
     bb.realtime.publish(WEEK_INTERPRETED, { monday });
     return written;
   }
 
   async function spawnAgent(
+    monday: string,
+    kind: PromptKind,
     providerId: string,
     prompt: string,
     title: string,
@@ -423,6 +437,9 @@ export default async function plugin(bb: BbPluginApi) {
       prompt,
       title,
     });
+    // Recorded before the agent has produced anything, so the page can hand
+    // the user into the conversation while it is still running.
+    sources.writeThread(monday, kind, thread.id);
     bb.log.info(`${what} in ${thread.id}`);
     return { threadId: thread.id };
   }
@@ -551,7 +568,15 @@ export default async function plugin(bb: BbPluginApi) {
         week === null ? [] : meetingNotesFor(weeksDir, monday, week),
         week === null ? null : readEntry(week),
       ]);
-      return { week, interpretation, feedback, entry, meetingNotes, dir: weekDir(weeksDir, monday) };
+      return {
+        week,
+        interpretation,
+        feedback,
+        entry,
+        meetingNotes,
+        threads: sources.readThreads(monday),
+        dir: weekDir(weeksDir, monday),
+      };
     },
     week_interpret: ({ monday }) => interpret(monday),
     week_gather_notes: ({ monday }) => gatherNotes(monday),
@@ -710,7 +735,7 @@ export default async function plugin(bb: BbPluginApi) {
         usage: "bb weekly-review source list | set <key> <value> | add-doc <id> <label> | remove-doc <id|label>",
       },
     ],
-    async run(argv) {
+    async run(argv, ctx) {
       const [command, ...args] = argv;
       const flag = (name: string) => {
         const at = args.indexOf(`--${name}`);
@@ -805,7 +830,7 @@ export default async function plugin(bb: BbPluginApi) {
             };
           }
           try {
-            const written = await recordFeedback(monday, file);
+            const written = await recordFeedback(monday, file, ctx.threadId);
             return { exitCode: 0, stdout: `Recorded feedback on ${monday} at ${written}` };
           } catch (error) {
             return {

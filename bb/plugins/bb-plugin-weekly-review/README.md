@@ -119,10 +119,17 @@ where does the entry say something the evidence says more about. The second is
 where the value is — a line reading "worked on feature toggles" is true, and
 the digest knows it took 3.3 hours across three days and closed four issues.
 
-It proposes no replacement prose. Feedback lands beside the week as
-`feedback.json`, stamped with the heading of the entry it was given on, so
-feedback on a draft you have since rewritten shows as stale rather than
-quietly wrong.
+**Check my entry** opens the thread it started. The assessment is a
+conversation to have while the entry is being rewritten, not a report to
+receive: ask which findings matter, push back, ask for the evidence behind a
+line. The agent re-reads the document before answering anything that depends on
+what it currently says, and records a fresh assessment when enough has changed
+to warrant one. The page keeps a link back to that thread.
+
+It proposes no replacement prose, and never edits the document. Feedback lands
+beside the week as `feedback.json`, stamped with the heading of the entry it
+was given on, so feedback on a draft you have since rewritten shows as stale
+rather than quietly wrong.
 
 ```sh
 bb weekly-review entry <monday>                          # what the agent will read
