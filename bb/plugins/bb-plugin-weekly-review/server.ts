@@ -312,15 +312,10 @@ export default async function plugin(bb: BbPluginApi) {
     const week = await readWeek(weeksDir, monday);
     if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
 
-    const values = await settings.get();
-    const projectId = values.interpretProjectId.trim() || (await firstProjectId());
-    if (projectId === null) {
-      throw new Error("No project to file the interpretation thread under.");
-    }
+    const providerId = (await settings.get()).interpretProviderId.trim();
 
     return spawnAgent(
-      projectId,
-      values.interpretProviderId.trim(),
+      providerId,
       renderPrompt(describePrompt("interpret").prompt, {
         DIGEST: buildDigest(week),
         COMMAND: `bb weekly-review interpret ${monday} --file <path-to-your-json>`,
@@ -342,13 +337,10 @@ export default async function plugin(bb: BbPluginApi) {
     const week = await readWeek(weeksDir, monday);
     if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
 
-    const values = await settings.get();
-    const projectId = values.interpretProjectId.trim() || (await firstProjectId());
-    if (projectId === null) throw new Error("No project to file the notes thread under.");
+    const providerId = (await settings.get()).interpretProviderId.trim();
 
     return spawnAgent(
-      projectId,
-      values.interpretProviderId.trim(),
+      providerId,
       renderPrompt(describePrompt("notes").prompt, {
         FROM: week.from,
         TO: week.to,
@@ -380,13 +372,10 @@ export default async function plugin(bb: BbPluginApi) {
       );
     }
 
-    const values = await settings.get();
-    const projectId = values.interpretProjectId.trim() || (await firstProjectId());
-    if (projectId === null) throw new Error("No project to file the feedback thread under.");
+    const providerId = (await settings.get()).interpretProviderId.trim();
 
     return spawnAgent(
-      projectId,
-      values.interpretProviderId.trim(),
+      providerId,
       renderPrompt(describePrompt("feedback").prompt, {
         ENTRY: `### ${entry.heading}\n\n${entry.text}`,
         DIGEST: buildDigest(week),
@@ -421,17 +410,15 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   async function spawnAgent(
-    projectId: string,
     providerId: string,
     prompt: string,
     title: string,
     what: string,
   ): Promise<{ threadId: string }> {
+    const target = await agentTarget();
     const thread = await bb.sdk.threads.spawn({
-      projectId,
-      // A personal workspace, not a worktree: the thread reads a prompt and
-      // runs one bb command. It has no business checking out a repository.
-      environment: { type: "host", workspace: { type: "personal" } },
+      projectId: target.projectId,
+      environment: target.environment,
       ...(providerId === "" ? {} : { providerId }),
       prompt,
       title,
@@ -440,14 +427,58 @@ export default async function plugin(bb: BbPluginApi) {
     return { threadId: thread.id };
   }
 
-  async function firstProjectId(): Promise<string | null> {
+  /**
+   * Where an agent thread is filed, and what workspace it gets.
+   *
+   * These threads read a prompt and run one bb command, so a personal
+   * workspace is right: no checkout, no worktree. But bb only allows a
+   * personal workspace in the personal project, and a thread filed anywhere
+   * else has to take that project's default environment instead. Getting it
+   * wrong is an HTTP 400 at spawn time, which is the least useful place to
+   * find out.
+   */
+  async function agentTarget(): Promise<{
+    projectId: string;
+    environment:
+      | { readonly type: "host"; readonly workspace: { readonly type: "personal" } }
+      | { readonly type: "project-default" };
+  }> {
+    const personalWorkspace = { type: "host", workspace: { type: "personal" } } as const;
+    const projectDefault = { type: "project-default" } as const;
+
+    // projects.list returns the standard projects only. The personal one is
+    // reachable through the sidebar bootstrap and nowhere else.
+    let personalId: string | null = null;
     try {
-      const projects = await bb.sdk.projects.list({});
-      return projects[0]?.id ?? null;
+      const bootstrap = (await bb.sdk.projects.sidebarBootstrap()) as {
+        personalProject?: { id?: string };
+      };
+      personalId = bootstrap.personalProject?.id ?? null;
+    } catch (error) {
+      bb.log.warn(`could not resolve the personal project: ${String(error)}`);
+    }
+
+    const configured = (await settings.get()).interpretProjectId.trim();
+    if (configured !== "") {
+      return {
+        projectId: configured,
+        environment: configured === personalId ? personalWorkspace : projectDefault,
+      };
+    }
+    if (personalId !== null) return { projectId: personalId, environment: personalWorkspace };
+
+    // No personal project: fall back to any project, and take its default
+    // environment, which will cost a worktree this thread does not need.
+    let projects: Array<{ id: string }> = [];
+    try {
+      projects = (await bb.sdk.projects.list({})) as Array<{ id: string }>;
     } catch (error) {
       bb.log.warn(`could not list projects: ${String(error)}`);
-      return null;
     }
+    if (projects[0] !== undefined) {
+      return { projectId: projects[0].id, environment: projectDefault };
+    }
+    throw new Error("No project to file the thread under.");
   }
 
   /**
