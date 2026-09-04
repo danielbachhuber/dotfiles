@@ -199,79 +199,43 @@ function NextCard({ item, urls }: { item: NextItem; urls: Map<number, string> })
 type WeekEntry = { heading: string; text: string; url: string };
 
 /**
- * The agent's read of the hand-written entry.
+ * That the entry has been checked, and how much came back — nothing more.
  *
- * Two lists, and they do different jobs. `missing` is what happened and did
- * not get written down. `expand` is what got written down thinly, quoted so
- * the line can be found, with what the evidence adds beside it. Neither
- * proposes replacement prose: the entry is written by hand and stays that way.
+ * The findings themselves live in the thread, which is where they are useful:
+ * an assessment is worth arguing with while the entry is being rewritten, and
+ * a page cannot be argued with. This is the indication that there is something
+ * to go and read.
  */
-function FeedbackBlock({
+function FeedbackSummary({
   feedback,
   entry,
-  urls,
 }: {
   feedback: Feedback;
   entry: WeekEntry | null;
-  urls: Map<number, string>;
 }) {
   const stale =
     entry !== null &&
     feedback.entryHeading !== undefined &&
     feedback.entryHeading !== entry.heading;
+  const counts = [
+    feedback.missing.length === 0
+      ? null
+      : `${feedback.missing.length} not in the entry`,
+    feedback.expand.length === 0
+      ? null
+      : `${feedback.expand.length} worth more detail`,
+  ].filter((part): part is string => part !== null);
 
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <p className="text-sm leading-relaxed">{feedback.assessment}</p>
-
+    <div className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+      Checked{" "}
+      {feedback.reviewedAt === undefined ? "at an unknown time" : relative(feedback.reviewedAt)}
+      {counts.length === 0 ? " — nothing flagged" : ` — ${counts.join(", ")}`}. In the
+      thread.
       {stale ? (
-        <p className="mt-2 text-xs text-destructive">
-          Given on "{feedback.entryHeading}", but the doc now shows "{entry.heading}".
-        </p>
-      ) : null}
-
-      {feedback.missing.length === 0 ? null : (
-        <div className="mt-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Not in the entry
-          </h3>
-          <ul className="mt-1 divide-y divide-border/60">
-            {feedback.missing.map((item, index) => (
-              <li key={index} className="py-2">
-                <div className="text-sm font-medium">{item.title}</div>
-                {item.why === "" ? null : (
-                  <p className="mt-0.5 text-sm text-muted-foreground">{item.why}</p>
-                )}
-                <RefLinks refs={item.refs} urls={urls} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {feedback.expand.length === 0 ? null : (
-        <div className="mt-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Worth more detail
-          </h3>
-          <ul className="mt-1 divide-y divide-border/60">
-            {feedback.expand.map((item, index) => (
-              <li key={index} className="py-2">
-                <p className="border-l-2 border-border pl-2 text-sm italic text-muted-foreground">
-                  {item.quote}
-                </p>
-                <p className="mt-1 text-sm">{item.detail}</p>
-                <RefLinks refs={item.refs} urls={urls} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {feedback.missing.length === 0 && feedback.expand.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">
-          Nothing flagged. The entry covers the week.
-        </p>
+        <span className="ml-1 text-destructive">
+          Given on "{feedback.entryHeading}", and the doc now shows "{entry.heading}".
+        </span>
       ) : null}
     </div>
   );
@@ -839,15 +803,10 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
                     written. Check it against the week to see what it missed.
                   </div>
                 ) : (
-                  <FeedbackBlock feedback={feedback} entry={entry} urls={urls} />
+                  <FeedbackSummary feedback={feedback} entry={entry} />
                 )}
               </div>
 
-              {feedback?.reviewedAt === undefined ? null : (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Checked {relative(feedback.reviewedAt)}
-                </p>
-              )}
             </section>
 
             {interpretation === null ? (

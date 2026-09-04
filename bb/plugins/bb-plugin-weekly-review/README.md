@@ -126,6 +126,10 @@ line. The agent re-reads the document before answering anything that depends on
 what it currently says, and records a fresh assessment when enough has changed
 to warrant one. The page keeps a link back to that thread.
 
+The page shows only that the entry was checked and how much came back. The
+findings are worth arguing with while the entry is being rewritten, and a page
+cannot be argued with.
+
 It proposes no replacement prose, and never edits the document. Feedback lands
 beside the week as `feedback.json`, stamped with the heading of the entry it
 was given on, so feedback on a draft you have since rewritten shows as stale
