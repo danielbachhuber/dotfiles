@@ -39,9 +39,29 @@ function listing(overrides: Record<string, unknown> = {}) {
     sweptAt: 1_700_000_000_000,
     truncated: false,
     lastError: null,
+    // No Harvest plugin by default, which is the state the panel has to stay
+    // fully usable in.
+    harvest: { available: false, running: null },
     ...overrides,
   };
 }
+
+const HARVEST_RPC = {
+  harvestAssignments: () => ({
+    projects: [
+      {
+        id: 11,
+        name: "Internal",
+        code: "INT",
+        clientName: "Acme",
+        tasks: [{ id: 22, name: "Development" }],
+      },
+    ],
+  }),
+  harvestTrackedHours: () => ({ hours: 0 }),
+  harvestLastSelection: () => null,
+  harvestStartTimer: () => ({ entry: null }),
+};
 
 let mounted: { lifecycle: { unmount: () => void } } | null = null;
 
@@ -517,3 +537,65 @@ describe("sync header", () => {
   });
 });
 
+
+describe("harvest", () => {
+  const available = (extra: Record<string, unknown> = {}) =>
+    listing({ harvest: { available: true, running: null, ...extra } });
+
+  it("offers no clock when the Harvest plugin is not installed", async () => {
+    const slot = render(listing());
+    await slot.findByRole("link", { name: /Widget rotation drifts/i });
+
+    // Issue Sweep has to stay fully useful with no Harvest plugin present.
+    expect(slot.queryByRole("button", { name: /track time/i })).toBeNull();
+  });
+
+  it("offers a clock on each row when Harvest is available", async () => {
+    const slot = render(available(), HARVEST_RPC);
+    expect(await slot.findByRole("button", { name: /track time for #42/i })).toBeTruthy();
+  });
+
+  it("names the issue in the clock's label, since the row has many controls", async () => {
+    const slot = render(available(), HARVEST_RPC);
+    const clock = await slot.findByRole("button", { name: /track time for #42/i });
+    expect(clock.getAttribute("aria-label")).toContain("#42");
+  });
+
+  it("marks the row whose timer is running", async () => {
+    const slot = render(
+      listing({
+        harvest: { available: true, running: { externalId: "42", groupId: "widgets" } },
+      }),
+      HARVEST_RPC,
+    );
+
+    expect(await slot.findByRole("button", { name: /timer running for #42/i })).toBeTruthy();
+  });
+
+  it("leaves other rows unmarked when a timer runs on one of them", async () => {
+    const slot = render(
+      listing({
+        rows: [rowFixture(), rowFixture({ number: 43, title: "Another issue" })],
+        harvest: { available: true, running: { externalId: "42", groupId: "widgets" } },
+      }),
+      HARVEST_RPC,
+    );
+
+    await slot.findByRole("button", { name: /timer running for #42/i });
+    expect(slot.getByRole("button", { name: /track time for #43/i })).toBeTruthy();
+  });
+
+  it("does not mark a row when the running timer is for the same number in another repo", async () => {
+    // Harvest can only filter references by id, so the group has to be part
+    // of the comparison or every repo's #42 would light up together.
+    const slot = render(
+      listing({
+        harvest: { available: true, running: { externalId: "42", groupId: "other-repo" } },
+      }),
+      HARVEST_RPC,
+    );
+
+    await slot.findByRole("link", { name: /Widget rotation drifts/i });
+    expect(slot.queryByRole("button", { name: /timer running/i })).toBeNull();
+  });
+});

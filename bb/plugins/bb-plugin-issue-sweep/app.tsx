@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -20,6 +20,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Icon } from "@/components/ui/icon";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  HarvestTimerPicker,
+  type HarvestTimerClient,
+} from "@/components/timer-picker";
+import { timerDefaultsForIssue } from "./harvest/reference.js";
 import { commentsLabel, relativeTime, subtasksLabel } from "./issues/format.js";
 import type { rpcContract } from "./server.js";
 import { countedRows, sectionOrder } from "./issues/board.js";
@@ -50,6 +57,7 @@ type Listing = {
   sweptAt: number | null;
   truncated: boolean;
   lastError: string | null;
+  harvest: { available: boolean; running: RunningReference };
 };
 
 function useListing() {
@@ -191,6 +199,107 @@ function StatusCell({
   );
 }
 
+
+type RunningReference = { externalId: string; groupId: string | null } | null;
+
+interface HarvestPanelState {
+  available: boolean;
+  running: RunningReference;
+  client: HarvestTimerClient;
+  onStarted: () => void;
+}
+
+/**
+ * Whether the running timer belongs to this row.
+ *
+ * The group is part of the comparison because Harvest can only filter
+ * references by id: without it, every repository's #42 would light up
+ * together.
+ */
+function isRunningFor(running: RunningReference, row: Row): boolean {
+  if (running === null) return false;
+  if (running.externalId !== String(row.number)) return false;
+
+  const { groupId } = timerDefaultsForIssue(row).externalReference;
+  return running.groupId === null || running.groupId === groupId;
+}
+
+/**
+ * Adapt Issue Sweep's proxy methods onto the picker's transport-agnostic
+ * client, which is what lets the picker source be shared verbatim with the
+ * Harvest plugin.
+ */
+function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): HarvestTimerClient {
+  return useMemo(
+    () => ({
+      assignments: () => rpc.call("harvestAssignments", null),
+      trackedHours: (input) =>
+        rpc.call("harvestTrackedHours", {
+          externalId: input.externalId,
+          groupId: input.groupId ?? null,
+        }),
+      startTimer: (input) => rpc.call("harvestStartTimer", input),
+      lastSelection: (input) => rpc.call("harvestLastSelection", input),
+    }),
+    [rpc],
+  );
+}
+
+/**
+ * The per-row Harvest control.
+ *
+ * Issue Sweep draws its own clock rather than rendering the Harvest plugin's,
+ * because bb plugins cannot render each other's React components. The popover
+ * it opens is the shared picker source, wired to Issue Sweep's proxy methods
+ * through the injected client.
+ */
+function HarvestClock({
+  row,
+  isRunning,
+  client,
+  onStarted,
+}: {
+  row: Row;
+  isRunning: boolean;
+  client: HarvestTimerClient;
+  onStarted: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const defaults = timerDefaultsForIssue(row);
+
+  // The row already holds a title link, a copy button, a status picker and a
+  // thread action, so the clock has to say which issue it belongs to.
+  const label = isRunning
+    ? `Harvest timer running for #${row.number}`
+    : `Track time for #${row.number}`;
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={label}
+          className={`size-4 ${isRunning ? "text-primary" : "text-muted-foreground"}`}
+        >
+          <Icon name="Clock" className="size-3.5" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[26rem] p-0">
+        <HarvestTimerPicker
+          client={client}
+          defaults={defaults}
+          onStarted={() => {
+            setIsOpen(false);
+            onStarted();
+          }}
+          onCancel={() => setIsOpen(false)}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /**
  * Start or open the thread for one issue.
  *
@@ -255,6 +364,7 @@ function IssueTable({
   onPick,
   onStart,
   onOpen,
+  harvest,
 }: {
   rows: Row[];
   showRepo: boolean;
@@ -264,6 +374,7 @@ function IssueTable({
   onPick: (row: Row, status: string) => void;
   onStart: (row: Row) => void;
   onOpen: (threadId: string) => void;
+  harvest: HarvestPanelState;
 }) {
   // One clock for the whole render, so two rows updated a second apart never
   // disagree about what "now" is.
@@ -312,6 +423,14 @@ function IssueTable({
                       title={`${row.title} (#${row.number})`}
                       url={row.url}
                     />
+                    {harvest.available ? (
+                      <HarvestClock
+                        row={row}
+                        isRunning={isRunningFor(harvest.running, row)}
+                        client={harvest.client}
+                        onStarted={harvest.onStarted}
+                      />
+                    ) : null}
                   </span>
                 </TableCell>
                 <TableCell className="align-top">
@@ -384,6 +503,16 @@ function Panel() {
     (threadId: string) => navigate.toThread(threadId),
     [navigate],
   );
+
+  const harvestClient = useHarvestClient(rpc);
+  const harvest: HarvestPanelState = {
+    available: listing?.harvest.available === true,
+    running: listing?.harvest.running ?? null,
+    client: harvestClient,
+    // Starting a timer changes which row is lit, and that state arrives with
+    // the listing, so the listing is what has to be re-read.
+    onStarted: reload,
+  };
 
   const onStart = useCallback(
     (row: Row) => {
@@ -525,6 +654,7 @@ function Panel() {
                   onPick={(row, status) => void onPick(row, status)}
                   onStart={onStart}
                   onOpen={onOpen}
+                  harvest={harvest}
                 />
               </section>
             ))

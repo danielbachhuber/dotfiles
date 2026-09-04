@@ -50,6 +50,23 @@ export const rpcContract = defineRpcContract({
       sweptAt: z.number().nullable(),
       truncated: z.boolean(),
       lastError: z.string().nullable(),
+      /**
+       * Whether the Harvest plugin is installed, enabled, and usable. The
+       * per-row clock renders only when it is, so the panel stays fully
+       * useful with no Harvest plugin present.
+       */
+      harvest: z.object({
+        available: z.boolean(),
+        /**
+         * The reference the running timer is against, so the matching row can
+         * show it. Read with the listing rather than followed live: realtime
+         * signals are scoped to the plugin that publishes them, so Issue Sweep
+         * cannot subscribe to the Harvest plugin's broadcast.
+         */
+        running: z
+          .object({ externalId: z.string(), groupId: z.string().nullable() })
+          .nullable(),
+      }),
     }),
   },
   refresh: {
@@ -72,6 +89,73 @@ export const rpcContract = defineRpcContract({
       /** True when an existing thread was returned rather than a new one started. */
       existing: z.boolean(),
       reason: z.string().nullable(),
+    }),
+  },
+  /**
+   * The Harvest surface, proxied.
+   *
+   * bb plugins cannot render each other's React components, so Issue Sweep
+   * draws its own clock and forwards these to the Harvest plugin, which owns
+   * every credential and every Harvest request. Reads degrade to an empty
+   * answer; the write reports its failure.
+   */
+  harvestAssignments: {
+    input: z.null(),
+    output: z.object({
+      projects: z.array(
+        z.object({
+          id: z.number(),
+          name: z.string(),
+          code: z.string().nullable(),
+          clientName: z.string().nullable(),
+          tasks: z.array(z.object({ id: z.number(), name: z.string() })),
+        }),
+      ),
+    }),
+  },
+  harvestTrackedHours: {
+    input: z.object({ externalId: z.string(), groupId: z.string().nullish() }).strict(),
+    output: z.object({ hours: z.number() }),
+  },
+  harvestLastSelection: {
+    input: z.object({ scope: z.string().nullable() }).strict(),
+    output: z.object({ projectId: z.number(), taskId: z.number() }).nullable(),
+  },
+  harvestStartTimer: {
+    input: z
+      .object({
+        projectId: z.number(),
+        taskId: z.number(),
+        notes: z.string(),
+        externalReference: z
+          .object({
+            id: z.string(),
+            groupId: z.string().nullable(),
+            accountId: z.string().nullable(),
+            permalink: z.string().nullable(),
+          })
+          .optional(),
+      })
+      .strict(),
+    output: z.object({
+      entry: z
+        .object({
+          id: z.number(),
+          projectName: z.string(),
+          taskName: z.string(),
+          notes: z.string().nullable(),
+          hours: z.number(),
+          timerStartedAt: z.string().nullable(),
+          externalReference: z
+            .object({
+              id: z.string(),
+              groupId: z.string().nullable(),
+              accountId: z.string().nullable(),
+              permalink: z.string().nullable(),
+            })
+            .nullable(),
+        })
+        .nullable(),
     }),
   },
   setBoardStatus: {

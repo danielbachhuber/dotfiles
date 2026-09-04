@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { createHarvestBridge } from "./harvest/bridge.js";
 import { isAdoptable, soleIssueReference } from "./issues/adopt.js";
 import { rpcContract } from "./issues/contract.js";
 import { parseStatusOrder, shouldAutoApply } from "./issues/board.js";
@@ -447,6 +448,17 @@ export default async function plugin(bb: BbPluginApi) {
     return moved;
   }
 
+  const harvest = createHarvestBridge(bb);
+
+  /**
+   * Harvest's contribution to the listing: whether the clock should render at
+   * all, and which row it should be lit on.
+   */
+  async function harvestListingState() {
+    if (!(await harvest.available())) return { available: false, running: null };
+    return { available: true, running: await harvest.runningReference() };
+  }
+
   bb.rpc.register(rpcContract, {
     async listRows() {
       const meta = store.readMeta();
@@ -482,7 +494,24 @@ export default async function plugin(bb: BbPluginApi) {
         sweptAt: meta.sweptAt,
         truncated: meta.truncated,
         lastError: meta.lastError,
+        harvest: await harvestListingState(),
       };
+    },
+
+    harvestAssignments() {
+      return harvest.assignments();
+    },
+
+    harvestTrackedHours({ externalId, groupId }) {
+      return harvest.trackedHours({ externalId, groupId });
+    },
+
+    harvestLastSelection({ scope }) {
+      return harvest.lastSelection({ scope });
+    },
+
+    harvestStartTimer(input) {
+      return harvest.startTimer(input);
     },
 
     async startThread({ repo, number }) {
