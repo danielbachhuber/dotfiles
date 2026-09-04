@@ -104,7 +104,16 @@ const TONE_CLASSES = {
   stale: "bg-destructive/10 text-destructive",
 } as const;
 
-type RunningReference = { externalId: string; groupId: string | null } | null;
+type RunningReference =
+  | {
+      externalId: string;
+      groupId: string | null;
+      entryId: number;
+      startedAt: string | null;
+      projectName: string;
+      taskName: string;
+    }
+  | null;
 
 interface HarvestPanelState {
   available: boolean;
@@ -144,6 +153,9 @@ function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): H
         }),
       startTimer: (input) => rpc.call("harvestStartTimer", input),
       lastSelection: (input) => rpc.call("harvestLastSelection", input),
+      stopTimer: async (input) => {
+        await rpc.call("harvestStopTimer", input);
+      },
     }),
     [rpc],
   );
@@ -199,31 +211,49 @@ function Action({
   return (
     <span className="flex items-center justify-end gap-1">
       {row.threadId ? (
-        <Button
-          size="sm"
-          variant="outline"
-          className="whitespace-nowrap"
-          onClick={() => onOpen(row.threadId!)}
-        >
-          Open thread
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="size-8 shrink-0 p-0"
+              aria-label={`Open the thread for #${row.number}`}
+              onClick={() => onOpen(row.threadId!)}
+            >
+              <Icon name="MessageSquare" className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open the thread</TooltipContent>
+        </Tooltip>
       ) : (
-        // The title sits on the wrapper, not the Button: a disabled button
-        // fires no pointer events, so a tooltip on it would never show.
-        <span
-          title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
-          className="inline-block"
-        >
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!row.canSpawn || isStarting}
-            onClick={() => onReview(row)}
-            className="whitespace-nowrap"
-          >
-            {isStarting ? "Starting…" : START_THREAD_LABEL}
-          </Button>
-        </span>
+        // The tooltip hangs off the wrapper, not the Button: a disabled button
+        // fires no pointer events, so one on the button itself would never show.
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-block">
+              <Button
+                size="sm"
+                variant="outline"
+                className="size-8 shrink-0 p-0"
+                disabled={!row.canSpawn || isStarting}
+                aria-label={
+                  isStarting ? "Starting…" : `${START_THREAD_LABEL} for #${row.number}`
+                }
+                onClick={() => onReview(row)}
+              >
+                <Icon
+                  name={isStarting ? "Spinner" : "MessageSquarePlus"}
+                  className={`size-4${isStarting ? " animate-spin" : ""}`}
+                />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {row.canSpawn
+              ? START_THREAD_LABEL
+              : `No bb project is checked out for ${row.repo}`}
+          </TooltipContent>
+        </Tooltip>
       )}
       <RowMenu
         row={row}
@@ -340,7 +370,7 @@ function ReviewTable({
               content box is what put a horizontal scrollbar on this table once
               before.
             */}
-            <TableHead className="w-[11.5rem]" />
+            <TableHead className="w-[5.75rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -378,9 +408,9 @@ function ReviewTable({
                       surface="reviews"
                       preferredTaskName="Code Review"
                       row={row}
-                      isRunning={isRunningFor(harvest.running, row)}
+                      running={isRunningFor(harvest.running, row) ? harvest.running : null}
                       client={harvest.client}
-                      onStarted={harvest.onStarted}
+                      onChanged={harvest.onStarted}
                     />
                   ) : null}
                   </span>

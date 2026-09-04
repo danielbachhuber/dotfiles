@@ -330,42 +330,40 @@ describe("action", () => {
         ],
       }),
     );
-    expect(await slot.findAllByRole("button", { name: /^Start thread$/ })).toHaveLength(2);
+    expect(await slot.findAllByRole("button", { name: /^Start thread for #/ })).toHaveLength(2);
     expect(slot.queryByRole("button", { name: /^Review$/ })).toBeNull();
     expect(slot.queryByRole("button", { name: /^Re-review$/ })).toBeNull();
   });
 
   it("offers an action on a draft too, since the request is still real", async () => {
     const slot = render(listing({ rows: [rowFixture({ isDraft: true })] }));
-    await slot.findByRole("button", { name: /^Start thread$/ });
+    await slot.findByRole("button", { name: /^Start thread for #/ });
   });
 
   it("disables the action when no project matches", async () => {
     const slot = render(listing({ rows: [rowFixture({ canSpawn: false })] }));
-    expect(await slot.findByRole("button", { name: /^Start thread$/ })).toBeDisabled();
+    expect(await slot.findByRole("button", { name: /^Start thread for #/ })).toBeDisabled();
   });
 
-  it("shows Open thread once a thread exists, in place of the action", async () => {
+  it("swaps the start icon for the open icon once a thread exists", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    await slot.findByRole("button", { name: /open thread/i });
-    expect(slot.queryByRole("button", { name: /^Start thread$/ })).toBeNull();
+    await slot.findByRole("button", { name: /^Open the thread for #/ });
+    expect(slot.queryByRole("button", { name: /^Start thread for #/ })).toBeNull();
   });
 
-  it("navigates to the thread when Open thread is clicked", async () => {
+  it("navigates to the thread when the open icon is clicked", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    (await slot.findByRole("button", { name: /open thread/i })).click();
+    (await slot.findByRole("button", { name: /^Open the thread for #/ })).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(slot.inspection.navigateCalls.length).toBeGreaterThan(0);
   });
 
-  it("puts Archive thread in the row menu, alongside Open thread", async () => {
+  it("puts Archive thread in the row menu, alongside the open action", async () => {
     // Unlike pr-sweep there is no flag to clear, so the tidy-up is always
     // available on an in-progress row. It lives in the menu rather than as its
     // own icon button, so every row's action cell has the same shape.
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    expect((await slot.findByRole("button", { name: /open thread/i })).textContent).toContain(
-      "Open thread",
-    );
+    await slot.findByRole("button", { name: /^Open the thread for #/ });
     await openRowMenu(slot);
     await slot.findByRole("menuitem", { name: /archive thread/i });
   });
@@ -392,7 +390,7 @@ describe("action", () => {
     const slot = render(listing(), {
       reviewThisDraft: () => ({ existingThreadId: null, reason: null, seed: SEED }),
     });
-    (await slot.findByRole("button", { name: /^Start thread$/ })).click();
+    (await slot.findByRole("button", { name: /^Start thread for #/ })).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     const call = slot.inspection.rpcCalls.find((entry) => entry.method === "reviewThisDraft");
     expect(call?.input).toEqual({ repo: "acme/widgets", number: 42 });
@@ -405,7 +403,7 @@ describe("action", () => {
     const slot = render(listing(), {
       reviewThisDraft: () => ({ existingThreadId: null, reason: null, seed: SEED }),
     });
-    (await slot.findByRole("button", { name: /^Start thread$/ })).click();
+    (await slot.findByRole("button", { name: /^Start thread for #/ })).click();
     expect(
       await slot.findByText("Start a review thread for #42"),
     ).toBeInTheDocument();
@@ -422,7 +420,7 @@ describe("action", () => {
       },
     });
 
-    (await slot.findByRole("button", { name: /^Start thread$/ })).click();
+    (await slot.findByRole("button", { name: /^Start thread for #/ })).click();
     expect(await slot.findByRole("button", { name: /starting/i })).toBeDisabled();
 
     release?.();
@@ -439,7 +437,7 @@ describe("action", () => {
       },
     });
 
-    const button = await slot.findByRole("button", { name: /^Start thread$/ });
+    const button = await slot.findByRole("button", { name: /^Start thread for #/ });
     button.click();
     await slot.findByRole("button", { name: /starting/i });
     button.click();
