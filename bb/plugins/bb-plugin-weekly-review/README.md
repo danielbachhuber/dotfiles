@@ -72,7 +72,7 @@ the text rather than hidden behind it, so a near match reads as what it is.
 | Issues created | `gh search issues` | yes |
 | Issues assigned | `gh search issues --assignee` | no — current snapshot |
 | Todoist completed | `td completed list` | no |
-| Todoist incomplete | `td task list` | no — backlog |
+| Todoist incomplete | `td task list` | no — overdue and near-term reach the digest |
 | Reference docs | a script that prints a Google Doc as text | no |
 | Slack | by hand | yes |
 | Daily notes | agent step, over MCP | yes |

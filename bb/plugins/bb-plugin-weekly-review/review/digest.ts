@@ -13,8 +13,7 @@
  */
 import type { WeekData } from "./types.js";
 import { attributeTime, categories } from "./overview.js";
-import { weekTotals } from "./week.js";
-import { buildDaySlices } from "./week.js";
+import { buildDaySlices, splitBacklog, weekTotals } from "./week.js";
 
 export function buildDigest(week: WeekData): string {
   const github = week.github.data;
@@ -54,6 +53,18 @@ export function buildDigest(week: WeekData): string {
   section(out, "Issues assigned and still open", github.issuesAssigned, (issue) =>
     `- #${issue.number} (last touched ${(issue.updatedAt ?? issue.createdAt).slice(0, 10)}) ${issue.title}`);
   section(out, "Tasks completed", week.todoist.data.completed, (task) => `- ${task.content}`);
+
+  // What is still owed. Overdue and near-term only: the someday pile is a
+  // backlog rather than a claim on next week, and listing it would bury the
+  // few tasks that are actually late.
+  const backlog = splitBacklog(week.todoist.data.incomplete, week.to);
+  section(out, "Tasks overdue", backlog.overdue, (task) =>
+    `- ${task.content} (due ${task.due})`);
+  section(out, "Tasks due in the next two weeks", backlog.upcoming, (task) =>
+    `- ${task.content} (due ${task.due}${task.recurring ? ", recurring" : ""})`);
+  if (backlog.someday.length > 0) {
+    out.push(`(${backlog.someday.length} further tasks carry no due date.)`);
+  }
 
   const notes = week.reflect?.data ?? [];
   if (notes.length > 0) {
