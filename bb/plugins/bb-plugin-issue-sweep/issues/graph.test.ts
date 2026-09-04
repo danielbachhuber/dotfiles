@@ -12,6 +12,8 @@ function node(
     blockers = [] as string[],
     closingPrs = [] as Array<[number, string]>,
     repo = "acme/widgets",
+    subIssues = null as { total: number; completed: number } | null,
+    body = null as string | null,
   } = {},
 ) {
   return {
@@ -21,6 +23,8 @@ function node(
     closedByPullRequestsReferences: {
       nodes: closingPrs.map(([prNumber, state]) => ({ number: prNumber, state })),
     },
+    subIssuesSummary: subIssues,
+    body,
   };
 }
 
@@ -70,7 +74,53 @@ describe("parseIssueFacts: closing pull requests", () => {
     const facts = parseIssueFacts(
       payload([node(42, { blockers: ["OPEN"], closingPrs: [[5810, "OPEN"]] })]),
     );
-    expect(facts.get("acme/widgets#42")).toEqual({ openBlockers: 1, closingPr: 5810 });
+    expect(facts.get("acme/widgets#42")).toEqual({
+      openBlockers: 1,
+      closingPr: 5810,
+      subtasks: null,
+    });
+  });
+});
+
+describe("parseIssueFacts: subtasks", () => {
+  it("reports the sub-issue summary", () => {
+    const facts = parseIssueFacts(
+      payload([node(42, { subIssues: { total: 14, completed: 8 } })]),
+    );
+    expect(facts.get("acme/widgets#42")?.subtasks).toEqual({
+      completed: 8,
+      total: 14,
+      source: "sub-issues",
+    });
+  });
+
+  it("falls back to the task list in the body", () => {
+    const facts = parseIssueFacts(
+      payload([node(42, { body: "- [x] one\n- [ ] two" })]),
+    );
+    expect(facts.get("acme/widgets#42")?.subtasks).toEqual({
+      completed: 1,
+      total: 2,
+      source: "tasks",
+    });
+  });
+
+  it("gives an issue an entry for its checklist alone", () => {
+    // Nothing blocks it and nothing closes it, but the panel still has
+    // something to say about it.
+    const facts = parseIssueFacts(payload([node(42, { subIssues: { total: 3, completed: 0 } })]));
+    expect(facts.get("acme/widgets#42")).toEqual({
+      openBlockers: 0,
+      closingPr: null,
+      subtasks: { completed: 0, total: 3, source: "sub-issues" },
+    });
+  });
+
+  it("leaves out an issue with no checklist of either kind", () => {
+    const facts = parseIssueFacts(
+      payload([node(42, { subIssues: { total: 0, completed: 0 }, body: "Just prose." })]),
+    );
+    expect(facts.has("acme/widgets#42")).toBe(false);
   });
 });
 

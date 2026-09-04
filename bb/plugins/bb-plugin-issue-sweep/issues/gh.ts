@@ -98,6 +98,7 @@ export async function runSweep(
         const fact = facts.get(factsKey(row.repo, row.number));
         row.blockedBy = fact?.openBlockers ?? 0;
         row.closingPr = fact?.closingPr ?? null;
+        row.subtasks = fact?.subtasks ?? null;
       }
     } catch (error) {
       if (error instanceof GhUnavailableError) throw error;

@@ -1,4 +1,5 @@
 import { boardPlacement } from "./board.js";
+import type { SubtaskProgress } from "./subtasks.js";
 
 export const REPO_SLUG_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
@@ -44,6 +45,12 @@ export interface IssueRow {
    * blockedBy from the same query.
    */
   closingPr: number | null;
+  /**
+   * The issue's own checklist progress — sub-issues, or a task list in the
+   * body — or null when it keeps neither. Stamped from the same query as
+   * blockedBy, for the same reason: the listing cannot report it.
+   */
+  subtasks: SubtaskProgress | null;
   /** The status column on the configured board, or null when it has none. */
   boardStatus: string | null;
   /**
@@ -95,6 +102,7 @@ export function toRow(raw: RawIssue, board = ""): IssueRow | null {
     // this from its own query once every row exists.
     blockedBy: 0,
     closingPr: null,
+    subtasks: null,
     boardStatus: placement.status,
     onBoard: placement.onBoard,
   };

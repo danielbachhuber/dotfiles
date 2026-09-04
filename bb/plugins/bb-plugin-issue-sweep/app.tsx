@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { commentsLabel, relativeTime } from "./issues/format.js";
+import { commentsLabel, relativeTime, subtasksLabel } from "./issues/format.js";
 import type { rpcContract } from "./server.js";
 import { countedRows, sectionOrder } from "./issues/board.js";
 
@@ -33,6 +33,7 @@ type Row = {
   boardStatus: string | null;
   onBoard: boolean;
   blockedBy: number;
+  subtasks?: { completed: number; total: number; source: "sub-issues" | "tasks" } | null;
   threadId: string | null;
   canSpawn: boolean;
   createdAt: number;
@@ -285,6 +286,7 @@ function IssueTable({
         <TableBody>
           {rows.map((row) => {
             const comments = commentsLabel(row.commentsCount);
+            const subtasks = subtasksLabel(row.subtasks);
             return (
               <TableRow key={`${row.repo}#${row.number}`}>
                 <TableCell className="align-top">
@@ -301,6 +303,7 @@ function IssueTable({
                         showRepo ? row.repo : null,
                         relativeTime(row.updatedAt, now),
                         comments,
+                        subtasks,
                       ]
                         .filter(Boolean)
                         .join(" · ")}

@@ -11,6 +11,17 @@ const rowSchema = z.object({
   onBoard: z.boolean(),
   blockedBy: z.number(),
   closingPr: z.number().nullable(),
+  /**
+   * Checklist progress, or null. Optional as well as nullable: rows stored
+   * before this field existed are read back from SQLite without it.
+   */
+  subtasks: z
+    .object({
+      completed: z.number(),
+      total: z.number(),
+      source: z.enum(["sub-issues", "tasks"]),
+    })
+    .nullish(),
   /** The thread this plugin started for the issue, or null. */
   threadId: z.string().nullable(),
   /** False when no bb project is checked out for the issue's repository. */

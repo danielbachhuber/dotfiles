@@ -17,6 +17,7 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
     onBoard: false,
     blockedBy: 0,
     closingPr: null,
+    subtasks: null,
     ...overrides,
   };
 }

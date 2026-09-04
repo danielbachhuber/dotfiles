@@ -14,6 +14,7 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
     commentsCount: 0,
     blockedBy: 0,
     closingPr: null,
+    subtasks: null,
     boardStatus: null,
     onBoard: false,
     ...overrides,

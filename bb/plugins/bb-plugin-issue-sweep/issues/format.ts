@@ -20,6 +20,18 @@ export function relativeTime(at: number, now: number): string {
   return `${Math.floor(elapsed / YEAR)}y ago`;
 }
 
+/**
+ * "8/14 sub-issues", the completion state of an issue's own checklist. Shown
+ * even at 0 done: what the row is really reporting is that the issue has parts
+ * to it, which is worth knowing before opening it.
+ */
+export function subtasksLabel(
+  subtasks: { completed: number; total: number; source: "sub-issues" | "tasks" } | null | undefined,
+): string | null {
+  if (!subtasks || subtasks.total <= 0) return null;
+  return `${subtasks.completed}/${subtasks.total} ${subtasks.source}`;
+}
+
 export function commentsLabel(count: number): string | null {
   if (count <= 0) return null;
   return count === 1 ? "1 comment" : `${count} comments`;

@@ -22,6 +22,7 @@ function rowFixture(overrides: Record<string, unknown> = {}) {
     onBoard: false,
     blockedBy: 0,
     closingPr: null,
+    subtasks: null,
     threadId: null,
     canSpawn: true,
     ...overrides,
@@ -87,6 +88,22 @@ describe("panel", () => {
     // the title cell rather than being dropped.
     const slot = render(listing());
     expect(await slot.findByText(/3h ago · 2 comments/)).toBeInTheDocument();
+  });
+
+  it("shows how much of an issue's checklist is done", async () => {
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ subtasks: { completed: 8, total: 14, source: "sub-issues" } }),
+        ],
+      }),
+    );
+    expect(await slot.findByText(/2 comments · 8\/14 sub-issues/)).toBeInTheDocument();
+  });
+
+  it("says nothing about an issue with no checklist", async () => {
+    const slot = render(listing());
+    expect(await slot.findByText(/3h ago · 2 comments$/)).toBeInTheDocument();
   });
 
   it("keeps its own order, since the server already sorted", async () => {

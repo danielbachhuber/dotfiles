@@ -1,4 +1,5 @@
 import type { GhRunner } from "./gh.js";
+import { resolveSubtasks, type SubtaskProgress } from "./subtasks.js";
 
 /**
  * The two facts about an issue that `gh issue list` cannot report, both of
@@ -18,6 +19,11 @@ export interface IssueFacts {
    * left your hands and is waiting on someone else.
    */
   closingPr: number | null;
+  /**
+   * How much of the issue's own checklist is done — its sub-issues, or the
+   * task list in its body. Null when it keeps neither.
+   */
+  subtasks: SubtaskProgress | null;
 }
 
 export const FACTS_QUERY = `
@@ -31,6 +37,8 @@ query($q: String!) {
         closedByPullRequestsReferences(first: 10, includeClosedPrs: false) {
           nodes { number state }
         }
+        subIssuesSummary { total completed }
+        body
       }
     }
   }
@@ -51,6 +59,8 @@ interface RawNode {
   closedByPullRequestsReferences?: {
     nodes?: Array<{ number?: number; state?: string } | null> | null;
   } | null;
+  subIssuesSummary?: { total?: number; completed?: number } | null;
+  body?: string | null;
 }
 
 /**
@@ -81,8 +91,10 @@ export function parseIssueFacts(raw: string): Map<string, IssueFacts> {
       if (closingPr === null || pr.number < closingPr) closingPr = pr.number;
     }
 
-    if (openBlockers > 0 || closingPr !== null) {
-      facts.set(factsKey(repo, node.number), { openBlockers, closingPr });
+    const subtasks = resolveSubtasks(node.subIssuesSummary, node.body);
+
+    if (openBlockers > 0 || closingPr !== null || subtasks) {
+      facts.set(factsKey(repo, node.number), { openBlockers, closingPr, subtasks });
     }
   }
 

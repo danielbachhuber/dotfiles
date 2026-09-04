@@ -33,6 +33,7 @@ describe("toRow", () => {
       commentsCount: 3,
       blockedBy: 0,
       closingPr: null,
+      subtasks: null,
       boardStatus: null,
       onBoard: false,
     });
