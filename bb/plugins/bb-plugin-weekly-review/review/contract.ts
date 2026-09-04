@@ -1,6 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { daySchema, weekDataSchema } from "./schema.js";
+import { interpretationSchema } from "./interpretation.js";
 import { SCALAR_KEYS } from "./sources.js";
 
 const sourceStatusSchema = z.object({
@@ -59,8 +60,32 @@ export const rpcContract = defineRpcContract({
     input: z.object({ monday: mondaySchema }),
     output: z.object({
       week: weekDataSchema.nullable(),
+      /** The agent's reading, when one has been recorded. */
+      interpretation: interpretationSchema.nullable(),
       dir: z.string(),
     }),
+  },
+  /**
+   * Hands the gathered week to an agent and returns the thread doing the
+   * reading. The result arrives later, over the realtime signal, when the
+   * agent records it with `bb weekly-review interpret`.
+   */
+  week_interpret: {
+    input: z.object({ monday: mondaySchema }),
+    output: z.object({
+      threadId: z.string(),
+    }),
+  },
+  prompt_get: {
+    input: z.null(),
+    output: z.object({ prompt: z.string(), isDefault: z.boolean() }),
+  },
+  prompt_set: {
+    input: z.object({
+      /** Blank restores the default. */
+      prompt: z.string().max(20_000),
+    }),
+    output: z.object({ prompt: z.string(), isDefault: z.boolean() }),
   },
   /**
    * Re-gathers a week from its sources and writes it to disk. Slow — every

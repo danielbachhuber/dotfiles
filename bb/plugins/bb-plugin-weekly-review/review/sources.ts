@@ -62,11 +62,19 @@ export interface SourceStore {
   removeDoc(needle: string): DocSource | null;
   /** Replaces the whole doc list, in the order given. */
   replaceDocs(docs: DocSource[]): void;
+  /**
+   * The interpretation prompt. Here rather than in settings because it is the
+   * user's own writing about their own work, and because an edited prompt is
+   * the thing least worth losing to a reinstall.
+   */
+  readPrompt(fallback: string): string;
+  writePrompt(prompt: string): void;
 }
 
 export function createSourceStore(db: Database): SourceStore {
   const statements = {
     readSettings: db.prepare("SELECT key, value FROM settings"),
+    readSetting: db.prepare("SELECT value FROM settings WHERE key = ?"),
     writeSetting: db.prepare(
       `INSERT INTO settings (key, value) VALUES (?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -122,5 +130,16 @@ export function createSourceStore(db: Database): SourceStore {
     },
 
     replaceDocs: replace,
+
+    readPrompt(fallback) {
+      const row = statements.readSetting.get("interpretPrompt") as
+        | { value: string }
+        | undefined;
+      return row === undefined || row.value.trim() === "" ? fallback : row.value;
+    },
+
+    writePrompt(prompt) {
+      statements.writeSetting.run("interpretPrompt", prompt);
+    },
   };
 }

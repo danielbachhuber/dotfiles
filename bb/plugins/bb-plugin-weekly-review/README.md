@@ -62,6 +62,26 @@ where an agent can read it without going through this plugin.
 `hrvst`, `td`, and the Google Doc script are, plus where weeks are written. A
 path is not a fact about anyone, so those are safe as declarative settings.
 
+## The interpretation step
+
+Everything above is deterministic and runs without a model. Grouping forty
+pull request titles into three bodies of work is not, so that is a separate
+step with its own button.
+
+Pressing **Interpret** hands the gathered week to an agent in a spawned thread:
+the whole digest, inline, with an editable prompt around it. The agent writes
+JSON and records it with `bb weekly-review interpret <monday> --file <path>`,
+which validates it against a schema and puts it on the page. A failed
+validation reports what was wrong in a form the agent can act on and try again.
+
+The result lands beside the week as `overview.json`. Delete that file and the
+deterministic page is exactly what it was.
+
+The prompt is editable on this plugin's page in Tools, or with
+`bb weekly-review prompt reset` to restore the default. `{{DIGEST}}` and
+`{{COMMAND}}` are substituted before the thread is spawned. Read what the agent
+will see with `bb weekly-review digest <monday>`.
+
 ## The agent step
 
 Slack and daily notes are reachable over MCP rather than from a script, so an
@@ -90,6 +110,9 @@ bb weekly-review path 2026-08-31   # the directory to write into
 bb weekly-review list
 bb weekly-review generate [<monday>|--from YYYY-MM-DD --to YYYY-MM-DD]
 bb weekly-review path [<monday>]
+bb weekly-review digest <monday>
+bb weekly-review interpret <monday> --file <path-to-json>
+bb weekly-review prompt [show|reset]
 bb weekly-review source list | set <key> <value> | add-doc <id> <label> | remove-doc <id|label>
 ```
 
@@ -103,6 +126,7 @@ Weeks are identified by their Monday, which is also the directory name.
 ```
 data/weeks/2026-08-31/
   week.json        everything the gather produced
+  overview.json    the agent's reading of the week (optional)
   docs/*.txt       cached text of the reference docs
   reflect.json     written by the agent step (optional)
   slack.json       written by the agent step (optional)

@@ -34,6 +34,7 @@ import {
   STALE_DAYS,
 } from "./review/week.js";
 import { formatDayLong, fromDay, toDay } from "./review/dates.js";
+import type { BodyOfWork, Interpretation, NextItem } from "./review/interpretation.js";
 import type { CategoryHours, RefKind, WorkItem } from "./review/overview.js";
 import { attributeTime, categories as timeCategories, inFlight } from "./review/overview.js";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { SourcesSection } from "./review/sources-section.js";
+import { PromptSection } from "./review/prompt-section.js";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 
 type WeekSummary = { monday: string; to: string; generatedAt: string };
@@ -225,6 +227,84 @@ function TimeBreakdown({
         request. The rest is logged to a category only.
       </p>
     </div>
+  );
+}
+
+/**
+ * Every number the week knows about, so an interpretation's `refs` can become
+ * links. A number the week has never heard of is dropped rather than linked to
+ * a guess at its URL.
+ */
+function urlsByNumber(week: WeekData): Map<number, string> {
+  const github = week.github.data;
+  const urls = new Map<number, string>();
+  for (const group of [
+    github.authored,
+    github.issuesCreated,
+    github.issuesAssigned,
+    github.reviewed,
+  ]) {
+    for (const item of group) if (!urls.has(item.number)) urls.set(item.number, item.url);
+  }
+  return urls;
+}
+
+const STATUS_TONE: Record<BodyOfWork["status"], string> = {
+  shipped: "border-transparent bg-primary/15 text-primary",
+  "in progress": "border-border bg-transparent text-muted-foreground",
+  blocked: "border-transparent bg-destructive/15 text-destructive",
+  abandoned: "border-transparent bg-muted text-muted-foreground",
+};
+
+function RefLinks({ refs, urls }: { refs: number[]; urls: Map<number, string> }) {
+  const linkable = refs.filter((ref) => urls.has(ref));
+  if (linkable.length === 0) return null;
+  return (
+    <p className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1">
+      {linkable.map((ref) => (
+        <Ref key={ref} number={ref} href={urls.get(ref) as string} />
+      ))}
+    </p>
+  );
+}
+
+function BodyOfWorkCard({
+  body,
+  urls,
+}: {
+  body: BodyOfWork;
+  urls: Map<number, string>;
+}) {
+  return (
+    <li className="py-2.5">
+      <div className="flex items-baseline gap-2">
+        <span className="min-w-0 flex-1 text-sm font-medium">{body.title}</span>
+        {body.hours === undefined ? null : (
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {body.hours.toFixed(1)}h
+          </span>
+        )}
+        <Badge className={cn("shrink-0 text-[10px] uppercase", STATUS_TONE[body.status])}>
+          {body.status}
+        </Badge>
+      </div>
+      {body.detail === "" ? null : (
+        <p className="mt-1 text-sm text-muted-foreground">{body.detail}</p>
+      )}
+      <RefLinks refs={body.refs} urls={urls} />
+    </li>
+  );
+}
+
+function NextCard({ item, urls }: { item: NextItem; urls: Map<number, string> }) {
+  return (
+    <li className="py-2.5">
+      <div className="text-sm font-medium">{item.title}</div>
+      {item.why === "" ? null : (
+        <p className="mt-1 text-sm text-muted-foreground">{item.why}</p>
+      )}
+      <RefLinks refs={item.refs} urls={urls} />
+    </li>
   );
 }
 
@@ -580,9 +660,12 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const rpc = useRpc<typeof rpcContract>();
   const { listing } = useListing();
   const [week, setWeek] = useState<WeekData | null>(null);
+  const [interpretation, setInterpretation] = useState<Interpretation | null>(null);
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(true);
+  const [interpreting, setInterpreting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   const selected = selectedWeek(subPath, listing);
   // Part of the effect's key, so a regenerate in the title bar pulls the new
@@ -598,6 +681,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
       (result) => {
         if (!live) return;
         setWeek(result.week);
+        setInterpretation(result.interpretation);
         setDir(result.dir);
         setError(null);
         setLoading(false);
@@ -611,7 +695,26 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     return () => {
       live = false;
     };
-  }, [rpc, selected, generatedAt]);
+  }, [rpc, selected, generatedAt, reload]);
+
+  // The agent records its reading through the CLI, so the page hears about it
+  // the same way it hears about anything else: over the signal.
+  useRealtime("week-interpreted", () => setReload((count) => count + 1));
+
+  const askForInterpretation = async () => {
+    if (selected === null || interpreting) return;
+    setInterpreting(true);
+    try {
+      const { threadId } = await rpc.call("week_interpret", { monday: selected });
+      toast.success("Reading the week", {
+        description: `Thread ${threadId} is interpreting it; the overview appears here when it lands.`,
+      });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setInterpreting(false);
+    }
+  };
 
   const slices = useMemo(() => (week === null ? [] : buildDaySlices(week)), [week]);
   const totals = useMemo(
@@ -632,6 +735,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     [week],
   );
 
+  const urls = useMemo(() => (week === null ? new Map<number, string>() : urlsByNumber(week)), [week]);
   const today = toDay(new Date());
   const assigned = week?.github.data.issuesAssigned ?? [];
   const populated = slices.filter((slice) => !slice.empty);
@@ -663,6 +767,28 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
           </div>
         ) : (
           <>
+            {interpretation === null ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Nothing has read this week yet. An agent can group the work into threads
+                  and say where next week should go.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={askForInterpretation}
+                  disabled={interpreting}
+                >
+                  <Icon
+                    name={interpreting ? "Spinner" : "Zap"}
+                    className={cn("size-4", interpreting && "animate-spin")}
+                  />
+                  Interpret
+                </Button>
+              </div>
+            ) : (
+              <p className="mb-4 text-sm leading-relaxed">{interpretation.summary}</p>
+            )}
+
             {totals === null ? null : (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                 <Stat label="Hours" value={totals.hours} />
@@ -677,6 +803,26 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
             <p className="mt-2 text-xs text-muted-foreground">
               {week.from} – {week.to}
             </p>
+
+            {interpretation === null || interpretation.bodiesOfWork.length === 0 ? null : (
+              <Section title="Bodies of work" count={interpretation.bodiesOfWork.length}>
+                <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
+                  {interpretation.bodiesOfWork.map((body, index) => (
+                    <BodyOfWorkCard key={index} body={body} urls={urls} />
+                  ))}
+                </ul>
+              </Section>
+            )}
+
+            {interpretation === null || interpretation.next.length === 0 ? null : (
+              <Section title="Where next week should go" count={interpretation.next.length}>
+                <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border bg-card px-3">
+                  {interpretation.next.map((item, index) => (
+                    <NextCard key={index} item={item} urls={urls} />
+                  ))}
+                </ul>
+              </Section>
+            )}
 
             {time === null ? null : (
               <Section title="Where the time went">
@@ -784,6 +930,30 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               </Section>
             )}
 
+            {interpretation === null ? null : (
+              <div className="mt-8 flex items-center gap-3 border-t border-border pt-3">
+                <span className="text-xs text-muted-foreground">
+                  Read{" "}
+                  {interpretation.interpretedAt === undefined
+                    ? "at an unknown time"
+                    : relative(interpretation.interpretedAt)}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={askForInterpretation}
+                  disabled={interpreting}
+                >
+                  <Icon
+                    name={interpreting ? "Spinner" : "Zap"}
+                    className={cn("size-3.5", interpreting && "animate-spin")}
+                  />
+                  Read it again
+                </Button>
+              </div>
+            )}
+
             <SourceFooter week={week} />
           </>
         )}
@@ -798,6 +968,13 @@ export default definePluginApp((app) => {
     title: "Sources",
     description: "What a week is gathered from. Held in this plugin's database, not in a file.",
     component: SourcesSection,
+  });
+
+  app.slots.settingsSection({
+    id: "prompt",
+    title: "Interpretation prompt",
+    description: "What the agent is asked when it reads a week.",
+    component: PromptSection,
   });
 
   app.slots.navPanel({
