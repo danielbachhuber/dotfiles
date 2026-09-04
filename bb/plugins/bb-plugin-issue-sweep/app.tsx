@@ -12,7 +12,12 @@ import { Button } from "@/components/ui/button";
 import { CopyLink } from "@/components/ui/copy-link";
 import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -206,7 +211,16 @@ function StatusCell({
 }
 
 
-type RunningReference = { externalId: string; groupId: string | null } | null;
+type RunningReference =
+  | {
+      externalId: string;
+      groupId: string | null;
+      entryId: number;
+      startedAt: string | null;
+      projectName: string;
+      taskName: string;
+    }
+  | null;
 
 interface HarvestPanelState {
   available: boolean;
@@ -246,6 +260,9 @@ function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): H
         }),
       startTimer: (input) => rpc.call("harvestStartTimer", input),
       lastSelection: (input) => rpc.call("harvestLastSelection", input),
+      stopTimer: async (input) => {
+        await rpc.call("harvestStopTimer", input);
+      },
     }),
     [rpc],
   );
@@ -272,38 +289,50 @@ function ThreadAction({
 }) {
   if (row.threadId) {
     return (
-      <Button
-        size="sm"
-        variant="outline"
-        className="w-full whitespace-nowrap"
-        onClick={() => onOpen(row.threadId!)}
-      >
-        Open
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            className="size-8 shrink-0 p-0"
+            aria-label={`Open the thread for #${row.number}`}
+            onClick={() => onOpen(row.threadId!)}
+          >
+            <Icon name="MessageSquare" className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Open the thread</TooltipContent>
+      </Tooltip>
     );
   }
 
+  const label = isStarting ? "Starting…" : `Start a thread for #${row.number}`;
+
   return (
-    // The title sits on the wrapper, not the Button: a disabled button fires
-    // no pointer events, so a tooltip on it would never show.
-    <span
-      title={
-        row.canSpawn
-          ? undefined
-          : `No bb project is checked out for ${row.repo}`
-      }
-      className="block"
-    >
-      <Button
-        size="sm"
-        variant="outline"
-        className="w-full whitespace-nowrap"
-        disabled={!row.canSpawn || isStarting}
-        onClick={() => onStart(row)}
-      >
-        {isStarting ? "Starting…" : "Start"}
-      </Button>
-    </span>
+    // The tooltip hangs off the wrapper, not the Button: a disabled button
+    // fires no pointer events, so one on the button itself would never show.
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-block">
+          <Button
+            size="sm"
+            variant="outline"
+            className="size-8 shrink-0 p-0"
+            disabled={!row.canSpawn || isStarting}
+            aria-label={label}
+            onClick={() => onStart(row)}
+          >
+            <Icon
+              name={isStarting ? "Spinner" : "MessageSquarePlus"}
+              className={`size-4${isStarting ? " animate-spin" : ""}`}
+            />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {row.canSpawn ? label : `No bb project is checked out for ${row.repo}`}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -339,11 +368,8 @@ function IssueTable({
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className={HEAD}>Title</TableHead>
             <TableHead className={`w-[10rem] ${HEAD}`}>Status</TableHead>
-            {/*
-              Sized for "Starting…", which is the widest thing this column ever
-              holds — wider than either resting label.
-            */}
-            <TableHead className="w-[7rem]" />
+            {/* One 2rem icon button plus the cell's own px-3 padding. */}
+            <TableHead className="w-[3.5rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -379,9 +405,9 @@ function IssueTable({
                       <HarvestRowClock
                         surface="issues"
                         row={row}
-                        isRunning={isRunningFor(harvest.running, row)}
+                        running={isRunningFor(harvest.running, row) ? harvest.running : null}
                         client={harvest.client}
-                        onStarted={harvest.onStarted}
+                        onChanged={harvest.onStarted}
                       />
                     ) : null}
                   </span>
