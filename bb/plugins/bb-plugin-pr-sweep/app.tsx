@@ -5,6 +5,7 @@ import {
   useRealtime,
   useRpc,
   UrlLink,
+  type NewThreadRequest,
   type PluginThreadHeaderActionProps,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -23,6 +24,10 @@ import { SyncStatus } from "@/components/ui/sync-status";
 import { TitleLink } from "@/components/ui/title-link";
 import { OpenPullRequestPage } from "./sweep/open-panel.js";
 import { Icon } from "@/components/ui/icon";
+import {
+  StartThreadDialog,
+  type StartThreadSeed,
+} from "@/components/start-thread-dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -621,6 +626,12 @@ function Panel() {
     [navigate],
   );
 
+  // The pull request whose composer is open, with the seeds the backend
+  // resolved for it. Null when the dialog is closed.
+  const [draft, setDraft] = useState<{ row: Row; seed: StartThreadSeed } | null>(
+    null,
+  );
+
   const onWork = useCallback(
     (row: Row) => {
       const key = `${row.repo}#${row.number}`;
@@ -630,13 +641,20 @@ function Panel() {
 
       void (async () => {
         try {
-          const result = await rpc.call("workOnThis", { repo: row.repo, number: row.number });
-          if (result.threadId) {
-            if (!result.existing) toast.success(`Started a thread for ${key}`);
-            await reload();
-          } else {
-            toast.error(result.reason ?? "Could not start a thread.");
+          const result = await rpc.call("workOnThisDraft", {
+            repo: row.repo,
+            number: row.number,
+          });
+          // A pull request that already has a thread never composes a second one.
+          if (result.existingThreadId) {
+            navigate.toThread(result.existingThreadId);
+            return;
           }
+          if (result.seed === null) {
+            toast.error(result.reason ?? "Could not start a thread.");
+            return;
+          }
+          setDraft({ row, seed: result.seed });
         } finally {
           setStarting((current) => {
             const next = new Set(current);
@@ -646,7 +664,29 @@ function Panel() {
         }
       })();
     },
-    [reload, rpc],
+    [navigate, rpc],
+  );
+
+  const onSubmitDraft = useCallback(
+    async (request: NewThreadRequest) => {
+      if (!draft) return;
+      const { repo, number } = draft.row;
+      const key = `${repo}#${number}`;
+      const result = await rpc.call("workOnThisSubmit", {
+        repo,
+        number,
+        request: request as never,
+      });
+      if (!result.threadId) {
+        toast.error(result.reason ?? "Could not start a thread.");
+        // Thrown so the composer keeps the draft rather than clearing it.
+        throw new Error(result.reason ?? "Could not start a thread.");
+      }
+      setDraft(null);
+      if (!result.existing) toast.success(`Started a thread for ${key}`);
+      await reload();
+    },
+    [draft, reload, rpc],
   );
 
   const onArchive = useCallback(
@@ -732,6 +772,24 @@ function Panel() {
         ))}
       </div>
       </div>
+
+      <StartThreadDialog
+        open={draft !== null}
+        onOpenChange={(next) => {
+          if (!next) setDraft(null);
+        }}
+        heading={
+          draft ? `Start a thread for #${draft.row.number}` : "Start a thread"
+        }
+        description={
+          draft
+            ? draft.row.title
+            : "Edit the prompt and the execution options before starting."
+        }
+        draftKey={draft ? `pr-sweep:${draft.row.repo}#${draft.row.number}` : ""}
+        seed={draft?.seed ?? null}
+        onSubmit={onSubmitDraft}
+      />
     </TooltipProvider>
   );
 }

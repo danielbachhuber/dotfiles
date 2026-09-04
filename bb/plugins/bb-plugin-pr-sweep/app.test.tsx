@@ -509,14 +509,14 @@ describe("panel", () => {
     await slot.findByRole("button", { name: /open thread/i });
   });
 
-  it("disables the button and says Starting while the thread is created", async () => {
+  it("disables the button and says Starting while the draft is fetched", async () => {
     let release: (() => void) | undefined;
     const slot = render(listing(), {
-      workOnThis: async () => {
+      workOnThisDraft: async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
-        return { threadId: "thr_1", existing: false, reason: null };
+        return { existingThreadId: null, reason: null, seed: SEED };
       },
     });
 
@@ -532,11 +532,11 @@ describe("panel", () => {
   it("does not fire a second call when the button is clicked twice", async () => {
     let release: (() => void) | undefined;
     const slot = render(listing(), {
-      workOnThis: async () => {
+      workOnThisDraft: async () => {
         await new Promise<void>((resolve) => {
           release = resolve;
         });
-        return { threadId: "thr_1", existing: false, reason: null };
+        return { existingThreadId: null, reason: null, seed: SEED };
       },
     });
 
@@ -547,22 +547,44 @@ describe("panel", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(
-      slot.inspection.rpcCalls.filter((call) => call.method === "workOnThis"),
+      slot.inspection.rpcCalls.filter((call) => call.method === "workOnThisDraft"),
     ).toHaveLength(1);
 
     release?.();
   });
 
-  it("calls workOnThis when the button is clicked", async () => {
+  it("asks for a draft when the button is clicked, rather than spawning", async () => {
     const slot = render(listing(), {
-      workOnThis: () => ({ threadId: "thr_1", existing: false, reason: null }),
+      workOnThisDraft: () => ({ existingThreadId: null, reason: null, seed: SEED }),
     });
     const button = await slot.findByRole("button", { name: /resolve conflict/i });
     button.click();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(slot.inspection.rpcCalls.some((call) => call.method === "workOnThis")).toBe(true);
+    expect(
+      slot.inspection.rpcCalls.some((call) => call.method === "workOnThisDraft"),
+    ).toBe(true);
+    expect(
+      slot.inspection.rpcCalls.some((call) => call.method === "workOnThisSubmit"),
+    ).toBe(false);
+  });
+
+  it("opens the composer naming the pull request", async () => {
+    const slot = render(listing(), {
+      workOnThisDraft: () => ({ existingThreadId: null, reason: null, seed: SEED }),
+    });
+    (await slot.findByRole("button", { name: /resolve conflict/i })).click();
+    expect(await slot.findByText("Start a thread for #42")).toBeInTheDocument();
   });
 });
+
+/** What `workOnThisDraft` hands the composer. */
+const SEED = {
+  projectId: "proj_a",
+  providerId: "claude-code",
+  model: "claude-sonnet-5",
+  permissionMode: "full" as const,
+  prompt: "Resolve the conflict on acme/widgets#42.",
+};
 
 describe("thread header action", () => {
   const action = () => app.threadHeaderActions[0]!;

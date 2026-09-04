@@ -1,6 +1,31 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
+/**
+ * What BB's new-thread composer is seeded with. The settings still decide
+ * these — including the per-flag model from "Model by action" — and the
+ * composer only lets one thread differ from them.
+ */
+const seedSchema = z.object({
+  projectId: z.string(),
+  /** Blank in settings arrives as null: "let BB choose". */
+  providerId: z.string().nullable(),
+  model: z.string().nullable(),
+  permissionMode: z.enum(["accept-edits", "auto", "full"]),
+  prompt: z.string(),
+});
+
+/**
+ * BB's composer resolves a complete NewThreadRequest and guarantees it is
+ * JSON-serializable, so this validates only the fields the plugin reads and
+ * forwards the rest verbatim. `threads.spawn` validates the remainder
+ * server-side, which is where that check belongs.
+ */
+const newThreadRequestSchema = z.looseObject({
+  projectId: z.string().min(1),
+  input: z.array(z.looseObject({ type: z.string() })).min(1),
+});
+
 const checksSchema = z.object({
   pass: z.number(),
   fail: z.number(),
@@ -173,8 +198,36 @@ export const rpcContract = defineRpcContract({
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
     output: z.object({ ok: z.boolean(), reason: z.string().nullable() }),
   },
-  workOnThis: {
+  /**
+   * Everything the panel needs to open BB's composer for a pull request,
+   * without starting anything. Answers one of three ways: the pull request
+   * already has a thread, nothing can be started and here is why, or here are
+   * the seeds.
+   */
+  workOnThisDraft: {
     input: z.object({ repo: z.string(), number: z.number() }).strict(),
+    output: z.object({
+      /** The thread already linked to this pull request; the panel opens it. */
+      existingThreadId: z.string().nullable(),
+      /** Why nothing can be started, or null. */
+      reason: z.string().nullable(),
+      /** Null whenever `existingThreadId` or `reason` is set. */
+      seed: seedSchema.nullable(),
+    }),
+  },
+  /**
+   * Starts a thread from what the composer resolved, or returns the one
+   * already linked to the pull request. Idempotent by design: two fast submits
+   * must not produce two threads.
+   */
+  workOnThisSubmit: {
+    input: z
+      .object({
+        repo: z.string(),
+        number: z.number(),
+        request: newThreadRequestSchema,
+      })
+      .strict(),
     output: z.object({
       threadId: z.string().nullable(),
       /** True when an existing thread was returned rather than a new one started. */

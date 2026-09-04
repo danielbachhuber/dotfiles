@@ -820,11 +820,54 @@ export default async function plugin(bb: BbPluginApi) {
       return { ok: true, reason: null };
     },
 
-    async workOnThis({ repo, number }) {
+    async workOnThisDraft({ repo, number }) {
+      const existingThreadId = store.threadFor(repo, number);
+      if (existingThreadId) return { existingThreadId, reason: null, seed: null };
+
+      const row = store
+        .readRows()
+        .find((entry) => entry.repo === repo && entry.number === number);
+      if (!row) {
+        return {
+          existingThreadId: null,
+          reason: "That pull request is no longer in the sweep.",
+          seed: null,
+        };
+      }
+
+      const projectId = matchProjectForRepo(repo, await projectCandidates());
+      if (!projectId) {
+        return {
+          existingThreadId: null,
+          reason: `No bb project is checked out for ${repo}.`,
+          seed: null,
+        };
+      }
+
+      const { providerId, modelByAction, permissionMode } = await settings.get();
+      const { models, error } = parseModelByAction(modelByAction);
+      if (error) bb.log.warn(`"Model by action" setting: ${error}`);
+
+      return {
+        existingThreadId: null,
+        reason: null,
+        seed: {
+          projectId,
+          providerId: providerId || null,
+          // Still per-flag: the setting picks the model the work deserves, and
+          // the composer is where you disagree with it for one thread.
+          model: modelForFlags(row.flags, models) || null,
+          permissionMode: parsePermissionMode(permissionMode),
+          prompt: buildPrompt(row),
+        },
+      };
+    },
+
+    async workOnThisSubmit({ repo, number, request }) {
       const key = `${repo}#${number}`;
 
       // One thread per PR, enforced on three levels: the durable link below,
-      // this in-flight map for clicks that race before the first spawn
+      // this in-flight map for submits that race before the first spawn
       // returns, and a disabled button in the panel. The link alone is not
       // enough — two clicks a few hundred ms apart both read "no link yet".
       const inFlight = spawning.get(key);
@@ -847,38 +890,19 @@ export default async function plugin(bb: BbPluginApi) {
           };
         }
 
-        const projectId = matchProjectForRepo(repo, await projectCandidates());
-        if (!projectId) {
-          return {
-            threadId: null,
-            existing: false,
-            reason: `No bb project is checked out for ${repo}.`,
-          };
-        }
-
-        const { providerId, modelByAction, permissionMode } = await settings.get();
-        const mode = parsePermissionMode(permissionMode);
-        const { models, error } = parseModelByAction(modelByAction);
-        if (error) bb.log.warn(`"Model by action" setting: ${error}`);
-        const model = modelForFlags(row.flags, models);
-
+        // Everything the composer resolved — project, environment, provider,
+        // model, reasoning, permission mode, execution provenance — is
+        // forwarded untouched. Only the title is the plugin's business: the
+        // composer has no field for one, and the sidebar should say what this
+        // thread is for.
         const thread = await bb.sdk.threads.spawn({
-          projectId,
-          environment: { type: "project-default" },
-          ...(providerId ? { providerId } : {}),
-          ...(model ? { model } : {}),
-          permissionMode: mode,
-          prompt: buildPrompt(row),
+          ...request,
           // The pull request's own words for its first thread; what this
           // thread is for once another thread already carries them.
           title: await titleForNewThread(row, actionSummary(row.flags, commentsToRead(row))),
-        });
-        bb.log.info(
-          `started ${thread.id} for ${key}` +
-            ` on ${providerId || "the default provider"}` +
-            (model ? ` with ${model}` : "") +
-            `, permission mode ${mode}`,
-        );
+        } as Parameters<typeof bb.sdk.threads.spawn>[0]);
+
+        bb.log.info(`started ${thread.id} for ${key} in ${request.projectId}`);
         // The worst flag is what the button named and what the thread was sent
         // to do, so it is the one whose disappearance means "finished".
         store.linkThread(repo, number, thread.id, Date.now(), worstFlag(row.flags));

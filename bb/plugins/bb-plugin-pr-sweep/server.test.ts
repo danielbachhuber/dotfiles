@@ -9,7 +9,12 @@ describe("server", () => {
     await plugin(bb);
 
     expect(harness.registrations.rpcMethods).toEqual(
-      expect.arrayContaining(["listRows", "refresh", "workOnThis"]),
+      expect.arrayContaining([
+        "listRows",
+        "refresh",
+        "workOnThisDraft",
+        "workOnThisSubmit",
+      ]),
     );
     expect(harness.registrations.services.map((service) => service.name)).toContain("sweep");
     expect(Object.keys(harness.registrations.settingsDescriptors)).toEqual(
@@ -81,11 +86,31 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    const result = await harness.behavior.callRpc("workOnThis", {
+    // The refusal lands on the draft, before the composer ever opens: there
+    // is no project to compose into, so there is nothing to show.
+    const result = await harness.behavior.callRpc("workOnThisDraft", {
       repo: "acme/widgets",
       number: 1,
     });
-    expect(result.threadId).toBeNull();
+    expect(result.seed).toBeNull();
+    expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+  });
+
+  it("never spawns for a pull request that left the sweep while the composer was open", async () => {
+    // The composer can sit open for as long as the user likes, so the row is
+    // re-read at submit rather than trusted from the draft.
+    const { bb, harness } = createFakePluginHost({ pluginId: "pr-sweep" });
+    await plugin(bb);
+
+    const result = await harness.behavior.callRpc("workOnThisSubmit", {
+      repo: "acme/widgets",
+      number: 1,
+      request: {
+        projectId: "proj_a",
+        input: [{ type: "text", text: "Work on it.", mentions: [] }],
+      },
+    });
+    expect(result.reason).toMatch(/no longer in the sweep/);
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
 });
@@ -93,6 +118,39 @@ describe("server", () => {
 let spawnCount = 0;
 
 /** One classified row, as a sweep would have written it. */
+/**
+ * The whole panel gesture in one call: fetch the seeds, then submit them back
+ * untouched, which is what happens when the user accepts BB's composer as it
+ * opens. Tests that care about the seeds call `workOnThisDraft` directly;
+ * tests that care about the spawn go through here.
+ */
+async function workOnThis(
+  harness: { behavior: { callRpc: (method: string, input: unknown) => Promise<any> } },
+  { repo, number }: { repo: string; number: number },
+) {
+  const draft = await harness.behavior.callRpc("workOnThisDraft", { repo, number });
+  if (draft.existingThreadId) {
+    return { threadId: draft.existingThreadId, existing: true, reason: null };
+  }
+  if (!draft.seed) return { threadId: null, existing: false, reason: draft.reason };
+
+  // Stands in for what BB's composer resolves from those seeds. Only the
+  // fields the plugin's own schema reads are asserted anywhere; the rest is
+  // forwarded verbatim, so a faithful shape is enough.
+  return await harness.behavior.callRpc("workOnThisSubmit", {
+    repo,
+    number,
+    request: {
+      projectId: draft.seed.projectId,
+      ...(draft.seed.providerId ? { providerId: draft.seed.providerId } : {}),
+      ...(draft.seed.model ? { model: draft.seed.model } : {}),
+      permissionMode: draft.seed.permissionMode,
+      environment: { type: "project-default" },
+      input: [{ type: "text", text: draft.seed.prompt, mentions: [] }],
+    },
+  });
+}
+
 function seedRow() {
   return {
     repo: "acme/widgets",
@@ -115,7 +173,7 @@ function seedRow() {
 }
 
 
-describe("workOnThis is one thread per pull request", () => {
+describe("workOnThisSubmit is one thread per pull request", () => {
   async function seededHost() {
     spawnCount = 0;
     const fixture = createFakePluginHost({
@@ -148,14 +206,8 @@ describe("workOnThis is one thread per pull request", () => {
   it("spawns once and reuses the thread on a second click", async () => {
     const { harness } = await seededHost();
 
-    const first = await harness.behavior.callRpc("workOnThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
-    const second = await harness.behavior.callRpc("workOnThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const first = await workOnThis(harness, { repo: "acme/widgets", number: 42 });
+    const second = await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     expect(first.existing).toBe(false);
     expect(second.existing).toBe(true);
@@ -167,8 +219,8 @@ describe("workOnThis is one thread per pull request", () => {
     const { harness } = await seededHost();
 
     const [first, second] = await Promise.all([
-      harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 }),
-      harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 }),
+      workOnThis(harness, { repo: "acme/widgets", number: 42 }),
+      workOnThis(harness, { repo: "acme/widgets", number: 42 }),
     ]);
 
     expect(second.threadId).toBe(first.threadId);
@@ -177,7 +229,7 @@ describe("workOnThis is one thread per pull request", () => {
 
   it("titles the thread with the number and PR gist, not the repository or the flag", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     // callsTo returns each call's argument list, so [0] is spawn's only arg.
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
@@ -189,7 +241,7 @@ describe("workOnThis is one thread per pull request", () => {
 
   it("spawns a conflict thread on the cheap model, and others on the default", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { model?: string; providerId?: string },
@@ -216,7 +268,7 @@ describe("workOnThis is one thread per pull request", () => {
       { ...seedRow(), flags: ["ci-failing"] },
     ] as never);
 
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
     const [[spawnArgs]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { model?: string },
     ]];
@@ -242,17 +294,14 @@ describe("workOnThis is one thread per pull request", () => {
       seedRow(),
     ] as never);
 
-    const result = await harness.behavior.callRpc("workOnThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const result = await workOnThis(harness, { repo: "acme/widgets", number: 42 });
     expect(result.threadId).toBe("thr_1");
     expect(harness.logEntries.some((entry) => /Model by action/.test(entry.message))).toBe(true);
   });
 
   it("reports the linked thread on the row", async () => {
     const { harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     const listing = await harness.behavior.callRpc("listRows", null);
     expect(listing.rows[0]).toMatchObject({ number: 42, threadId: "thr_1" });
@@ -288,7 +337,7 @@ describe("workOnThis is one thread per pull request", () => {
       seedRow(),
     ] as never);
 
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
     expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBe("thr_1");
 
     // The thread disappears. No event fires.
@@ -300,7 +349,7 @@ describe("workOnThis is one thread per pull request", () => {
 
   it("frees the row again when its thread is deleted", async () => {
     const { bb, harness } = await seededHost();
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     await harness.behavior.emitThreadEvent("thread.deleted", {
       thread: makeThreadResponse({ id: "thr_1" }),
@@ -309,7 +358,7 @@ describe("workOnThis is one thread per pull request", () => {
     const listing = await harness.behavior.callRpc("listRows", null);
     expect(listing.rows[0]!.threadId).toBeNull();
 
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
     expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(2);
   });
 });
@@ -338,7 +387,7 @@ describe("permission mode", () => {
 
   async function spawnedWith(settings: Record<string, string>) {
     const { harness } = await hostWithSettings(settings);
-    await harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
     const [[args]] = harness.inspection.sdk.callsTo("threads.spawn") as [[
       { permissionMode?: string },
     ]];
@@ -390,7 +439,7 @@ describe("archiveThread", () => {
     ] as never);
 
     if (link) {
-      await fixture.harness.behavior.callRpc("workOnThis", { repo: "acme/widgets", number: 42 });
+      await workOnThis(fixture.harness, { repo: "acme/widgets", number: 42 });
     }
     return { ...fixture, archived };
   }
@@ -444,10 +493,7 @@ describe("pullRequestForThread", () => {
 
   it("returns the pull request for a thread this plugin started", async () => {
     const { harness } = await host();
-    const spawn = await harness.behavior.callRpc("workOnThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const spawn = await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     const result = await harness.behavior.callRpc("pullRequestForThread", {
       threadId: spawn.threadId!,
@@ -470,10 +516,7 @@ describe("pullRequestForThread", () => {
 
   it("still resolves a URL after the pull request leaves the sweep", async () => {
     const { bb, harness } = await host();
-    const spawn = await harness.behavior.callRpc("workOnThis", {
-      repo: "acme/widgets",
-      number: 42,
-    });
+    const spawn = await workOnThis(harness, { repo: "acme/widgets", number: 42 });
 
     // The PR merges, so the next sweep drops its row while the link remains.
     createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", []);
