@@ -28,13 +28,14 @@ import type {
 import type { DaySlice, PrEvent } from "./review/week.js";
 import {
   buildDaySlices,
-  hoursByCategory,
   isStale,
   splitBacklog,
   weekTotals,
   STALE_DAYS,
 } from "./review/week.js";
 import { formatDayLong, fromDay, toDay } from "./review/dates.js";
+import type { CategoryHours, RefKind, WorkItem } from "./review/overview.js";
+import { attributeTime, categories as timeCategories, inFlight } from "./review/overview.js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -172,6 +173,81 @@ function relative(instant: string): string {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Overview                                                                   */
+/* -------------------------------------------------------------------------- */
+
+const REF_KIND_LABEL: Record<RefKind, string> = {
+  authored: "pull request",
+  reviewed: "reviewed",
+  "issue-filed": "issue you filed",
+  "issue-assigned": "assigned to you",
+  unknown: "outside this week",
+};
+
+/**
+ * Where the logged time went, by category, largest first. Text rather than a
+ * bar: the ratio between the top two categories is the thing worth reading,
+ * and two numbers side by side say it more precisely than two widths.
+ */
+function TimeBreakdown({
+  categories,
+  attributed,
+  total,
+}: {
+  categories: CategoryHours[];
+  attributed: number;
+  total: number;
+}) {
+  if (categories.length === 0) return <EmptyState>No time logged this week.</EmptyState>;
+  return (
+    <div>
+      <ul className="overflow-hidden rounded-lg border border-border bg-card px-3">
+        {categories.map((category) => (
+          <li
+            key={category.task}
+            className="flex items-baseline gap-3 py-1.5 text-sm tabular-nums"
+          >
+            <span className="w-14 shrink-0 text-right font-medium">
+              {category.hours.toFixed(1)}h
+            </span>
+            <span className="w-10 shrink-0 text-right text-xs text-muted-foreground">
+              {Math.round(category.share * 100)}%
+            </span>
+            <span className="min-w-0 flex-1 font-sans">{category.task}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {attributed.toFixed(1)}h of {total.toFixed(1)}h named a specific issue or pull
+        request. The rest is logged to a category only.
+      </p>
+    </div>
+  );
+}
+
+/** The hours that landed on something with a number, most first. */
+function WorkItemRow({ item }: { item: WorkItem }) {
+  return (
+    <Row>
+      <span className="w-12 shrink-0 text-right text-sm font-medium tabular-nums">
+        {item.hours.toFixed(1)}h
+      </span>
+      {item.url === "" ? (
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">
+          #{item.number}
+        </span>
+      ) : (
+        <Ref number={item.number} href={item.url} />
+      )}
+      <span className="min-w-0 flex-1">{item.title}</span>
+      <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+        {REF_KIND_LABEL[item.kind]}
+      </span>
+    </Row>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -543,9 +619,11 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
     [week, slices],
   );
   const categories = useMemo(
-    () => (week === null ? [] : hoursByCategory(week.harvest.data)),
+    () => (week === null ? [] : timeCategories(week.harvest.data)),
     [week],
   );
+  const time = useMemo(() => (week === null ? null : attributeTime(week)), [week]);
+  const flight = useMemo(() => (week === null ? null : inFlight(week)), [week]);
   const backlog = useMemo(
     () =>
       week === null
@@ -596,17 +674,48 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               </div>
             )}
 
-            <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="text-foreground">
-                {week.from} – {week.to}
-              </span>
-              {categories.map((category) => (
-                <span key={category.task}>
-                  <span className="tabular-nums text-foreground">{category.hours}h</span>{" "}
-                  {category.task}
-                </span>
-              ))}
+            <p className="mt-2 text-xs text-muted-foreground">
+              {week.from} – {week.to}
             </p>
+
+            {time === null ? null : (
+              <Section title="Where the time went">
+                <TimeBreakdown
+                  categories={categories}
+                  attributed={time.attributed}
+                  total={time.total}
+                />
+              </Section>
+            )}
+
+            {time === null || time.items.length === 0 ? null : (
+              <Section title="What the hours went into" count={time.items.length}>
+                <List>
+                  {time.items.map((item) => (
+                    <WorkItemRow key={item.number} item={item} />
+                  ))}
+                </List>
+              </Section>
+            )}
+
+            {flight === null || flight.openPullRequests.length === 0 ? null : (
+              <Section
+                title="Still open from this week"
+                count={flight.openPullRequests.length}
+              >
+                <List>
+                  {flight.openPullRequests.map((pr) => (
+                    <Row key={pr.number}>
+                      <Ref number={pr.number} href={pr.url} />
+                      <span className="min-w-0 flex-1">{pr.title}</span>
+                      {pr.isDraft ? (
+                        <span className="shrink-0 text-xs text-muted-foreground">draft</span>
+                      ) : null}
+                    </Row>
+                  ))}
+                </List>
+              </Section>
+            )}
 
             <Section title="The week">
               {populated.length === 0 ? (
