@@ -8,6 +8,7 @@
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { prune, recordKey, withMark, type ViewedRecord } from "./viewed/marks";
+import { PREFS_KEY, type ToolbarPrefs } from "./viewed/prefs";
 
 const recordSchema = z.record(z.string(), z.string());
 
@@ -16,6 +17,18 @@ const threadIdSchema = z.string().trim().min(1).max(200);
 // a single path length. 2000 is generous and still keeps a hostile client from
 // filling kv storage with one key.
 const pathSchema = z.string().trim().min(1).max(2000);
+
+/**
+ * Toolbar preferences. Both fields are optional on the wire because "never
+ * chosen" is a real state: it is what leaves bb's own width-driven view-mode
+ * default in charge.
+ */
+const prefsSchema = z
+  .object({
+    wrap: z.boolean().optional(),
+    view: z.enum(["unified", "split"]).optional(),
+  })
+  .strict();
 
 export const rpcContract = defineRpcContract({
   viewed_list: {
@@ -42,6 +55,14 @@ export const rpcContract = defineRpcContract({
       .strict(),
     output: z.object({ record: recordSchema }),
   },
+  prefs_get: {
+    input: z.null(),
+    output: z.object({ prefs: prefsSchema }),
+  },
+  prefs_set: {
+    input: prefsSchema,
+    output: z.object({ prefs: prefsSchema }),
+  },
 });
 
 /**
@@ -51,11 +72,18 @@ export const rpcContract = defineRpcContract({
  */
 export const VIEWED_CHANGED = "viewed-changed";
 
+/** Realtime channel for a toolbar preference change. */
+export const PREFS_CHANGED = "prefs-changed";
+
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
 
   async function read(threadId: string): Promise<ViewedRecord> {
     return (await bb.storage.kv.get<ViewedRecord>(recordKey(threadId))) ?? {};
+  }
+
+  async function readPrefs(): Promise<ToolbarPrefs> {
+    return (await bb.storage.kv.get<ToolbarPrefs>(PREFS_KEY)) ?? {};
   }
 
   /**
@@ -86,6 +114,12 @@ export default async function plugin(bb: BbPluginApi) {
       const before = await read(threadId);
       const after = prune(before, presentPaths);
       return { record: await commit(threadId, before, after) };
+    },
+    prefs_get: async () => ({ prefs: await readPrefs() }),
+    prefs_set: async (prefs) => {
+      await bb.storage.kv.set(PREFS_KEY, prefs);
+      bb.realtime.publish(PREFS_CHANGED, prefs);
+      return { prefs };
     },
   });
 

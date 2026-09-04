@@ -7,10 +7,13 @@
 // viewed/dom.ts together.
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  applyClicks,
   createControl,
   existingControl,
   findCards,
+  findToolbar,
   paintCard,
+  readToolbar,
   resolveCard,
   undecorate,
   OWNED_ATTR,
@@ -198,5 +201,100 @@ describe("undecorate", () => {
     undecorate(document.body);
     expect(document.body.innerHTML).toBe(before);
     expect(document.querySelectorAll(`[${OWNED_ATTR}]`)).toHaveLength(0);
+  });
+});
+
+/**
+ * The toolbar as bb renders it above the file cards, from
+ * ThreadSecondaryPanel-*.js. `data-testid` and the accessible names are the
+ * anchors; `aria-pressed` is the state.
+ */
+function renderToolbar(
+  options: { wrap?: boolean; view?: "unified" | "split" } = {},
+): HTMLElement {
+  const { wrap = false, view = "unified" } = options;
+  const toolbar = document.createElement("div");
+  toolbar.setAttribute("data-testid", "git-diff-toolbar-actions");
+  toolbar.innerHTML = `
+    <button type="button" aria-label="Collapse all files"></button>
+    <button type="button"
+      aria-label="${wrap ? "Disable diff line wrap" : "Wrap diff lines"}"
+      aria-pressed="${wrap}"></button>
+    <div role="tablist" aria-label="Diff view mode">
+      <button type="button" aria-label="Stacked diff view" aria-pressed="${view === "unified"}"></button>
+      <button type="button" aria-label="Split diff view" aria-pressed="${view === "split"}"></button>
+    </div>`;
+  document.body.append(toolbar);
+  return toolbar;
+}
+
+describe("readToolbar", () => {
+  it("reads both controls from aria-pressed", () => {
+    expect(readToolbar(renderToolbar({ wrap: true, view: "split" }))).toEqual({
+      wrap: true,
+      view: "split",
+    });
+  });
+
+  it("reads the wrap button under either of its two labels", () => {
+    expect(readToolbar(renderToolbar({ wrap: false })).wrap).toBe(false);
+    expect(readToolbar(renderToolbar({ wrap: true })).wrap).toBe(true);
+  });
+
+  it("reports a control bb did not render as unknown, never as a default", () => {
+    const toolbar = document.createElement("div");
+    toolbar.setAttribute("data-testid", "git-diff-toolbar-actions");
+    document.body.append(toolbar);
+    expect(readToolbar(toolbar)).toEqual({ wrap: null, view: null });
+  });
+});
+
+describe("findToolbar", () => {
+  it("finds the toolbar, which lives outside the panel content", () => {
+    renderToolbar();
+    renderCard({ path: "a.ts" });
+    expect(findToolbar(document)).not.toBeNull();
+    const panel = document.querySelector(
+      "[data-secondary-panel-tab-content]",
+    ) as HTMLElement;
+    expect(findToolbar(panel)).toBeNull();
+  });
+
+  it("returns null when there is no changes toolbar on the page", () => {
+    expect(findToolbar(document)).toBeNull();
+  });
+});
+
+describe("applyClicks", () => {
+  it("clicks the buttons named, and only those", () => {
+    const toolbar = renderToolbar({ wrap: false, view: "unified" });
+    const clicked: string[] = [];
+    for (const button of toolbar.querySelectorAll("button")) {
+      button.addEventListener("click", () => {
+        clicked.push(button.getAttribute("aria-label") ?? "");
+      });
+    }
+
+    applyClicks(toolbar, ["wrap", "split"]);
+    expect(clicked).toEqual(["Wrap diff lines", "Split diff view"]);
+  });
+
+  it("never touches collapse all", () => {
+    const toolbar = renderToolbar();
+    let collapseAll = 0;
+    toolbar
+      .querySelector('button[aria-label="Collapse all files"]')
+      ?.addEventListener("click", () => {
+        collapseAll += 1;
+      });
+
+    applyClicks(toolbar, ["wrap", "stacked", "split"]);
+    expect(collapseAll).toBe(0);
+  });
+
+  it("is a no-op for a control bb did not render", () => {
+    const toolbar = document.createElement("div");
+    document.body.append(toolbar);
+    expect(() => applyClicks(toolbar, ["wrap", "split"])).not.toThrow();
   });
 });

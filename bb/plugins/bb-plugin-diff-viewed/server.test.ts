@@ -102,3 +102,50 @@ describe("viewed_prune", () => {
     expect(harness.inspection.realtimeSignals).toHaveLength(before);
   });
 });
+
+describe("toolbar prefs", () => {
+  it("starts with no preference, so bb's own defaults stand", async () => {
+    const { harness } = await start();
+    expect(await harness.behavior.callRpc("prefs_get", null)).toEqual({
+      prefs: {},
+    });
+  });
+
+  it("round-trips a saved preference", async () => {
+    const { harness } = await start();
+    await harness.behavior.callRpc("prefs_set", { wrap: true, view: "split" });
+
+    expect(await harness.behavior.callRpc("prefs_get", null)).toEqual({
+      prefs: { wrap: true, view: "split" },
+    });
+  });
+
+  it("is global, not scoped to a thread", async () => {
+    const { harness } = await start();
+    await harness.behavior.callRpc("viewed_set", { ...A, viewed: true });
+    await harness.behavior.callRpc("prefs_set", { view: "split" });
+
+    // Marks and prefs live in separate keys; neither write disturbs the other.
+    expect(await harness.behavior.callRpc("prefs_get", null)).toEqual({
+      prefs: { view: "split" },
+    });
+    expect(await harness.behavior.callRpc("viewed_list", { threadId: "thr_a" })).toEqual(
+      { record: { "src/a.ts": "+8 -4" } },
+    );
+  });
+
+  it("stores one control without inventing the other", async () => {
+    const { harness } = await start();
+    await harness.behavior.callRpc("prefs_set", { wrap: true });
+    expect(await harness.behavior.callRpc("prefs_get", null)).toEqual({
+      prefs: { wrap: true },
+    });
+  });
+
+  it("rejects a view mode it does not know", async () => {
+    const { harness } = await start();
+    await expect(
+      harness.behavior.callRpc("prefs_set", { view: "sidebyside" }),
+    ).rejects.toThrow();
+  });
+});
