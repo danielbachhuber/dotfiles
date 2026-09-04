@@ -211,7 +211,7 @@ describe("panel", () => {
 
   it("says Address issues on a row that needs more than one thing", async () => {
     const slot = render(listing({ rows: [rowFixture({ flags: ["conflict", "feedback"] })] }));
-    await slot.findByRole("button", { name: /^Address issues$/i });
+    await slot.findByRole("button", { name: /^Address issues on #/i });
   });
 
   it("gives every flag its own badge, not just the worst one", async () => {
@@ -290,15 +290,15 @@ describe("panel", () => {
     expect(archive.textContent).toBe("");
     expect(archive).toHaveAttribute("aria-label", "Archive thread");
 
-    // Open thread keeps its label, so the primary action does not change shape
-    // as the work finishes.
-    const open = await slot.findByRole("button", { name: /open thread/i });
-    expect(open.textContent).toContain("Open thread");
+    // The open action stays put, so the cell does not change shape as the work
+    // finishes. Same icon-only treatment as archive beside it.
+    const open = await slot.findByRole("button", { name: /^Open the thread for #/ });
+    expect(open.textContent).toBe("");
   });
 
   it("does not offer Archive thread while the row still has flags", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    await slot.findByRole("button", { name: /open thread/i });
+    await slot.findByRole("button", { name: /^Open the thread for #/ });
     expect(slot.queryByRole("button", { name: /archive thread/i })).toBeNull();
   });
 
@@ -489,24 +489,24 @@ describe("panel", () => {
     expect(slot.queryByText(/In Progress/)).toBeNull();
   });
 
-  it("shows Open thread once a thread exists, in place of the action", async () => {
+  it("swaps the start icon for the open icon once a thread exists", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    await slot.findByRole("button", { name: /open thread/i });
+    await slot.findByRole("button", { name: /^Open the thread for #/ });
     expect(slot.queryByRole("button", { name: /resolve conflict/i })).toBeNull();
   });
 
-  it("navigates to the thread when Open thread is clicked", async () => {
+  it("navigates to the thread when the open icon is clicked", async () => {
     const slot = render(listing({ rows: [rowFixture({ threadId: "thr_1" })] }));
-    (await slot.findByRole("button", { name: /open thread/i })).click();
+    (await slot.findByRole("button", { name: /^Open the thread for #/ })).click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(slot.inspection.navigateCalls.length).toBeGreaterThan(0);
   });
 
-  it("offers Open thread even for a clean row that has one", async () => {
+  it("offers the open icon even for a clean row that has one", async () => {
     const slot = render(
       listing({ rows: [rowFixture({ flags: [], group: "clean", threadId: "thr_1" })] }),
     );
-    await slot.findByRole("button", { name: /open thread/i });
+    await slot.findByRole("button", { name: /^Open the thread for #/ });
   });
 
   it("disables the button and says Starting while the draft is fetched", async () => {
@@ -842,8 +842,8 @@ describe("the merge button when comments are outstanding", () => {
         ],
       }),
     );
-    await slot.findByRole("button", { name: /^Review and merge$/ });
-    expect(slot.queryByRole("button", { name: /^Merge$/ })).toBeNull();
+    await slot.findByRole("button", { name: /^Review and merge on #/ });
+    expect(slot.queryByRole("button", { name: /^Merge on #/ })).toBeNull();
   });
 
   it("still says Merge when nothing is outstanding", async () => {
@@ -852,7 +852,7 @@ describe("the merge button when comments are outstanding", () => {
         rows: [rowFixture({ flags: ["merge-ready"], group: "ready-to-merge" })],
       }),
     );
-    await slot.findByRole("button", { name: /^Merge$/ });
+    await slot.findByRole("button", { name: /^Merge on #/ });
   });
 });
 
@@ -1088,7 +1088,7 @@ describe("a pull request with more than one thread", () => {
 
   it("offers nothing extra on the common single-thread row", async () => {
     const slot = render(listing({ rows: [rowWithThreads(["thr_2"])] }));
-    await slot.findByRole("button", { name: /open thread/i });
+    await slot.findByRole("button", { name: /^Open the thread for #/ });
     expect(slot.queryByRole("button", { name: /earlier thread/i })).toBeNull();
   });
 
@@ -1096,7 +1096,7 @@ describe("a pull request with more than one thread", () => {
     // Newest first, so the button acts on the work in progress rather than on
     // whichever thread happened to be started first.
     const slot = render(listing({ rows: [rowWithThreads(["thr_3", "thr_2", "thr_1"])] }));
-    (await slot.findByRole("button", { name: /open thread/i })).click();
+    (await slot.findByRole("button", { name: /^Open the thread for #/ })).click();
     await waitFor(() => expect(slot.inspection.navigateCalls.length).toBeGreaterThan(0));
   });
 

@@ -112,7 +112,16 @@ const FLAG_LABELS: Record<string, string> = {
 };
 
 /** Checks, most consequential count first. Zeroes are omitted, not printed. */
-type RunningReference = { externalId: string; groupId: string | null } | null;
+type RunningReference =
+  | {
+      externalId: string;
+      groupId: string | null;
+      entryId: number;
+      startedAt: string | null;
+      projectName: string;
+      taskName: string;
+    }
+  | null;
 
 interface HarvestPanelState {
   available: boolean;
@@ -152,6 +161,9 @@ function useHarvestClient(rpc: ReturnType<typeof useRpc<typeof rpcContract>>): H
         }),
       startTimer: (input) => rpc.call("harvestStartTimer", input),
       lastSelection: (input) => rpc.call("harvestLastSelection", input),
+      stopTimer: async (input) => {
+        await rpc.call("harvestStopTimer", input);
+      },
     }),
     [rpc],
   );
@@ -382,21 +394,26 @@ function Action({
   onArchive: (row: Row) => void;
 }) {
   if (row.threadId) {
-    // Open thread stays the labelled action on every in-progress row, so it
-    // does not change shape as the work finishes. Archiving is the tidy-up
-    // that appears once the pull request has no flags left, and it sits
-    // inline as an icon rather than a second full-width button stacked below.
+    // The open action stays on every in-progress row, so the cell does not
+    // change shape as the work finishes. Archiving is the tidy-up that appears
+    // once the pull request has no flags left.
     const isDone = row.flags.length === 0;
     return (
       <span className="flex items-center justify-end gap-1">
-        <Button
-          size="sm"
-          variant="outline"
-          className="whitespace-nowrap"
-          onClick={() => onOpen(row.threadId!)}
-        >
-          Open thread
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="size-8 shrink-0 p-0"
+              aria-label={`Open the thread for #${row.number}`}
+              onClick={() => onOpen(row.threadId!)}
+            >
+              <Icon name="MessageSquare" className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Open the thread</TooltipContent>
+        </Tooltip>
         {isDone ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -422,23 +439,37 @@ function Action({
   // same as a clean one.
   if (row.group === "clean" || isOnlyWaitingOnCi(row.flags)) return null;
 
+  // Which work the click starts — "Resolve conflict", "Review and merge". It
+  // named the button before the button became an icon; now it is the tooltip
+  // and the accessible name, so the sentence survives for anyone who hovers or
+  // listens. The Status column carries the flags themselves.
+  const action = actionSummary(row.flags, commentsToRead(row));
+
   return (
-    // The title sits on the wrapper, not the Button: a disabled button fires no
-    // pointer events, so a tooltip on it would never show.
-    <span
-      title={row.canSpawn ? undefined : `No bb project is checked out for ${row.repo}`}
-      className="inline-block"
-    >
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!row.canSpawn || isStarting}
-        onClick={() => onWork(row)}
-        className="whitespace-nowrap"
-      >
-        {isStarting ? "Starting…" : actionSummary(row.flags, commentsToRead(row))}
-      </Button>
-    </span>
+    // The tooltip hangs off the wrapper, not the Button: a disabled button
+    // fires no pointer events, so one on the button itself would never show.
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-block">
+          <Button
+            size="sm"
+            variant="outline"
+            className="size-8 shrink-0 p-0"
+            disabled={!row.canSpawn || isStarting}
+            aria-label={isStarting ? "Starting…" : `${action} on #${row.number}`}
+            onClick={() => onWork(row)}
+          >
+            <Icon
+              name={isStarting ? "Spinner" : "MessageSquarePlus"}
+              className={`size-4${isStarting ? " animate-spin" : ""}`}
+            />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {row.canSpawn ? action : `No bb project is checked out for ${row.repo}`}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -484,7 +515,7 @@ function PrTable({
               content box is what put a horizontal scrollbar on this table once
               before.
             */}
-            <TableHead className="w-[11.5rem]" />
+            <TableHead className="w-[8rem]" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -504,9 +535,9 @@ function PrTable({
                     <HarvestRowClock
                       surface="pull-requests"
                       row={row}
-                      isRunning={isRunningFor(harvest.running, row)}
+                      running={isRunningFor(harvest.running, row) ? harvest.running : null}
                       client={harvest.client}
-                      onStarted={harvest.onStarted}
+                      onChanged={harvest.onStarted}
                     />
                   ) : null}
                 </span>
