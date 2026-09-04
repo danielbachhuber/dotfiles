@@ -548,6 +548,18 @@ export default async function plugin(bb: BbPluginApi) {
           model: chosenModel || null,
           permissionMode: parsePermissionMode(permissionMode),
           prompt: buildPrompt(row),
+          // A new worktree by default. An issue names work that has not
+          // started, so there is no branch to land on and nothing to be gained
+          // from sharing the main checkout with whatever else is going on
+          // there. The composer still offers Work locally and Existing
+          // worktree for the times that is not what you want.
+          environment: {
+            type: "host",
+            workspace: {
+              type: "managed-worktree",
+              baseBranch: { kind: "default" },
+            },
+          } as const,
         },
       };
     },

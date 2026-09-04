@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
+import { createStore } from "./issues/store.js";
 
 /** A gh that is guaranteed not to exist, so a sweep fails the way it would. */
 const MISSING_GH = { ghPath: "/nonexistent/gh-does-not-exist" };
@@ -17,6 +18,58 @@ describe("server", () => {
     expect(Object.keys(harness.registrations.settingsDescriptors)).toEqual(
       expect.arrayContaining(["syncIntervalMinutes", "ghPath"]),
     );
+  });
+
+  it("opens the composer on a new worktree, not the main checkout", async () => {
+    // An issue has no branch to land on, so the thread gets its own worktree
+    // rather than the checkout everything else is using.
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "issue-sweep",
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+      },
+    });
+    await plugin(bb);
+    createStore(bb.storage.database() as never).replaceAll({
+      rows: [
+        {
+          repo: "acme/widgets",
+          number: 42,
+          title: "Add the widget endpoint",
+          url: "https://github.com/acme/widgets/issues/42",
+          labels: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          commentsCount: 0,
+          blockedBy: 0,
+          closingPr: null,
+          subtasks: null,
+          boardStatus: "Ready",
+          onBoard: true,
+        },
+      ],
+      truncated: false,
+      failedRepos: [],
+      sweptAt: Date.now(),
+    });
+
+    const draft = await harness.behavior.callRpc("startThreadDraft", {
+      repo: "acme/widgets",
+      number: 42,
+    });
+
+    expect(draft.seed).not.toBeNull();
+    expect(draft.seed!.environment).toEqual({
+      type: "host",
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    });
+    expect(draft.seed!.projectId).toBe("proj_a");
+    // Still a draft: nothing is created until the composer is submitted.
+    expect(harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
 
   it("refuses a draft for an issue the sweep does not have", async () => {

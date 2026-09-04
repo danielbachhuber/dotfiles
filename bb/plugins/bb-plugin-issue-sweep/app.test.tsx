@@ -363,6 +363,13 @@ const SEED = {
   model: null,
   permissionMode: "full" as const,
   prompt: "Work on acme/widgets#1.",
+  environment: {
+    type: "host" as const,
+    workspace: {
+      type: "managed-worktree" as const,
+      baseBranch: { kind: "default" as const },
+    },
+  },
 };
 
 describe("thread action", () => {
