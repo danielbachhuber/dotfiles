@@ -40,6 +40,10 @@ function listing(overrides: Record<string, unknown> = {}) {
     truncated: false,
     lastError: null,
     staleAfterDays: 2,
+    // Required by the contract, so the fixture carries it: the panel reads
+    // listing.harvest to decide whether to draw a clock, and a fixture that
+    // omits it renders nothing at all.
+    harvest: { available: false, running: null },
     ...overrides,
   };
 }
