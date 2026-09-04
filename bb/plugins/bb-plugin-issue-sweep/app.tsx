@@ -177,8 +177,18 @@ function StatusCell({
 
   // Shrink-wrapped, not stretched to the column: a full-width select pins the
   // caret to the column's right edge, a long way from the text it belongs to.
+  //
+  // The border, height and hover fill are the shared Button's `outline`
+  // variant, copied rather than composed because the control is a native
+  // <select> — it cannot be a Button and still open the platform's own menu.
+  // Matching it matters: this sits beside a real Button in the next column,
+  // and a bare label there would read as text you cannot change.
   return (
-    <span className="relative inline-flex max-w-full items-center gap-1.5">
+    <span
+      className={`relative inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-input bg-transparent pl-2 pr-2 transition-colors ${
+        busy ? "opacity-50" : "hover:bg-state-hover"
+      }`}
+    >
       <span
         aria-hidden
         className={`h-2 w-2 shrink-0 rounded-full ${statusDot(row.boardStatus)}`}
@@ -189,7 +199,7 @@ function StatusCell({
         value={row.boardStatus ?? ""}
         disabled={busy}
         onChange={(event) => onPick(event.target.value)}
-        className="max-w-full cursor-pointer appearance-none truncate bg-transparent pr-3.5 text-xs text-muted-foreground outline-none hover:text-foreground disabled:cursor-default disabled:opacity-50"
+        className="max-w-full cursor-pointer appearance-none truncate bg-transparent pr-3.5 text-xs text-muted-foreground outline-none hover:text-foreground disabled:cursor-default"
       >
         <option value="" disabled>
           {busy ? "Saving…" : placeholder}
@@ -202,7 +212,7 @@ function StatusCell({
       </select>
       <span
         aria-hidden
-        className="pointer-events-none absolute right-0 text-[0.6rem] text-muted-foreground"
+        className="pointer-events-none absolute right-2 text-[0.6rem] text-muted-foreground"
       >
         ▾
       </span>
@@ -367,7 +377,9 @@ function IssueTable({
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className={HEAD}>Title</TableHead>
-            <TableHead className={`w-[10rem] ${HEAD}`}>Status</TableHead>
+            {/* A little wider than the bare label needed: the control now
+                carries its own border and padding. */}
+            <TableHead className={`w-[11rem] ${HEAD}`}>Status</TableHead>
             {/* One 2rem icon button plus the cell's own px-3 padding. */}
             <TableHead className="w-[3.5rem]" />
           </TableRow>
