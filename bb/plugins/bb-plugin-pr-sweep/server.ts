@@ -27,7 +27,12 @@ import {
   scopedThreadTitle,
   threadTitle,
 } from "./sweep/actions.js";
-import { matchProjectForRepo, type ProjectCandidate } from "./sweep/spawn-target.js";
+import {
+  buildRepoFilter,
+  matchProjectForRepo,
+  type ProjectCandidate,
+  type RepoFilter,
+} from "./sweep/spawn-target.js";
 import { MIGRATIONS, createStore } from "./sweep/store.js";
 
 export { rpcContract };
@@ -46,6 +51,26 @@ export default async function plugin(bb: BbPluginApi) {
       type: "string",
       label: "Path to the gh CLI",
       default: "gh",
+    },
+    filterToProjects: {
+      type: "select",
+      label: "Only sweep repositories checked out here",
+      // On: a repository is swept only when a bb project on this machine has
+      // its git remote. bb's project list is per-installation, so this is the
+      // difference between the computer a repository is checked out on and
+      // every other one — the work computer's repositories stop filling the
+      // laptop's panel. Off restores sweeping every repository you have an
+      // open pull request in.
+      options: ["on", "off"],
+      default: "on",
+    },
+    extraRepositories: {
+      type: "string",
+      label: "Also sweep these repositories",
+      // Comma or newline separated owner/name, for a repository worth watching
+      // without a checkout here — a deploy repository you only ever open pull
+      // requests against. Ignored when the filter is off.
+      default: "",
     },
     autoArchiveActions: {
       type: "string",
@@ -341,15 +366,45 @@ export default async function plugin(bb: BbPluginApi) {
   let unavailableRuns = 0;
   const UNAVAILABLE_RUNS_BEFORE_CONFIG = 3;
 
+  /**
+   * The repository filter for one sweep, rebuilt each time so a project added
+   * since the last sweep is picked up without a reload.
+   *
+   * A failure to resolve projects leaves the filter unscoped rather than
+   * empty: an unreachable project list is not evidence that nothing is checked
+   * out, and treating it as such would blank every panel over a transient
+   * error.
+   */
+  async function repoFilter(): Promise<RepoFilter> {
+    const { filterToProjects, extraRepositories } = await settings.get();
+    const enabled = filterToProjects === "on";
+    if (!enabled) return buildRepoFilter({ enabled: false, candidates: [], extras: "" });
+    try {
+      return buildRepoFilter({
+        enabled: true,
+        candidates: await projectCandidates(),
+        extras: extraRepositories,
+      });
+    } catch (error) {
+      bb.log.warn(`could not resolve projects, sweeping every repository: ${String(error)}`);
+      return buildRepoFilter({ enabled: false, candidates: [], extras: "" });
+    }
+  }
+
   async function fetchAndStore(): Promise<{ ok: boolean; error: string | null }> {
     const { ghPath } = await settings.get();
     try {
-      const result = await runSweep(createGhRunner(ghPath), () => Date.now());
+      const scope = await repoFilter();
+      const result = await runSweep(createGhRunner(ghPath), () => Date.now(), scope);
       store.replaceAll(result);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
       bb.log.info(
         `swept ${result.repos.length} repo(s), ${result.rows.length} open PR(s)` +
-          (result.failedRepos.length ? `, ${result.failedRepos.length} failed` : ""),
+          (result.failedRepos.length ? `, ${result.failedRepos.length} failed` : "") +
+          (result.skippedRepos.length
+            ? `, ${result.skippedRepos.length} outside this machine's projects` +
+              ` (${result.skippedRepos.join(", ")})`
+            : ""),
       );
       // Reset here, not just on the failure path: three failures spread over a
       // day are weather, and only an unbroken run means the configuration is
@@ -660,6 +715,7 @@ export default async function plugin(bb: BbPluginApi) {
         }),
         sweptAt: meta.sweptAt,
         failedRepos: meta.failedRepos,
+        skippedRepos: meta.skippedRepos,
         truncated: meta.truncated,
         lastError: meta.lastError,
         harvest: await harvestListingState(),

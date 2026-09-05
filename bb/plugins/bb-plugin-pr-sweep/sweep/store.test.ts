@@ -59,6 +59,7 @@ describe("store", () => {
       rows: [row({ number: 1 })],
       repos: ["acme/widgets"],
       failedRepos: [],
+      skippedRepos: [],
       truncated: false,
       sweptAt: 1_700_000_000_000,
     });
@@ -72,6 +73,7 @@ describe("store", () => {
       rows: [row({ number: 1 })],
       repos: ["acme/widgets", "acme/flaky"],
       failedRepos: ["acme/flaky"],
+      skippedRepos: [],
       truncated: false,
       sweptAt: 1_700_000_000_000,
     });
@@ -90,12 +92,14 @@ describe("store", () => {
       rows: [],
       repos: [],
       failedRepos: ["acme/flaky"],
+      skippedRepos: [],
       truncated: true,
       sweptAt: 1_700_000_000_000,
     });
     expect(store.readMeta()).toMatchObject({
       sweptAt: 1_700_000_000_000,
       failedRepos: ["acme/flaky"],
+      skippedRepos: [],
       truncated: true,
       lastError: null,
     });
@@ -181,6 +185,7 @@ describe("thread links", () => {
       rows: [row({ number: 42 })],
       repos: ["acme/widgets"],
       failedRepos: [],
+      skippedRepos: [],
       truncated: false,
       sweptAt: 2,
     });
@@ -265,6 +270,7 @@ describe("scannedThreads", () => {
       rows: [row()],
       repos: ["acme/widgets"],
       failedRepos: [],
+      skippedRepos: [],
       truncated: false,
       sweptAt: 1_700_000_000_000,
     });
@@ -272,3 +278,19 @@ describe("scannedThreads", () => {
     expect(store.scannedThreads()).toEqual(new Set(["thr_1"]));
   });
 });
+
+describe("skipped repositories", () => {
+  it("round-trips through meta so the panel can explain an empty list", () => {
+    const store = freshStore();
+    store.replaceAll({
+      rows: [],
+      repos: [],
+      failedRepos: [],
+      skippedRepos: ["acme/gadgets"],
+      truncated: false,
+      sweptAt: 5,
+    });
+    expect(store.readMeta().skippedRepos).toEqual(["acme/gadgets"]);
+  });
+});
+

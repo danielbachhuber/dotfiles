@@ -66,6 +66,7 @@ type Listing = {
   countedStatuses: string[];
   boardName: string;
   sweptAt: number | null;
+  skippedRepos: string[];
   truncated: boolean;
   lastError: string | null;
   harvest: { available: boolean; running: RunningReference };
@@ -740,10 +741,27 @@ function Panel() {
             </p>
           ) : null}
 
-          {listing.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No issues assigned to you.
+          {listing.rows.length > 0 && listing.skippedRepos.length ? (
+            <p className="text-xs break-words text-muted-foreground">
+              Not swept: {listing.skippedRepos.join(", ")} — no project checked out here.
             </p>
+          ) : null}
+
+          {listing.rows.length === 0 ? (
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                No issues assigned to you.
+              </p>
+              {/* The only evidence the project filter, not an empty queue,
+                  emptied this panel. */}
+              {listing.skippedRepos.length ? (
+                <p className="text-xs break-words text-muted-foreground">
+                  Not swept: {listing.skippedRepos.join(", ")} — no project checked out here. Add
+                  the project, or list the repository in this plugin's "Also sweep these
+                  repositories" setting.
+                </p>
+              ) : null}
+            </div>
           ) : (
             sections.map(({ status, rows }) => (
               <section key={status} className="space-y-2">

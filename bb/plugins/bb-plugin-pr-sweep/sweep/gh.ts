@@ -88,8 +88,29 @@ export async function fetchRepoPullRequests(
   return prs;
 }
 
-export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepResult> {
-  const { repos, truncated } = await discoverRepos(gh);
+/**
+ * Narrows the sweep to the repositories checked out on this machine.
+ *
+ * Applied before the per-repository fan-out rather than to the finished rows,
+ * because the fan-out is the expensive part: one `gh pr list` per repository,
+ * plus a `gh pr view` for every pull request whose mergeability came back
+ * UNKNOWN. An excluded repository costs nothing.
+ */
+export interface RepoScope {
+  allows(repo: string): boolean;
+}
+
+export async function runSweep(
+  gh: GhRunner,
+  now: () => number,
+  scope?: RepoScope,
+): Promise<SweepResult> {
+  const { repos: discovered, truncated } = await discoverRepos(gh);
+  const repos: string[] = [];
+  const skippedRepos: string[] = [];
+  for (const repo of discovered) {
+    (scope && !scope.allows(repo) ? skippedRepos : repos).push(repo);
+  }
   const rows: ClassifiedRow[] = [];
   const failedRepos: string[] = [];
 
@@ -116,5 +137,5 @@ export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepRe
     // Leave the counts at zero.
   }
 
-  return { rows, repos, failedRepos, truncated, sweptAt: now() };
+  return { rows, repos, failedRepos, skippedRepos, truncated, sweptAt: now() };
 }

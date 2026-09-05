@@ -23,7 +23,14 @@ function row(overrides: Partial<IssueRow> = {}): IssueRow {
 }
 
 function result(overrides: Partial<SweepResult> = {}): SweepResult {
-  return { rows: [row()], truncated: false, failedRepos: [], sweptAt: 1_700_000_000_000, ...overrides };
+  return {
+    rows: [row()],
+    truncated: false,
+    failedRepos: [],
+    skippedRepos: [],
+    sweptAt: 1_700_000_000_000,
+    ...overrides,
+  };
 }
 
 let store: Store;
@@ -37,7 +44,12 @@ beforeEach(() => {
 describe("createStore", () => {
   it("starts empty, with nothing swept", () => {
     expect(store.readRows()).toEqual([]);
-    expect(store.readMeta()).toEqual({ sweptAt: null, truncated: false, lastError: null });
+    expect(store.readMeta()).toEqual({
+      sweptAt: null,
+      skippedRepos: [],
+      truncated: false,
+      lastError: null,
+    });
   });
 
   it("round-trips a row through json without losing a field", () => {
@@ -60,7 +72,18 @@ describe("createStore", () => {
 
   it("records the sweep time and the truncation flag", () => {
     store.replaceAll(result({ truncated: true, sweptAt: 42 }));
-    expect(store.readMeta()).toEqual({ sweptAt: 42, truncated: true, lastError: null });
+    expect(store.readMeta()).toEqual({
+      sweptAt: 42,
+      skippedRepos: [],
+      truncated: true,
+      lastError: null,
+    });
+  });
+
+  it("records the repositories the project filter held back", () => {
+    // The panel's only evidence that a filter, not an empty queue, emptied it.
+    store.replaceAll(result({ rows: [], skippedRepos: ["acme/gadgets"] }));
+    expect(store.readMeta().skippedRepos).toEqual(["acme/gadgets"]);
   });
 
   it("keeps the last rows when a sweep fails, so the panel does not blank", () => {

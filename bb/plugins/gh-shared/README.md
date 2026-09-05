@@ -25,7 +25,13 @@ and nothing else:
   repository name from reaching a shell. Each plugin keeps its own fetching:
   pull requests fan out per repository, reviews run one GraphQL search, issues
   run a different one.
-- **`projects`** — matching a repository to a bb project by its git remote.
+- **`projects`** — matching a repository to a bb project by its git remote, and
+  `buildRepoFilter`, which turns that matching into the sweep scope. bb's
+  project list is per-installation, so "has a project here" is what separates
+  the computer a repository is checked out on from every other one. Each plugin
+  applies the filter where its own fetching allows: pr-sweep and issue-sweep
+  before the per-repository fan-out, review-sweep to the rows of its single
+  search.
 
 Deliberately **not** here: the classifiers, the row types, or the stores. They
 look alike and encode different rules; sharing them would couple things that

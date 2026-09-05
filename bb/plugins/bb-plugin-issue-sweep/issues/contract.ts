@@ -106,6 +106,8 @@ export const rpcContract = defineRpcContract({
       /** Named so the panel can say which board it is offering to add to. */
       boardName: z.string(),
       sweptAt: z.number().nullable(),
+      /** Not swept: no project here matches them. Explains an empty list. */
+      skippedRepos: z.array(z.string()),
       truncated: z.boolean(),
       lastError: z.string().nullable(),
       /**

@@ -35,6 +35,15 @@ an unrelated thread.
 
 - **Sync interval** — how often the background sweep runs. Default 5 minutes.
 - **Path to the gh CLI** — override when `gh` is not on the server's PATH.
+- **Only sweep repositories checked out here** — on by default. A repository is
+  swept only when a bb project on this machine has its git remote. bb's project
+  list is per-installation, so this is what separates the computer a repository
+  is checked out on from every other one: the work laptop's repositories stop
+  filling the personal one's panel. The skipped repositories are named under
+  the list, so an empty panel never reads as "no open pull requests".
+- **Also sweep these repositories** — comma or newline separated `owner/name`,
+  for a repository worth watching without a checkout here. Ignored when the
+  filter is off.
 - **Provider for spawned threads** — defaults to `claude-code`, which is the
   provider the routed skills belong to. Blank uses bb's default.
 - **Permission mode for spawned threads** — defaults to `full`. `accept-edits` stops

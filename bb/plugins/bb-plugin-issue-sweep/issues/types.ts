@@ -66,6 +66,8 @@ export interface SweepResult {
   truncated: boolean;
   /** Repositories whose listing failed; their previous rows are kept. */
   failedRepos: string[];
+  /** Repositories not listed at all: no project here matches their remote. */
+  skippedRepos: string[];
   sweptAt: number;
 }
 

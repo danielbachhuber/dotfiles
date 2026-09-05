@@ -93,6 +93,7 @@ type Listing = {
   rows: Row[];
   sweptAt: number | null;
   failedRepos: string[];
+  skippedRepos: string[];
   truncated: boolean;
   lastError: string | null;
   harvest: { available: boolean; running: RunningReference };
@@ -916,9 +917,11 @@ function Panel() {
           </p>
         ) : null}
 
-        {listing.rows.length === 0 ? (
+        {listing.rows.length === 0 && listing.skippedRepos.length === 0 ? (
           <p className="text-sm text-muted-foreground">No open pull requests.</p>
         ) : null}
+
+        {listing.skippedRepos.length ? <SkippedRepos repos={listing.skippedRepos} /> : null}
 
         {DISPLAY_SECTIONS.map((section) => (
           <Section
@@ -950,6 +953,22 @@ function Panel() {
         onSubmit={onSubmitDraft}
       />
     </TooltipProvider>
+  );
+}
+
+/**
+ * Why the panel is emptier than GitHub is.
+ *
+ * The filter is a setting with no panel control, so this line is the only
+ * evidence it is on. Without it an empty panel on a machine holding none of
+ * your checkouts is indistinguishable from having no open pull requests.
+ */
+function SkippedRepos({ repos }: { repos: string[] }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Not swept: {repos.join(", ")} — no project checked out here. Add the project, or list the
+      repository in this plugin's "Also sweep these repositories" setting.
+    </p>
   );
 }
 

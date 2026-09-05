@@ -31,10 +31,15 @@ export const MIGRATIONS = [
      created_at INTEGER NOT NULL,
      PRIMARY KEY (repo, number)
    )`,
+  // Repositories whose review requests were dropped, because no bb project on
+  // this machine has their remote. Stored so the panel can say why it is empty
+  // instead of reading as "nobody is waiting on you".
+  `ALTER TABLE meta ADD COLUMN skipped_repos TEXT NOT NULL DEFAULT '[]'`,
 ];
 
 export interface SweepMeta {
   sweptAt: number | null;
+  skippedRepos: string[];
   truncated: boolean;
   lastError: string | null;
 }
@@ -92,18 +97,21 @@ export function createStore(db: DatabaseLike): Store {
   const deleteAllRows = db.prepare(`DELETE FROM rows`);
   const insertRow = db.prepare(`INSERT INTO rows (repo, number, payload) VALUES (?, ?, ?)`);
   const selectRows = db.prepare(`SELECT payload FROM rows`);
-  const selectMeta = db.prepare(`SELECT swept_at, truncated, last_error FROM meta WHERE id = 1`);
+  const selectMeta = db.prepare(
+    `SELECT swept_at, skipped_repos, truncated, last_error FROM meta WHERE id = 1`,
+  );
   const upsertMeta = db.prepare(
-    `INSERT INTO meta (id, swept_at, truncated, last_error)
-     VALUES (1, ?, ?, NULL)
+    `INSERT INTO meta (id, swept_at, skipped_repos, truncated, last_error)
+     VALUES (1, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        swept_at = excluded.swept_at,
+       skipped_repos = excluded.skipped_repos,
        truncated = excluded.truncated,
        last_error = NULL`,
   );
   const upsertFailure = db.prepare(
-    `INSERT INTO meta (id, swept_at, truncated, last_error)
-     VALUES (1, NULL, 0, ?)
+    `INSERT INTO meta (id, swept_at, skipped_repos, truncated, last_error)
+     VALUES (1, NULL, '[]', 0, ?)
      ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error`,
   );
   const insertLink = db.prepare(
@@ -133,15 +141,22 @@ export function createStore(db: DatabaseLike): Store {
     `SELECT COUNT(*) AS expired FROM snoozes WHERE until <= ?`,
   );
 
-  const writeAll = db.transaction(((rows: ClassifiedRow[], sweptAt: number, truncated: number) => {
-    deleteAllRows.run();
-    for (const row of rows) insertRow.run(row.repo, row.number, JSON.stringify(row));
-    upsertMeta.run(sweptAt, truncated);
-  }) as (rows: ClassifiedRow[], sweptAt: number, truncated: number) => void);
+  const writeAll = db.transaction(
+    ((rows: ClassifiedRow[], sweptAt: number, skippedRepos: string, truncated: number) => {
+      deleteAllRows.run();
+      for (const row of rows) insertRow.run(row.repo, row.number, JSON.stringify(row));
+      upsertMeta.run(sweptAt, skippedRepos, truncated);
+    }) as (rows: ClassifiedRow[], sweptAt: number, skippedRepos: string, truncated: number) => void,
+  );
 
   return {
     replaceAll(result) {
-      writeAll(result.rows, result.sweptAt, result.truncated ? 1 : 0);
+      writeAll(
+        result.rows,
+        result.sweptAt,
+        JSON.stringify(result.skippedRepos ?? []),
+        result.truncated ? 1 : 0,
+      );
     },
 
     readRows() {
@@ -152,11 +167,17 @@ export function createStore(db: DatabaseLike): Store {
 
     readMeta() {
       const meta = selectMeta.get() as
-        | { swept_at: number | null; truncated: number; last_error: string | null }
+        | {
+            swept_at: number | null;
+            skipped_repos: string;
+            truncated: number;
+            last_error: string | null;
+          }
         | undefined;
-      if (!meta) return { sweptAt: null, truncated: false, lastError: null };
+      if (!meta) return { sweptAt: null, skippedRepos: [], truncated: false, lastError: null };
       return {
         sweptAt: meta.swept_at,
+        skippedRepos: JSON.parse(meta.skipped_repos ?? "[]") as string[],
         truncated: meta.truncated === 1,
         lastError: meta.last_error,
       };

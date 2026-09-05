@@ -49,6 +49,8 @@ export interface ClassifiedRow {
 
 export interface SweepResult {
   rows: ClassifiedRow[];
+  /** Repositories dropped from the results: no project here matches them. */
+  skippedRepos: string[];
   truncated: boolean;
   sweptAt: number;
 }

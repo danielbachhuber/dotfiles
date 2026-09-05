@@ -1,3 +1,5 @@
+import { REPO_SLUG_PATTERN } from "./gh.js";
+
 export interface ProjectCandidate {
   id: string;
   remoteUrls: string[];
@@ -64,4 +66,81 @@ export function matchProjectTargetForRepo(
     }
   }
   return null;
+}
+
+/**
+ * The `owner/name` slugs of every project bb knows about on this machine.
+ *
+ * bb's project list is per-installation, so a project checked out on another
+ * computer is simply absent here — which is the whole basis of the filter.
+ */
+export function loadedRepoSlugs(candidates: ProjectCandidate[]): Set<string> {
+  const slugs = new Set<string>();
+  for (const candidate of candidates) {
+    for (const url of candidate.remoteUrls) {
+      const slug = parseRemoteSlug(url);
+      if (slug) slugs.add(slug.toLowerCase());
+    }
+  }
+  return slugs;
+}
+
+/**
+ * Reads the `extraRepositories` setting: repositories to sweep even with no
+ * checkout here.
+ *
+ * Every entry is validated against {@link REPO_SLUG_PATTERN} rather than at the
+ * call site, because these strings become `gh` arguments. An entry that does
+ * not look like a slug is dropped, not passed along.
+ */
+export function parseExtraRepositories(raw: string): string[] {
+  return raw
+    .split(/[,\n]/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0 && REPO_SLUG_PATTERN.test(entry));
+}
+
+export interface RepoFilter {
+  /** True when the filter is narrowing anything at all. */
+  scoped: boolean;
+  allows(repo: string): boolean;
+  partition(repos: string[]): { kept: string[]; skipped: string[] };
+}
+
+/**
+ * Restricts a sweep to the repositories checked out on this machine.
+ *
+ * Deliberately does not fall back to "allow everything" when no project
+ * matches: a machine with nothing checked out is exactly the case the setting
+ * exists for, and a silent widening there would be indistinguishable from the
+ * filter not working. The panels report what was skipped instead.
+ */
+export function buildRepoFilter(options: {
+  enabled: boolean;
+  candidates: ProjectCandidate[];
+  extras: string;
+}): RepoFilter {
+  const { enabled, candidates, extras } = options;
+  if (!enabled) {
+    return {
+      scoped: false,
+      allows: () => true,
+      partition: (repos) => ({ kept: [...repos], skipped: [] }),
+    };
+  }
+
+  const allowed = loadedRepoSlugs(candidates);
+  for (const extra of parseExtraRepositories(extras)) allowed.add(extra);
+
+  const allows = (repo: string) => allowed.has(repo.toLowerCase());
+  return {
+    scoped: true,
+    allows,
+    partition: (repos) => {
+      const kept: string[] = [];
+      const skipped: string[] = [];
+      for (const repo of repos) (allows(repo) ? kept : skipped).push(repo);
+      return { kept, skipped };
+    },
+  };
 }

@@ -37,6 +37,7 @@ function listing(overrides: Record<string, unknown> = {}) {
   return {
     rows: [rowFixture()],
     sweptAt: 1_700_000_000_000,
+    skippedRepos: [],
     truncated: false,
     lastError: null,
     staleAfterDays: 2,
@@ -148,6 +149,19 @@ describe("panel", () => {
     const slot = render(listing({ rows: [] }));
     await slot.findByText("Nothing to review.");
     await slot.findByText(/New requests appear here as they arrive/i);
+  });
+
+  it("names the repositories the project filter held back, instead of the usual line", async () => {
+    // Otherwise an empty panel on a machine holding none of your checkouts
+    // reads as a cleared queue.
+    const slot = render(listing({ rows: [], skippedRepos: ["acme/widgets", "acme/gadgets"] }));
+    await slot.findByText(/acme\/widgets, acme\/gadgets/);
+    expect(slot.queryByText(/New requests appear here as they arrive/i)).toBeNull();
+  });
+
+  it("still names held-back repositories alongside rows that did match", async () => {
+    const slot = render(listing({ skippedRepos: ["acme/gadgets"] }));
+    await slot.findByText(/Not shown: acme\/gadgets/);
   });
 
   it("gives the empty-state art a label, since it is punctuation to a reader", async () => {

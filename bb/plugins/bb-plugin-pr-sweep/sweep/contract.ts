@@ -85,6 +85,8 @@ export const rpcContract = defineRpcContract({
       rows: z.array(rowSchema),
       sweptAt: z.number().nullable(),
       failedRepos: z.array(z.string()),
+      /** Discovered but not swept: no project here matches their remote. */
+      skippedRepos: z.array(z.string()),
       truncated: z.boolean(),
       lastError: z.string().nullable(),
       harvest: z.object({

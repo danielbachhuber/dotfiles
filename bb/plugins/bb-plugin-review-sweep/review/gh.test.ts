@@ -101,3 +101,37 @@ describe("runSweep", () => {
     expect(result.sweptAt).toBe(NOW);
   });
 });
+
+describe("runSweep repository filter", () => {
+  /**
+   * One search covers every repository at once, so unlike pr-sweep there is no
+   * per-repository call to skip: the saving is not the point here, the panel
+   * agreeing with the other two is.
+   */
+  it("drops rows outside the filter and reports their repositories", async () => {
+    const gh = stubRunner(
+      makeSearchResponse([
+        makePr({ number: 1, repository: { nameWithOwner: "acme/widgets" } }),
+        makePr({ number: 2, repository: { nameWithOwner: "acme/gadgets" } }),
+      ]),
+    );
+    const result = await runSweep(gh, () => NOW, { allows: (repo) => repo === "acme/widgets" });
+    expect(result.rows.map((row) => row.repo)).toEqual(["acme/widgets"]);
+    expect(result.skippedRepos).toEqual(["acme/gadgets"]);
+    // Still one call: the filter cannot save a request it cannot scope.
+    expect(gh.calls).toHaveLength(1);
+  });
+
+  it("keeps every row and skips nothing without a filter", async () => {
+    const gh = stubRunner(
+      makeSearchResponse([
+        makePr({ number: 1, repository: { nameWithOwner: "acme/widgets" } }),
+        makePr({ number: 2, repository: { nameWithOwner: "acme/gadgets" } }),
+      ]),
+    );
+    const result = await runSweep(gh, () => NOW);
+    expect(result.rows).toHaveLength(2);
+    expect(result.skippedRepos).toEqual([]);
+  });
+});
+

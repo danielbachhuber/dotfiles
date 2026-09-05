@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRepoFilter,
+  loadedRepoSlugs,
   matchProjectForRepo,
   matchProjectTargetForRepo,
+  parseExtraRepositories,
   parseRemoteSlug,
 } from "./projects.js";
 
@@ -80,5 +83,78 @@ describe("matchProjectTargetForRepo", () => {
 
   it("returns null for a repository with no project", () => {
     expect(matchProjectTargetForRepo("acme/nothing", candidates)).toBeNull();
+  });
+});
+
+describe("loadedRepoSlugs", () => {
+  it("collects the slugs of projects whose remote parses", () => {
+    expect(
+      loadedRepoSlugs([
+        { id: "p1", remoteUrls: ["git@github.com:Acme/Widgets.git"] },
+        { id: "p2", remoteUrls: ["https://gitlab.com/acme/gadgets.git"] },
+        { id: "p3", remoteUrls: [] },
+      ]),
+    ).toEqual(new Set(["acme/widgets"]));
+  });
+});
+
+describe("parseExtraRepositories", () => {
+  it("splits on commas and newlines and lowercases", () => {
+    expect(parseExtraRepositories("acme/widgets, Acme/Gadgets\nocto/cat")).toEqual([
+      "acme/widgets",
+      "acme/gadgets",
+      "octo/cat",
+    ]);
+  });
+
+  it("drops entries that are not a valid repository slug", () => {
+    // Anything reaching a gh argv is validated here, not at the call site.
+    expect(parseExtraRepositories("acme/widgets, not a repo, acme/gadgets;rm -rf /")).toEqual([
+      "acme/widgets",
+    ]);
+  });
+
+  it("returns nothing for blank input", () => {
+    expect(parseExtraRepositories("")).toEqual([]);
+    expect(parseExtraRepositories("  \n ")).toEqual([]);
+  });
+});
+
+describe("buildRepoFilter", () => {
+  const candidates = [{ id: "p1", remoteUrls: ["git@github.com:acme/widgets.git"] }];
+
+  it("allows only loaded projects when enabled", () => {
+    const filter = buildRepoFilter({ enabled: true, candidates, extras: "" });
+    expect(filter.scoped).toBe(true);
+    expect(filter.allows("acme/widgets")).toBe(true);
+    expect(filter.allows("Acme/Widgets")).toBe(true);
+    expect(filter.allows("acme/gadgets")).toBe(false);
+  });
+
+  it("also allows the extra repositories", () => {
+    const filter = buildRepoFilter({ enabled: true, candidates, extras: "acme/gadgets" });
+    expect(filter.allows("acme/gadgets")).toBe(true);
+  });
+
+  it("allows everything when disabled", () => {
+    const filter = buildRepoFilter({ enabled: false, candidates, extras: "" });
+    expect(filter.scoped).toBe(false);
+    expect(filter.allows("acme/gadgets")).toBe(true);
+  });
+
+  it("stays scoped when no project matches, rather than falling back to everything", () => {
+    // A silent fallback to "show all" would defeat the setting exactly when it
+    // matters most: a machine with nothing checked out.
+    const filter = buildRepoFilter({ enabled: true, candidates: [], extras: "" });
+    expect(filter.scoped).toBe(true);
+    expect(filter.allows("acme/widgets")).toBe(false);
+  });
+
+  it("partitions a repository list into kept and skipped", () => {
+    const filter = buildRepoFilter({ enabled: true, candidates, extras: "" });
+    expect(filter.partition(["acme/widgets", "acme/gadgets", "octo/cat"])).toEqual({
+      kept: ["acme/widgets"],
+      skipped: ["acme/gadgets", "octo/cat"],
+    });
   });
 });

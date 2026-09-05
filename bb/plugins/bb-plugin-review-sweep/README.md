@@ -94,6 +94,15 @@ cheapest row in the queue to clear.
 
 - **Sync interval** — how often the background sweep runs. Default 5 minutes.
 - **Path to the gh CLI** — override when `gh` is not on the server's PATH.
+- **Only show repositories checked out here** — on by default. A review request is
+  shown only when a bb project on this machine has that repository's git remote. bb's project
+  list is per-installation, so this is what separates the computer a repository
+  is checked out on from every other one: the work laptop's repositories stop
+  filling the personal one's panel. The skipped repositories are named under
+  the list, so an empty panel never reads as a cleared queue.
+- **Also show these repositories** — comma or newline separated `owner/name`,
+  for a repository you review in without a checkout here. Ignored when the
+  filter is off.
 - **Stale after (days)** — when a wait starts reading as overdue. Default 2.
 - **Model for review threads** — blank takes the provider's default. There is
   only one action here, so this is a single value rather than pr-sweep's

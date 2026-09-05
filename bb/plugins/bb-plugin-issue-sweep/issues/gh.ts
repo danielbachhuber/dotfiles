@@ -43,10 +43,22 @@ export const ISSUE_LIST_FIELDS = [
  * The search alone would be cheaper, but it cannot return `projectItems`, and
  * without the board status the listing is just a pile of titles.
  */
+/**
+ * Narrows the sweep to the repositories checked out on this machine.
+ *
+ * Applied before the per-repository listing rather than to the finished rows,
+ * because that listing is the expensive part: one `gh issue list` per
+ * repository. An excluded repository costs nothing.
+ */
+export interface RepoScope {
+  allows(repo: string): boolean;
+}
+
 export async function runSweep(
   gh: GhRunner,
   now: () => number,
   board = "",
+  scope?: RepoScope,
 ): Promise<SweepResult> {
   const raw = await gh.run([
     "search", "issues",
@@ -66,7 +78,12 @@ export async function runSweep(
 
   const rows: IssueRow[] = [];
   const failedRepos: string[] = [];
+  const skippedRepos: string[] = [];
   for (const repo of [...repos].sort()) {
+    if (scope && !scope.allows(repo)) {
+      skippedRepos.push(repo);
+      continue;
+    }
     try {
       const listed = await gh.run([
         "issue", "list",
@@ -111,6 +128,7 @@ export async function runSweep(
     // still means the search was capped.
     truncated: hits.length >= SEARCH_LIMIT,
     failedRepos,
+    skippedRepos,
     sweptAt: now(),
   };
 }

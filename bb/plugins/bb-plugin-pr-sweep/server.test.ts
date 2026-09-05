@@ -31,6 +31,9 @@ describe("server", () => {
 
     const result = await harness.behavior.callRpc("listRows", null);
     expect(result).toMatchObject({ rows: [], sweptAt: null });
+    // Through the contract, not the store: a field missing from the zod schema
+    // is stripped here rather than erroring, and the panel just goes blank.
+    expect(result.skippedRepos).toEqual([]);
   });
 
   it("does not hide itself over a single unreachable gh", async () => {

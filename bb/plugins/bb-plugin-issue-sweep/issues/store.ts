@@ -49,10 +49,15 @@ export const MIGRATIONS = [
   // consulted if this migration turns out to have lost something.
   `INSERT OR IGNORE INTO issue_thread_links (thread_id, repo, number, created_at)
      SELECT thread_id, repo, number, created_at FROM issue_threads`,
+  // Repositories the sweep found but did not list, because no bb project on
+  // this machine has their remote. Stored so the panel can say why it is empty
+  // instead of reading as "nothing is assigned to you".
+  `ALTER TABLE meta ADD COLUMN skipped_repos TEXT NOT NULL DEFAULT '[]'`,
 ];
 
 export interface SweepMeta {
   sweptAt: number | null;
+  skippedRepos: string[];
   truncated: boolean;
   lastError: string | null;
 }
@@ -134,12 +139,13 @@ export function createStore(db: DatabaseLike): Store {
   const selectRows = db.prepare(`SELECT payload FROM rows`);
   const selectRow = db.prepare(`SELECT payload FROM rows WHERE repo = ? AND number = ?`);
   const updateRow = db.prepare(`UPDATE rows SET payload = ? WHERE repo = ? AND number = ?`);
-  const selectMeta = db.prepare(`SELECT swept_at, truncated, last_error FROM meta WHERE id = 1`);
+  const selectMeta = db.prepare(`SELECT swept_at, skipped_repos, truncated, last_error FROM meta WHERE id = 1`);
   const upsertMeta = db.prepare(
-    `INSERT INTO meta (id, swept_at, truncated, last_error)
-     VALUES (1, ?, ?, NULL)
+    `INSERT INTO meta (id, swept_at, skipped_repos, truncated, last_error)
+     VALUES (1, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        swept_at = excluded.swept_at,
+       skipped_repos = excluded.skipped_repos,
        truncated = excluded.truncated,
        last_error = NULL`,
   );
@@ -176,8 +182,8 @@ export function createStore(db: DatabaseLike): Store {
        applied_at = excluded.applied_at`,
   );
   const upsertFailure = db.prepare(
-    `INSERT INTO meta (id, swept_at, truncated, last_error)
-     VALUES (1, NULL, 0, ?)
+    `INSERT INTO meta (id, swept_at, skipped_repos, truncated, last_error)
+     VALUES (1, NULL, '[]', 0, ?)
      ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error`,
   );
 
@@ -198,7 +204,11 @@ export function createStore(db: DatabaseLike): Store {
   const writeAll = db.transaction(((result: SweepResult) => {
     deleteRows.run();
     for (const row of result.rows) insertRow.run(row.repo, row.number, JSON.stringify(row));
-    upsertMeta.run(result.sweptAt, result.truncated ? 1 : 0);
+    upsertMeta.run(
+      result.sweptAt,
+      JSON.stringify(result.skippedRepos ?? []),
+      result.truncated ? 1 : 0,
+    );
   }) as (result: SweepResult) => void);
 
   return {
@@ -218,11 +228,17 @@ export function createStore(db: DatabaseLike): Store {
 
     readMeta() {
       const meta = selectMeta.get() as
-        | { swept_at: number | null; truncated: number; last_error: string | null }
+        | {
+            swept_at: number | null;
+            skipped_repos: string;
+            truncated: number;
+            last_error: string | null;
+          }
         | undefined;
-      if (!meta) return { sweptAt: null, truncated: false, lastError: null };
+      if (!meta) return { sweptAt: null, skippedRepos: [], truncated: false, lastError: null };
       return {
         sweptAt: meta.swept_at,
+        skippedRepos: JSON.parse(meta.skipped_repos ?? "[]") as string[],
         truncated: meta.truncated === 1,
         lastError: meta.last_error,
       };

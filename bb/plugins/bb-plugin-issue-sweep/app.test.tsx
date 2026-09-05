@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, waitFor } from "@testing-library/react";
@@ -37,6 +39,7 @@ function listing(overrides: Record<string, unknown> = {}) {
     countedStatuses: [],
     boardName: "Acme Board",
     sweptAt: 1_700_000_000_000,
+    skippedRepos: [],
     truncated: false,
     lastError: null,
     // No Harvest plugin by default, which is the state the panel has to stay
@@ -163,6 +166,18 @@ describe("panel", () => {
   it("says so when nothing is assigned", async () => {
     const slot = render(listing({ rows: [] }));
     expect(await slot.findByText(/No issues assigned to you/i)).toBeInTheDocument();
+  });
+
+  it("names the repositories the project filter held back when nothing is left", async () => {
+    // Otherwise an empty panel on a machine holding none of your checkouts
+    // reads as an empty assignment queue.
+    const slot = render(listing({ rows: [], skippedRepos: ["acme/widgets", "acme/gadgets"] }));
+    expect(await slot.findByText(/acme\/widgets, acme\/gadgets/)).toBeInTheDocument();
+  });
+
+  it("still names held-back repositories alongside rows that did match", async () => {
+    const slot = render(listing({ skippedRepos: ["acme/gadgets"] }));
+    expect(await slot.findByText(/Not swept: acme\/gadgets/)).toBeInTheDocument();
   });
 
   it("surfaces the last sweep error above the table", async () => {
@@ -596,7 +611,18 @@ describe("sync header", () => {
 });
 
 
-describe("harvest", () => {
+/**
+ * True when this checkout is building against the Harvest stand-in rather than
+ * the real plugin (see ../harvest-fallback). The clock tests below exercise
+ * the real component, so on a machine without that checkout they are skipped
+ * rather than left to fail — a red suite there would say nothing about this
+ * plugin, and passing them against a no-op component would say less.
+ */
+function usingHarvestFallback(): boolean {
+  return existsSync(join(process.cwd(), "node_modules/bb-plugin-harvest/.harvest-fallback"));
+}
+
+describe.skipIf(usingHarvestFallback())("harvest", () => {
   const available = (extra: Record<string, unknown> = {}) =>
     listing({ harvest: { available: true, running: null, ...extra } });
 

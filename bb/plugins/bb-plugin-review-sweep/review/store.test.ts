@@ -28,7 +28,7 @@ function row(overrides: Partial<ClassifiedRow> = {}): ClassifiedRow {
 }
 
 function result(rows: ClassifiedRow[], overrides: Partial<SweepResult> = {}): SweepResult {
-  return { rows, truncated: false, sweptAt: NOW, ...overrides };
+  return { rows, skippedRepos: [], truncated: false, sweptAt: NOW, ...overrides };
 }
 
 describe("store", () => {
@@ -80,9 +80,17 @@ describe("store", () => {
   it("reports empty meta before the first sweep", () => {
     expect(freshStore().readMeta()).toEqual({
       sweptAt: null,
+      skippedRepos: [],
       truncated: false,
       lastError: null,
     });
+  });
+
+  it("persists the repositories the project filter held back", () => {
+    // The panel's only evidence that a filter, not an empty queue, emptied it.
+    const store = freshStore();
+    store.replaceAll(result([], { skippedRepos: ["acme/gadgets"] }));
+    expect(store.readMeta().skippedRepos).toEqual(["acme/gadgets"]);
   });
 
   it("persists truncation", () => {

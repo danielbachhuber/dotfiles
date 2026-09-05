@@ -19,7 +19,13 @@ import {
   trailerItem,
   threadTitle,
 } from "./issues/prompt.js";
-import { matchProjectTargetForRepo, matchProjectForRepo, type ProjectCandidate } from "./issues/spawn-target.js";
+import {
+  buildRepoFilter,
+  matchProjectTargetForRepo,
+  matchProjectForRepo,
+  type ProjectCandidate,
+  type RepoFilter,
+} from "./issues/spawn-target.js";
 import { MIGRATIONS, createStore } from "./issues/store.js";
 import type { IssueRow } from "./issues/types.js";
 
@@ -59,6 +65,24 @@ export default async function plugin(bb: BbPluginApi) {
       type: "string",
       label: "Path to the gh CLI",
       default: "gh",
+    },
+    filterToProjects: {
+      type: "select",
+      label: "Only sweep repositories checked out here",
+      // On: a repository is swept only when a bb project on this machine has
+      // its git remote. bb's project list is per-installation, so this is the
+      // difference between the computer a repository is checked out on and
+      // every other one. Off sweeps every repository with an issue assigned to
+      // you.
+      options: ["on", "off"],
+      default: "on",
+    },
+    extraRepositories: {
+      type: "string",
+      label: "Also sweep these repositories",
+      // Comma or newline separated owner/name, for a repository worth
+      // watching without a checkout here. Ignored when the filter is off.
+      default: "",
     },
     model: {
       type: "string",
@@ -184,10 +208,40 @@ export default async function plugin(bb: BbPluginApi) {
   let unavailableRuns = 0;
   const UNAVAILABLE_RUNS_BEFORE_CONFIG = 3;
 
+  /**
+   * The repository filter for one sweep, rebuilt each time so a project added
+   * since the last sweep is picked up without a reload.
+   *
+   * A failure to resolve projects leaves the filter unscoped rather than
+   * empty: an unreachable project list is not evidence that nothing is checked
+   * out here, and treating it as such would blank the panel over a blip.
+   */
+  async function repoFilter(): Promise<RepoFilter> {
+    const { filterToProjects, extraRepositories } = await settings.get();
+    if (filterToProjects !== "on") {
+      return buildRepoFilter({ enabled: false, candidates: [], extras: "" });
+    }
+    try {
+      return buildRepoFilter({
+        enabled: true,
+        candidates: await projectCandidates(),
+        extras: extraRepositories,
+      });
+    } catch (error) {
+      bb.log.warn(`could not resolve projects, sweeping every repository: ${String(error)}`);
+      return buildRepoFilter({ enabled: false, candidates: [], extras: "" });
+    }
+  }
+
   async function sweepNow(): Promise<{ ok: boolean; error: string | null }> {
     const { ghPath, projectBoard } = await settings.get();
     try {
-      const result = await runSweep(createGhRunner(ghPath), () => Date.now(), projectBoard);
+      const result = await runSweep(
+        createGhRunner(ghPath),
+        () => Date.now(),
+        projectBoard,
+        await repoFilter(),
+      );
       store.replaceAll(result);
       // Before the publish, so the panel's reload finds the options already
       // there and renders pickers on its first paint rather than its second.
@@ -204,7 +258,13 @@ export default async function plugin(bb: BbPluginApi) {
         bb.log.warn(`could not adopt hand-started threads: ${String(error)}`);
       }
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
-      bb.log.info(`swept ${result.rows.length} open issue(s)`);
+      bb.log.info(
+        `swept ${result.rows.length} open issue(s)` +
+          (result.skippedRepos.length
+            ? `, skipped ${result.skippedRepos.length} repo(s) outside this machine's projects` +
+              ` (${result.skippedRepos.join(", ")})`
+            : ""),
+      );
       // Reset here, not just on the failure path: three failures spread over a
       // day are weather, and only an unbroken run means the configuration is
       // actually wrong.
@@ -505,6 +565,7 @@ export default async function plugin(bb: BbPluginApi) {
           threadId: links.get(`${row.repo}#${row.number}`) ?? null,
         })),
         sweptAt: meta.sweptAt,
+        skippedRepos: meta.skippedRepos,
         truncated: meta.truncated,
         lastError: meta.lastError,
         harvest: await harvestListingState(),

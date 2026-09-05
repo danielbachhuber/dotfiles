@@ -9,7 +9,13 @@ import {
   snoozeUntil,
   threadTitle,
 } from "./review/actions.js";
-import { matchProjectTargetForRepo, matchProjectForRepo, type ProjectCandidate } from "./review/spawn-target.js";
+import {
+  buildRepoFilter,
+  matchProjectTargetForRepo,
+  matchProjectForRepo,
+  type ProjectCandidate,
+  type RepoFilter,
+} from "./review/spawn-target.js";
 import { MIGRATIONS, createStore } from "./review/store.js";
 
 export { rpcContract };
@@ -28,6 +34,23 @@ export default async function plugin(bb: BbPluginApi) {
       type: "string",
       label: "Path to the gh CLI",
       default: "gh",
+    },
+    filterToProjects: {
+      type: "select",
+      label: "Only show repositories checked out here",
+      // On: a review request is shown only when a bb project on this machine
+      // has that repository's git remote. bb's project list is
+      // per-installation, so this is what separates the computer a repository
+      // lives on from every other one. Off shows every request GitHub returns.
+      options: ["on", "off"],
+      default: "on",
+    },
+    extraRepositories: {
+      type: "string",
+      label: "Also show these repositories",
+      // Comma or newline separated owner/name, for a repository you review in
+      // without a checkout here. Ignored when the filter is off.
+      default: "",
     },
     staleAfterDays: {
       type: "string",
@@ -140,13 +163,44 @@ export default async function plugin(bb: BbPluginApi) {
     return outcome;
   }
 
+  /**
+   * The repository filter for one sweep, rebuilt each time so a project added
+   * since the last sweep is picked up without a reload.
+   *
+   * A failure to resolve projects leaves the filter unscoped rather than
+   * empty: an unreachable project list is not evidence that nothing is checked
+   * out here, and treating it as such would blank the panel over a blip.
+   */
+  async function repoFilter(): Promise<RepoFilter> {
+    const { filterToProjects, extraRepositories } = await settings.get();
+    if (filterToProjects !== "on") {
+      return buildRepoFilter({ enabled: false, candidates: [], extras: "" });
+    }
+    try {
+      return buildRepoFilter({
+        enabled: true,
+        candidates: await projectCandidates(),
+        extras: extraRepositories,
+      });
+    } catch (error) {
+      bb.log.warn(`could not resolve projects, showing every repository: ${String(error)}`);
+      return buildRepoFilter({ enabled: false, candidates: [], extras: "" });
+    }
+  }
+
   async function fetchAndStore(): Promise<{ ok: boolean; error: string | null }> {
     const { ghPath } = await settings.get();
     try {
-      const result = await runSweep(createGhRunner(ghPath), () => Date.now());
+      const result = await runSweep(createGhRunner(ghPath), () => Date.now(), await repoFilter());
       store.replaceAll(result);
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: result.sweptAt });
-      bb.log.info(`swept ${result.rows.length} review request(s)`);
+      bb.log.info(
+        `swept ${result.rows.length} review request(s)` +
+          (result.skippedRepos.length
+            ? `, dropped ${result.skippedRepos.length} repo(s) outside this machine's projects` +
+              ` (${result.skippedRepos.join(", ")})`
+            : ""),
+      );
       // Reset here, not just on the failure path: three failures spread over a
       // day are weather, and only an unbroken run means the configuration is
       // actually wrong.
@@ -257,6 +311,7 @@ export default async function plugin(bb: BbPluginApi) {
           snoozedUntil: snoozes.get(`${row.repo}#${row.number}`) ?? null,
         })),
         sweptAt: meta.sweptAt,
+        skippedRepos: meta.skippedRepos,
         truncated: meta.truncated,
         lastError: meta.lastError,
         harvest: await harvestListingState(),

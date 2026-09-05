@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, waitFor } from "@testing-library/react";
@@ -44,6 +46,7 @@ function listing(overrides: Record<string, unknown> = {}) {
     rows: [rowFixture()],
     sweptAt: 1_700_000_000_000,
     failedRepos: [],
+    skippedRepos: [],
     truncated: false,
     lastError: null,
     // No Harvest plugin by default, which is the state the panel has to stay
@@ -183,6 +186,20 @@ describe("panel", () => {
   it("says so when nothing is open", async () => {
     const slot = render(listing({ rows: [] }));
     await slot.findByText(/No open pull requests/i);
+  });
+
+  it("names the repositories the project filter held back", async () => {
+    // Otherwise an empty panel reads as "you have no open pull requests" on
+    // the machine where none of your repositories are checked out.
+    const slot = render(listing({ rows: [], skippedRepos: ["acme/widgets", "acme/gadgets"] }));
+    await slot.findByText(/acme\/widgets/);
+    await slot.findByText(/acme\/gadgets/);
+    expect(slot.queryByText(/^No open pull requests\.$/)).toBeNull();
+  });
+
+  it("still mentions held-back repositories alongside rows that did match", async () => {
+    const slot = render(listing({ skippedRepos: ["acme/gadgets"] }));
+    await slot.findByText(/acme\/gadgets/);
   });
 
   it("surfaces a sweep error without blanking the rows", async () => {
@@ -1141,7 +1158,18 @@ describe("a pull request with more than one thread", () => {
   });
 });
 
-describe("harvest", () => {
+/**
+ * True when this checkout is building against the Harvest stand-in rather than
+ * the real plugin (see ../harvest-fallback). The clock tests below exercise
+ * the real component, so on a machine without that checkout they are skipped
+ * rather than left to fail — a red suite there would say nothing about this
+ * plugin, and passing them against a no-op component would say less.
+ */
+function usingHarvestFallback(): boolean {
+  return existsSync(join(process.cwd(), "node_modules/bb-plugin-harvest/.harvest-fallback"));
+}
+
+describe.skipIf(usingHarvestFallback())("harvest", () => {
   const available = (extra = {}) =>
     listing({ harvest: { available: true, running: null, ...extra } });
 

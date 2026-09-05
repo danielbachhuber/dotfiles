@@ -88,6 +88,8 @@ export const rpcContract = defineRpcContract({
     output: z.object({
       rows: z.array(rowSchema),
       sweptAt: z.number().nullable(),
+      /** Dropped by the project filter, so the panel can explain an empty list. */
+      skippedRepos: z.array(z.string()),
       truncated: z.boolean(),
       lastError: z.string().nullable(),
       /** Resolved server-side so the panel does not re-parse the setting. */

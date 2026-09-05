@@ -94,7 +94,22 @@ export function parseSearch(raw: string): { viewer: string; nodes: RawSearchResp
   return { viewer, nodes: parsed };
 }
 
-export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepResult> {
+/**
+ * Narrows the sweep to the repositories checked out on this machine.
+ *
+ * Applied to the finished rows rather than the query: GitHub's search syntax
+ * takes `repo:` qualifiers, but one per repository against a 50-result ceiling
+ * would trade an honest "there are more" for a silent one.
+ */
+export interface RepoScope {
+  allows(repo: string): boolean;
+}
+
+export async function runSweep(
+  gh: GhRunner,
+  now: () => number,
+  scope?: RepoScope,
+): Promise<SweepResult> {
   const raw = await gh.run([
     "api",
     "graphql",
@@ -110,9 +125,18 @@ export async function runSweep(gh: GhRunner, now: () => number): Promise<SweepRe
 
   const { viewer, nodes } = parseSearch(raw);
   const found = nodes.data?.search?.nodes ?? [];
+  const classified = classify(found, viewer);
+
+  const rows = scope ? classified.filter((row) => scope.allows(row.repo)) : classified;
+  const skipped = new Set(
+    scope ? classified.filter((row) => !scope.allows(row.repo)).map((row) => row.repo) : [],
+  );
 
   return {
-    rows: classify(found, viewer),
+    rows,
+    skippedRepos: [...skipped].sort(),
+    // Measured before the filter: the ceiling is GitHub's, and whether this
+    // machine holds the checkout has nothing to do with whether it was hit.
     truncated: found.length >= SEARCH_LIMIT,
     sweptAt: now(),
   };

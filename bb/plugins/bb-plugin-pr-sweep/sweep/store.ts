@@ -51,11 +51,16 @@ export const MIGRATIONS = [
   // consulted if this migration turns out to have lost something.
   `INSERT OR IGNORE INTO pr_thread_links (thread_id, repo, number, created_at, reason)
      SELECT thread_id, repo, number, created_at, reason FROM pr_threads`,
+  // Repositories the sweep found but did not fetch, because no bb project on
+  // this machine has their remote. Stored so the panel can say why it is
+  // empty instead of reading as "you have no open pull requests".
+  `ALTER TABLE meta ADD COLUMN skipped_repos TEXT NOT NULL DEFAULT '[]'`,
 ];
 
 export interface SweepMeta {
   sweptAt: number | null;
   failedRepos: string[];
+  skippedRepos: string[];
   truncated: boolean;
   lastError: string | null;
 }
@@ -124,14 +129,15 @@ export function createStore(db: DatabaseLike): Store {
   const insertRow = db.prepare(`INSERT INTO rows (repo, number, payload) VALUES (?, ?, ?)`);
   const selectRows = db.prepare(`SELECT payload FROM rows`);
   const selectMeta = db.prepare(
-    `SELECT swept_at, failed_repos, truncated, last_error FROM meta WHERE id = 1`,
+    `SELECT swept_at, failed_repos, skipped_repos, truncated, last_error FROM meta WHERE id = 1`,
   );
   const upsertMeta = db.prepare(
-    `INSERT INTO meta (id, swept_at, failed_repos, truncated, last_error)
-     VALUES (1, ?, ?, ?, NULL)
+    `INSERT INTO meta (id, swept_at, failed_repos, skipped_repos, truncated, last_error)
+     VALUES (1, ?, ?, ?, ?, NULL)
      ON CONFLICT(id) DO UPDATE SET
        swept_at = excluded.swept_at,
        failed_repos = excluded.failed_repos,
+       skipped_repos = excluded.skipped_repos,
        truncated = excluded.truncated,
        last_error = NULL`,
   );
@@ -165,8 +171,8 @@ export function createStore(db: DatabaseLike): Store {
     `SELECT repo, number FROM pr_thread_links WHERE thread_id = ?`,
   );
   const upsertFailure = db.prepare(
-    `INSERT INTO meta (id, swept_at, failed_repos, truncated, last_error)
-     VALUES (1, NULL, '[]', 0, ?)
+    `INSERT INTO meta (id, swept_at, failed_repos, skipped_repos, truncated, last_error)
+     VALUES (1, NULL, '[]', '[]', 0, ?)
      ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error`,
   );
 
@@ -220,6 +226,7 @@ export function createStore(db: DatabaseLike): Store {
       upsertMeta.run(
         result.sweptAt,
         JSON.stringify(result.failedRepos),
+        JSON.stringify(result.skippedRepos ?? []),
         result.truncated ? 1 : 0,
       );
     },
@@ -231,14 +238,24 @@ export function createStore(db: DatabaseLike): Store {
         | {
             swept_at: number | null;
             failed_repos: string;
+            skipped_repos: string;
             truncated: number;
             last_error: string | null;
           }
         | undefined;
-      if (!meta) return { sweptAt: null, failedRepos: [], truncated: false, lastError: null };
+      if (!meta) {
+        return {
+          sweptAt: null,
+          failedRepos: [],
+          skippedRepos: [],
+          truncated: false,
+          lastError: null,
+        };
+      }
       return {
         sweptAt: meta.swept_at,
         failedRepos: JSON.parse(meta.failed_repos) as string[],
+        skippedRepos: JSON.parse(meta.skipped_repos ?? "[]") as string[],
         truncated: meta.truncated === 1,
         lastError: meta.last_error,
       };

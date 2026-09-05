@@ -59,6 +59,7 @@ async function seededHost(
   await plugin(fixture.bb);
   createStore(fixture.bb.storage.database() as never).replaceAll({
     rows: [seedRow(options.row)],
+    skippedRepos: [],
     truncated: false,
     sweptAt: Date.parse("2026-03-10T12:00:00Z"),
   });
@@ -127,11 +128,15 @@ describe("server", () => {
     });
     await plugin(bb);
 
-    expect(await harness.behavior.callRpc("listRows", null)).toMatchObject({
+    const listing = await harness.behavior.callRpc("listRows", null);
+    expect(listing).toMatchObject({
       rows: [],
       sweptAt: null,
       staleAfterDays: 2,
     });
+    // Through the contract, not the store: a field missing from the zod schema
+    // is stripped here rather than erroring, and the panel just goes blank.
+    expect(listing.skippedRepos).toEqual([]);
   });
 
   it("does not hide itself over a single unreachable gh", async () => {
@@ -471,6 +476,7 @@ describe("pullRequestForThread", () => {
 
     createStore(bb.storage.database() as never).replaceAll({
       rows: [],
+      skippedRepos: [],
       truncated: false,
       sweptAt: Date.now(),
     });

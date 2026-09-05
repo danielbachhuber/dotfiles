@@ -80,6 +80,7 @@ type Row = {
 type Listing = {
   rows: Row[];
   sweptAt: number | null;
+  skippedRepos: string[];
   truncated: boolean;
   lastError: string | null;
   staleAfterDays: number;
@@ -610,7 +611,12 @@ function SweepingReviews() {
  * universal loading-skeleton idiom, so an SVG of an empty diff would read as
  * "still fetching" — the opposite of what this panel has to say.
  */
-function NothingToReview() {
+/**
+ * @param skippedRepos Repositories the project filter held back. Named here
+ *   because this is the only evidence the filter is on: without it, a machine
+ *   holding none of your checkouts shows the same screen as a cleared queue.
+ */
+function NothingToReview({ skippedRepos }: { skippedRepos: string[] }) {
   return (
     <div className="flex flex-col items-center gap-5 py-20 text-center">
       <p
@@ -627,11 +633,19 @@ function NothingToReview() {
         </span>
         <span aria-hidden="true"> @@</span>
       </p>
-      <div className="space-y-1">
+      <div className="max-w-md space-y-1">
         <p className="text-sm font-medium">Nothing to review.</p>
-        <p className="text-xs text-muted-foreground">
-          New requests appear here as they arrive.
-        </p>
+        {skippedRepos.length ? (
+          <p className="text-xs break-words text-muted-foreground">
+            Requests in {skippedRepos.join(", ")} are hidden — no project checked out here. Add
+            the project, or list the repository in this plugin's "Also show these repositories"
+            setting.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            New requests appear here as they arrive.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -831,7 +845,15 @@ function Panel() {
             </p>
           ) : null}
 
-          {listing.rows.length === 0 ? <NothingToReview /> : null}
+          {listing.rows.length === 0 ? (
+            <NothingToReview skippedRepos={listing.skippedRepos} />
+          ) : null}
+
+          {listing.rows.length > 0 && listing.skippedRepos.length ? (
+            <p className="text-xs break-words text-muted-foreground">
+              Not shown: {listing.skippedRepos.join(", ")} — no project checked out here.
+            </p>
+          ) : null}
 
           {DISPLAY_SECTIONS.map((section) => (
             <Section

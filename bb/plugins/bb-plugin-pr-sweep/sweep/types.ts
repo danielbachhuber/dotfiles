@@ -108,6 +108,8 @@ export interface SweepResult {
   rows: ClassifiedRow[];
   repos: string[];
   failedRepos: string[];
+  /** Repositories discovered but not swept, because no project here matches. */
+  skippedRepos: string[];
   truncated: boolean;
   sweptAt: number;
 }

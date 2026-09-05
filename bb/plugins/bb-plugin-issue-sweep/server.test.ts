@@ -58,6 +58,7 @@ describe("server", () => {
       ],
       truncated: false,
       failedRepos: [],
+      skippedRepos: [],
       sweptAt: Date.now(),
     });
     return fixture;
@@ -123,6 +124,7 @@ describe("server", () => {
       ],
       truncated: false,
       failedRepos: [],
+      skippedRepos: [],
       sweptAt: Date.now(),
     });
 
@@ -220,12 +222,16 @@ describe("server", () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "issue-sweep" });
     await plugin(bb);
 
-    expect(await harness.behavior.callRpc("listRows", null)).toMatchObject({
+    const listing = await harness.behavior.callRpc("listRows", null);
+    expect(listing).toMatchObject({
       rows: [],
       sweptAt: null,
       truncated: false,
       lastError: null,
     });
+    // Through the contract, not the store: a field missing from the zod schema
+    // is stripped here rather than erroring, and the panel just goes blank.
+    expect(listing.skippedRepos).toEqual([]);
   });
 
   it("does not hide itself over a single unreachable gh", async () => {

@@ -119,3 +119,45 @@ describe("runSweep", () => {
     expect(result.sweptAt).toBe(1_700_000_000_000);
   });
 });
+
+describe("runSweep repository filter", () => {
+  /** Records every repository a detail call was made for. */
+  function trackingRunner(fetched: string[]): GhRunner {
+    return {
+      async run(args) {
+        if (args[0] === "search") {
+          return JSON.stringify([
+            { repository: { nameWithOwner: "acme/widgets" }, number: 1 },
+            { repository: { nameWithOwner: "acme/gadgets" }, number: 2 },
+          ]);
+        }
+        // Only the per-repository fan-out; the sweep also makes one
+        // repository-agnostic GraphQL call for thread counts.
+        if (args[0] === "pr" && args[1] === "list") {
+          fetched.push(args[args.indexOf("--repo") + 1]!);
+          return JSON.stringify([makePr({ number: 1 })]);
+        }
+        return JSON.stringify({ data: {} });
+      },
+    };
+  }
+
+  it("never fetches a repository the filter excludes", async () => {
+    const fetched: string[] = [];
+    const result = await runSweep(trackingRunner(fetched), () => 1, {
+      allows: (repo) => repo === "acme/widgets",
+    });
+    // The saving is the point: an excluded repo costs no gh call at all.
+    expect(fetched).toEqual(["acme/widgets"]);
+    expect(result.repos).toEqual(["acme/widgets"]);
+    expect(result.skippedRepos).toEqual(["acme/gadgets"]);
+  });
+
+  it("sweeps everything and skips nothing without a filter", async () => {
+    const fetched: string[] = [];
+    const result = await runSweep(trackingRunner(fetched), () => 1);
+    expect(fetched).toEqual(["acme/gadgets", "acme/widgets"]);
+    expect(result.skippedRepos).toEqual([]);
+  });
+});
+
