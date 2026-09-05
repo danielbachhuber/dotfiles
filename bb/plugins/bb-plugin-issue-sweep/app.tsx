@@ -30,6 +30,7 @@ import {
   LoadingGraphic,
   usePrefersReducedMotion,
 } from "@/components/ui/loading-graphic";
+import { EmptyGraphic } from "@/components/ui/empty-graphic";
 import { Icon } from "@/components/ui/icon";
 import {
   StartThreadDialog,
@@ -483,6 +484,68 @@ function SyncHeader() {
 }
 
 /**
+ * Nothing assigned, drawn as a list worked through rather than a board with
+ * empty columns.
+ *
+ * Empty columns were the obvious picture and the wrong one: outlined rounded
+ * rectangles with nothing in them are the loading-skeleton idiom, so the panel
+ * would look like it was still fetching. A struck-through line with a tick
+ * beside it cannot be mistaken for a placeholder — it can only mean done.
+ *
+ * The tick takes the same emerald the board glyph gives a card in its first
+ * stage, so the two graphics stay in one family.
+ */
+function NoIssuesGraphic() {
+  // Ragged lengths, longest first: a real list, not three copies of a bar.
+  const LINES = [
+    { y: 12, width: 92 },
+    { y: 30, width: 74 },
+    { y: 48, width: 84 },
+  ];
+
+  return (
+    <svg
+      role="img"
+      aria-label="A checklist with every line ticked off and struck through"
+      viewBox="0 0 132 60"
+      className="h-[3.75rem] w-[8.25rem] text-muted-foreground"
+      fill="none"
+    >
+      {LINES.map(({ y, width }) => (
+        <g key={y}>
+          {/* The tick, drawn as two strokes rather than a filled glyph so it
+              keeps its weight at this size. */}
+          <path
+            d={`M4 ${y} L9 ${y + 5} L18 ${y - 5}`}
+            className="stroke-emerald-500"
+            strokeOpacity={0.75}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={`M28 ${y} H${28 + width}`}
+            stroke="currentColor"
+            strokeOpacity={0.28}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+          {/* The strike, at the same weight and a lower opacity: the line is
+              still legible under it, the way a crossed-off item is. */}
+          <path
+            d={`M24 ${y} H${32 + width}`}
+            stroke="currentColor"
+            strokeOpacity={0.4}
+            strokeWidth={1.5}
+            strokeLinecap="round"
+          />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/**
  * What this panel is waiting for, drawn as the board it is about to read.
  *
  * Three columns filling one at a time, which is what a sweep of the board
@@ -748,20 +811,26 @@ function Panel() {
           ) : null}
 
           {listing.rows.length === 0 ? (
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">
-                No issues assigned to you.
-              </p>
-              {/* The only evidence the project filter, not an empty queue,
-                  emptied this panel. */}
+            <EmptyGraphic
+              graphic={<NoIssuesGraphic />}
+              // The headline moves with the reason. "No issues assigned to
+              // you" is untrue on a machine that simply cannot see them.
+              headline={
+                listing.skippedRepos.length
+                  ? "Nothing from the repositories checked out here."
+                  : "No issues assigned to you."
+              }
+            >
               {listing.skippedRepos.length ? (
-                <p className="text-xs break-words text-muted-foreground">
+                <>
                   Not swept: {listing.skippedRepos.join(", ")} — no project checked out here. Add
                   the project, or list the repository in this plugin's "Also sweep these
                   repositories" setting.
-                </p>
-              ) : null}
-            </div>
+                </>
+              ) : (
+                "Anything assigned to you shows up here."
+              )}
+            </EmptyGraphic>
           ) : (
             sections.map(({ status, rows }) => (
               <section key={status} className="space-y-2">

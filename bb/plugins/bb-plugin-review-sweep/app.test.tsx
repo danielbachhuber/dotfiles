@@ -156,7 +156,12 @@ describe("panel", () => {
     // reads as a cleared queue.
     const slot = render(listing({ rows: [], skippedRepos: ["acme/widgets", "acme/gadgets"] }));
     await slot.findByText(/acme\/widgets, acme\/gadgets/);
+    // The headline moves with it: "Nothing to review" is untrue on a machine
+    // that simply cannot see the requests waiting on you.
+    await slot.findByText(/Nothing from the repositories checked out here/i);
     expect(slot.queryByText(/New requests appear here as they arrive/i)).toBeNull();
+    // The art stays: this is still an empty state, not an error.
+    await slot.findByRole("img", { name: /empty diff/i });
   });
 
   it("still names held-back repositories alongside rows that did match", async () => {

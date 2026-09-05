@@ -45,6 +45,7 @@ import {
   LoadingGraphic,
   usePrefersReducedMotion,
 } from "@/components/ui/loading-graphic";
+import { EmptyGraphic } from "@/components/ui/empty-graphic";
 import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
@@ -610,44 +611,45 @@ function SweepingReviews() {
  * Type rather than an illustration on purpose: grey rounded bars are the
  * universal loading-skeleton idiom, so an SVG of an empty diff would read as
  * "still fetching" — the opposite of what this panel has to say.
- */
-/**
- * @param skippedRepos Repositories the project filter held back. Named here
- *   because this is the only evidence the filter is on: without it, a machine
- *   holding none of your checkouts shows the same screen as a cleared queue.
+ *
+ * @param skippedRepos Repositories the project filter held back. They move the
+ *   headline as well as the line under it: "Nothing to review" is untrue on a
+ *   machine that simply cannot see the requests waiting on you.
  */
 function NothingToReview({ skippedRepos }: { skippedRepos: string[] }) {
   return (
-    <div className="flex flex-col items-center gap-5 py-20 text-center">
-      <p
-        role="img"
-        aria-label="An empty diff: zero lines removed, zero lines added"
-        className="font-mono text-2xl tracking-tight text-muted-foreground/60 sm:text-3xl"
-      >
-        <span aria-hidden="true">@@ </span>
-        <span aria-hidden="true" className="text-rose-500">
-          -0,0
-        </span>{" "}
-        <span aria-hidden="true" className="text-emerald-500">
-          +0,0
-        </span>
-        <span aria-hidden="true"> @@</span>
-      </p>
-      <div className="max-w-md space-y-1">
-        <p className="text-sm font-medium">Nothing to review.</p>
-        {skippedRepos.length ? (
-          <p className="text-xs break-words text-muted-foreground">
-            Requests in {skippedRepos.join(", ")} are hidden — no project checked out here. Add
-            the project, or list the repository in this plugin's "Also show these repositories"
-            setting.
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            New requests appear here as they arrive.
-          </p>
-        )}
-      </div>
-    </div>
+    <EmptyGraphic
+      graphic={
+        <p
+          role="img"
+          aria-label="An empty diff: zero lines removed, zero lines added"
+          className="font-mono text-2xl tracking-tight text-muted-foreground/60 sm:text-3xl"
+        >
+          <span aria-hidden="true">@@ </span>
+          <span aria-hidden="true" className="text-rose-500">
+            -0,0
+          </span>{" "}
+          <span aria-hidden="true" className="text-emerald-500">
+            +0,0
+          </span>
+          <span aria-hidden="true"> @@</span>
+        </p>
+      }
+      headline={
+        skippedRepos.length
+          ? "Nothing from the repositories checked out here."
+          : "Nothing to review."
+      }
+    >
+      {skippedRepos.length ? (
+        <>
+          Requests in {skippedRepos.join(", ")} are hidden — no project checked out here. Add the
+          project, or list the repository in this plugin's "Also show these repositories" setting.
+        </>
+      ) : (
+        "New requests appear here as they arrive."
+      )}
+    </EmptyGraphic>
   );
 }
 

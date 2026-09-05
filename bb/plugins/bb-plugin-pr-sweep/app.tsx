@@ -46,6 +46,7 @@ import {
   LoadingGraphic,
   usePrefersReducedMotion,
 } from "@/components/ui/loading-graphic";
+import { EmptyGraphic } from "@/components/ui/empty-graphic";
 import {
   DISPLAY_SECTIONS,
   SECTION_TITLES,
@@ -640,6 +641,49 @@ function SyncHeader() {
 }
 
 /**
+ * Nothing open, drawn as the finished shape of the loading glyph above.
+ *
+ * Same trunk, same arc, same merge node — but the branch is behind you: it is
+ * drawn faint and already rejoined, and the merge point is solid. The two
+ * glyphs are the same picture at two moments, so the panel settling into
+ * emptiness reads as the work having landed rather than as a different screen.
+ */
+function NoPullRequestsGraphic() {
+  return (
+    <svg
+      role="img"
+      aria-label="A branch merged back into the trunk, with nothing outstanding"
+      viewBox="0 0 132 64"
+      className="h-[4.5rem] w-[9.5rem] text-muted-foreground"
+      fill="none"
+    >
+      {/* The trunk, at the weight it carries in the loading glyph. */}
+      <path
+        d="M8 46H124"
+        stroke="currentColor"
+        strokeOpacity={0.3}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+      />
+
+      {/* The branch, faint: it happened, and it is over. */}
+      <path
+        d="M30 46C44 46 44 22 58 22H82C96 22 96 46 110 46"
+        stroke="currentColor"
+        strokeOpacity={0.22}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+      />
+
+      <circle cx={30} cy={46} r={3.5} fill="currentColor" fillOpacity={0.3} />
+
+      {/* The merge, solid and alone: everything is back in the trunk. */}
+      <circle cx={110} cy={46} r={4.5} className="fill-emerald-500" fillOpacity={0.75} />
+    </svg>
+  );
+}
+
+/**
  * What this panel is waiting for, drawn as the thing it is waiting on.
  *
  * A pull request is a branch that leaves the trunk, collects commits and comes
@@ -917,11 +961,30 @@ function Panel() {
           </p>
         ) : null}
 
-        {listing.rows.length === 0 && listing.skippedRepos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No open pull requests.</p>
+        {listing.rows.length === 0 ? (
+          <EmptyGraphic
+            graphic={<NoPullRequestsGraphic />}
+            // The headline has to move too. "No open pull requests" is untrue
+            // on a machine that simply cannot see the thirty you have open.
+            headline={
+              listing.skippedRepos.length
+                ? "Nothing from the repositories checked out here."
+                : "No open pull requests."
+            }
+          >
+            {listing.skippedRepos.length ? (
+              <SkippedRepos repos={listing.skippedRepos} />
+            ) : (
+              "Anything you open shows up here."
+            )}
+          </EmptyGraphic>
         ) : null}
 
-        {listing.skippedRepos.length ? <SkippedRepos repos={listing.skippedRepos} /> : null}
+        {listing.rows.length > 0 && listing.skippedRepos.length ? (
+          <p className="text-xs break-words text-muted-foreground">
+            <SkippedRepos repos={listing.skippedRepos} />
+          </p>
+        ) : null}
 
         {DISPLAY_SECTIONS.map((section) => (
           <Section
@@ -959,16 +1022,20 @@ function Panel() {
 /**
  * Why the panel is emptier than GitHub is.
  *
- * The filter is a setting with no panel control, so this line is the only
+ * The filter is a setting with no panel control, so this sentence is the only
  * evidence it is on. Without it an empty panel on a machine holding none of
  * your checkouts is indistinguishable from having no open pull requests.
+ *
+ * A fragment rather than its own paragraph: it stands in for the empty state's
+ * usual second line when there are no rows, and sits on its own line under the
+ * table when there are.
  */
 function SkippedRepos({ repos }: { repos: string[] }) {
   return (
-    <p className="text-xs text-muted-foreground">
+    <>
       Not swept: {repos.join(", ")} — no project checked out here. Add the project, or list the
       repository in this plugin's "Also sweep these repositories" setting.
-    </p>
+    </>
   );
 }
 

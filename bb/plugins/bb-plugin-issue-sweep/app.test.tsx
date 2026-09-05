@@ -163,9 +163,11 @@ describe("panel", () => {
     expect(await many.findByText(/^acme\/gadgets · /)).toBeInTheDocument();
   });
 
-  it("says so when nothing is assigned", async () => {
+  it("says so when nothing is assigned, over the panel's own graphic", async () => {
     const slot = render(listing({ rows: [] }));
     expect(await slot.findByText(/No issues assigned to you/i)).toBeInTheDocument();
+    expect(await slot.findByText(/Anything assigned to you shows up here/i)).toBeInTheDocument();
+    expect(await slot.findByRole("img", { name: /checklist/i })).toBeInTheDocument();
   });
 
   it("names the repositories the project filter held back when nothing is left", async () => {
@@ -173,6 +175,11 @@ describe("panel", () => {
     // reads as an empty assignment queue.
     const slot = render(listing({ rows: [], skippedRepos: ["acme/widgets", "acme/gadgets"] }));
     expect(await slot.findByText(/acme\/widgets, acme\/gadgets/)).toBeInTheDocument();
+    // The headline moves with it: "No issues assigned to you" is untrue on a
+    // machine that simply cannot see them.
+    expect(
+      await slot.findByText(/Nothing from the repositories checked out here/i),
+    ).toBeInTheDocument();
   });
 
   it("still names held-back repositories alongside rows that did match", async () => {

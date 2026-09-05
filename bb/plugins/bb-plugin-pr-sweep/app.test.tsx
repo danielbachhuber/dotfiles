@@ -183,9 +183,11 @@ describe("panel", () => {
     expect(slot.queryByRole("button", { name: /resolve conflict|work on this/i })).toBeNull();
   });
 
-  it("says so when nothing is open", async () => {
+  it("says so when nothing is open, over the panel's own graphic", async () => {
     const slot = render(listing({ rows: [] }));
     await slot.findByText(/No open pull requests/i);
+    await slot.findByText(/Anything you open shows up here/i);
+    await slot.findByRole("img", { name: /merged back into the trunk/i });
   });
 
   it("names the repositories the project filter held back", async () => {
@@ -194,6 +196,9 @@ describe("panel", () => {
     const slot = render(listing({ rows: [], skippedRepos: ["acme/widgets", "acme/gadgets"] }));
     await slot.findByText(/acme\/widgets/);
     await slot.findByText(/acme\/gadgets/);
+    // The headline moves with it: "No open pull requests" is untrue on a
+    // machine that simply cannot see the ones you have open.
+    await slot.findByText(/Nothing from the repositories checked out here/i);
     expect(slot.queryByText(/^No open pull requests\.$/)).toBeNull();
   });
 
