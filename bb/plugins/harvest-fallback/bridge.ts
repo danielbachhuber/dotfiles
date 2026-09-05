@@ -31,7 +31,17 @@ export function createHarvestBridge(bb: LoggingApi) {
     assignments: async () => ({ projects: [] }),
     trackedHours: async (_input: { externalId: string; groupId?: string | null }) => ({ hours: 0 }),
     lastSelection: async (_input: { scope: string | null }) => null,
-    startTimer: async (_input: unknown) => ({ entry: null }),
+    startTimer: async (_input: {
+      projectId: number;
+      taskId: number;
+      notes: string;
+      externalReference?: {
+        id: string;
+        groupId: string | null;
+        accountId: string | null;
+        permalink: string | null;
+      };
+    }) => ({ entry: null }),
     stopTimer: async (_input: { entryId: number }) => undefined,
   };
 }
