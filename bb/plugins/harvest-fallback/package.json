@@ -1,0 +1,12 @@
+{
+  "name": "@danielb/harvest-fallback",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./bridge": "./bridge.ts",
+    "./clock": "./clock.tsx",
+    "./github": "./github.ts",
+    "./picker": "./picker.ts"
+  }
+}

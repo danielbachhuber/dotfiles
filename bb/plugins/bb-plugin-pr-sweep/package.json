@@ -18,7 +18,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "harvest:sync": "rm -rf node_modules/bb-plugin-harvest && npm install --install-links file:../../../../projects/harvest-bb-plugin"
+    "harvest:sync": "rm -rf node_modules/bb-plugin-harvest && npm install --install-links file:../../../../projects/harvest-bb-plugin",
+    "postinstall": "node ../harvest-fallback/install.mjs"
   },
   "dependencies": {
     "@danielb/gh-shared": "file:../gh-shared",
