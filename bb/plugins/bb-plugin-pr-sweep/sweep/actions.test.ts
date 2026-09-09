@@ -10,6 +10,7 @@ import {
   COUNTED_SECTIONS,
   displaySection,
   isCounted,
+  hasNothingToDo,
   isOnlyWaitingOnCi,
   isWorkFinished,
   parseAutoArchiveActions,
@@ -84,11 +85,25 @@ describe("skillFor", () => {
     expect(skillFor(["merge-ready"], 0)).toBe("pr-sweep");
   });
 
-  it("only lets unresolved comments matter where a merge is the work", () => {
-    // A row whose worst flag is anything else has real work in front of the
+  it("routes a run in flight to the comments, since waiting is not work", () => {
+    // #5914: approved with an open thread and a nit in the review body while
+    // three checks ran. "Check on CI" sent a thread to watch a machine.
+    expect(skillFor(["ci-pending"], 0)).toBe("pr-sweep");
+    expect(skillFor(["ci-pending"], 2)).toBe("address-code-review");
+  });
+
+  it("routes an unflagged row carrying comments to the review skill", () => {
+    // No flag records an approval's unresolved threads, so a flagless row is
+    // not necessarily idle.
+    expect(skillFor([], 0)).toBe("pr-sweep");
+    expect(skillFor([], 1)).toBe("address-code-review");
+  });
+
+  it("only lets unresolved comments matter where nothing else is yours to do", () => {
+    // A row whose worst flag is real work has that work in front of the
     // comments, and that flag's skill still owns the step.
     for (const flag of FLAG_SEVERITY) {
-      if (flag === "merge-ready") continue;
+      if (flag === "merge-ready" || flag === "ci-pending") continue;
       expect(skillFor([flag], 3)).toBe(skillFor([flag], 0));
     }
   });
@@ -264,6 +279,25 @@ describe("displaySection", () => {
     expect(isOnlyWaitingOnCi([])).toBe(false);
   });
 
+  it("keeps a row with comments out of Waiting on CI", () => {
+    // #5914: approved, one unresolved thread, a nit in the review body, three
+    // checks running. Waiting on CI hid its button behind the one thing on the
+    // row nobody had to do.
+    expect(isOnlyWaitingOnCi(["ci-pending"], 2)).toBe(false);
+    expect(displaySection("needs-action", false, false, 0, ["ci-pending"], 2)).toBe("needs-action");
+  });
+
+  it("keeps an unflagged row with comments out of Awaiting Review", () => {
+    // Nobody else is going to answer an open thread on an approved pull
+    // request.
+    expect(displaySection("clean", false, false, 0, [], 1)).toBe("needs-action");
+    expect(displaySection("clean", false, false, 0, [], 0)).toBe("awaiting-review");
+  });
+
+  it("still files a draft under Draft when it carries comments", () => {
+    expect(displaySection("needs-action", false, true, 0, ["ci-pending"], 2)).toBe("draft");
+  });
+
   it("separates an approval that still has reviewers outstanding", () => {
     // One approval clears the technical bar, but people who were asked and
     // have not answered make merging a judgement call rather than housekeeping.
@@ -378,13 +412,40 @@ describe("statusTone", () => {
   });
 });
 
+describe("hasNothingToDo", () => {
+  it("is true only when no flag and no reading is left", () => {
+    expect(hasNothingToDo("clean", [], 0)).toBe(true);
+    expect(hasNothingToDo("needs-action", ["ci-pending"], 0)).toBe(true);
+    expect(hasNothingToDo("needs-action", ["conflict"], 0)).toBe(false);
+  });
+
+  it("is false for anything still carrying comments", () => {
+    // #5914: the button was hidden on a row with an open thread and a nit in
+    // the review body, because the only flag was ci-pending.
+    expect(hasNothingToDo("needs-action", ["ci-pending"], 2)).toBe(false);
+    expect(hasNothingToDo("clean", [], 1)).toBe(false);
+  });
+});
+
 describe("a merge-ready pull request with comments on it", () => {
   it("says the click will read them, not just merge", () => {
     expect(actionSummary(["merge-ready"], 3)).toBe("Review and merge");
     expect(actionSummary(["merge-ready"], 0)).toBe("Merge");
   });
 
-  it("does not change a row that is not merge-ready", () => {
+  it("says the same of a row whose only flag is a run in flight", () => {
+    // Nothing about a running check is yours to do, so the comments are the
+    // whole of the work and the label is theirs alone.
+    expect(actionSummary(["ci-pending"], 2)).toBe("Review comments");
+    expect(actionSummary(["ci-pending"], 0)).toBe("Check on CI");
+  });
+
+  it("says the same of a row carrying no flag at all", () => {
+    expect(actionSummary([], 1)).toBe("Review comments");
+    expect(actionSummary([], 0)).toBe("Work on this");
+  });
+
+  it("does not change a row with real work in front of the comments", () => {
     // Those already say what to do, and their flags outrank the comments.
     expect(actionSummary(["conflict"], 3)).toBe("Resolve conflict");
     expect(actionSummary(["ci-failing"], 3)).toBe("Fix failing CI");
@@ -420,6 +481,7 @@ describe("every button label fits its column", () => {
       }
     }
     expect(actionSummary([]).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
+    expect(actionSummary([], 3).length).toBeLessThanOrEqual(MAX_BUTTON_LABEL);
   });
 
   it("does not constrain the thread title, which bb clips for itself", () => {

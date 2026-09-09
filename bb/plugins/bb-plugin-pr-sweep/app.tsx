@@ -52,9 +52,9 @@ import {
   SECTION_TITLES,
   actionSummary,
   commentsToRead,
-  displaySection,
+  sectionForRow,
   isCounted,
-  isOnlyWaitingOnCi,
+  hasNothingToDo,
   statusTone,
   unflaggedStatus,
   type StatusTone,
@@ -437,15 +437,18 @@ function Action({
     );
   }
 
+  const toRead = commentsToRead(row);
+
   // Nothing to offer on a row that is only waiting for a run to finish, the
-  // same as a clean one.
-  if (row.group === "clean" || isOnlyWaitingOnCi(row.flags)) return null;
+  // same as a clean one — unless it is carrying comments, which are work
+  // whatever else the row says.
+  if (hasNothingToDo(row.group, row.flags, toRead)) return null;
 
   // Which work the click starts — "Resolve conflict", "Review and merge". It
   // named the button before the button became an icon; now it is the tooltip
   // and the accessible name, so the sentence survives for anyone who hovers or
   // listens. The Status column carries the flags themselves.
-  const action = actionSummary(row.flags, commentsToRead(row));
+  const action = actionSummary(row.flags, toRead);
 
   return (
     // The tooltip hangs off the wrapper, not the Button: a disabled button
@@ -927,13 +930,7 @@ function Panel() {
 
   const inSection = (section: string) =>
     listing.rows.filter(
-      (row) => displaySection(
-        row.group,
-        Boolean(row.threadId),
-        row.isDraft,
-        row.waitingOn.length,
-        row.flags,
-      ) === section,
+      (row) => sectionForRow(row) === section,
     );
 
   // The repository only earns a column when it actually varies.
@@ -1042,17 +1039,7 @@ function SkippedRepos({ repos }: { repos: string[] }) {
 function NeedsActionCount() {
   const { listing } = useListing();
   const count =
-    listing?.rows.filter((row) =>
-      isCounted(
-        displaySection(
-          row.group,
-          Boolean(row.threadId),
-          row.isDraft,
-          row.waitingOn.length,
-          row.flags,
-        ),
-      ),
-    ).length ?? 0;
+    listing?.rows.filter((row) => isCounted(sectionForRow(row))).length ?? 0;
   if (count === 0) return null;
   return <span className="text-xs tabular-nums text-muted-foreground">{count}</span>;
 }

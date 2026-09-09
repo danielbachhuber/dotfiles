@@ -709,6 +709,22 @@ describe("a run still in flight", () => {
     await slot.findByText(/Needs Action \(1\)/);
     expect(slot.queryByText(/Waiting on CI \(/)).toBeNull();
   });
+
+  it("keeps a row in Needs Action when it is carrying comments", async () => {
+    // #5914: approved with one unresolved thread and a nit in the review body
+    // while three checks ran. Neither is a flag, so Waiting on CI swallowed
+    // the row and hid its button behind the one thing nobody had to do.
+    const slot = render(
+      listing({
+        rows: [
+          rowFixture({ flags: ["ci-pending"], unresolvedThreads: 1, notedBy: ["hubber"] }),
+        ],
+      }),
+    );
+    await slot.findByText(/Needs Action \(1\)/);
+    expect(slot.queryByText(/Waiting on CI \(/)).toBeNull();
+    expect(await slot.findByRole("button", { name: /review comments on #/i })).toBeTruthy();
+  });
 });
 
 describe("the draft badge", () => {

@@ -38,6 +38,13 @@ const SKILL_FOR: Partial<Record<Flag, string>> = {
 const DEFAULT_SKILL = "pr-sweep";
 
 /**
+ * Flags that ask nothing of the author: a run decides for itself, and a
+ * merge-ready pull request needs a click. When one of these is all a row
+ * carries, whatever comments it is carrying are the actual work.
+ */
+const PASSIVE_FLAGS = new Set<Flag>(["ci-pending", "merge-ready"]);
+
+/**
  * The skill for one flag, on one row.
  *
  * Only merge-readiness depends on more than the flag. An approved, green pull
@@ -45,6 +52,12 @@ const DEFAULT_SKILL = "pr-sweep";
  * merge, and `address-code-review` is the skill that owns answering comments —
  * it knows to read each thread, reply, and resolve. Routing that to `pr-sweep`
  * sent the thread to a triage skill for work whose shape was already known.
+ *
+ * A run in flight does not get the same treatment even though it is equally
+ * passive: `merge-ready` and the comments are one piece of work, whereas
+ * "read the comments" is no part of watching a check, and the prompt gives the
+ * comments a step of their own. Labelling the CI step `address-code-review`
+ * pointed a review skill at a running job.
  */
 function skillForFlag(flag: Flag, commentsToRead: number): string {
   if (flag === "merge-ready" && commentsToRead > 0) return SKILL_FOR.feedback ?? DEFAULT_SKILL;
@@ -61,6 +74,12 @@ export function actionLabel(flags: readonly string[]): string {
 
 /** The skill for a row's worst flag, which is the work its action starts. */
 export function skillFor(flags: readonly string[], commentsToRead = 0): string {
+  // Nothing on the row is yours to do except read, so the reading is the whole
+  // of the work — including on a row with no flag at all, since no flag
+  // records an approval's unresolved threads.
+  if (commentsToRead > 0 && flags.every((flag) => PASSIVE_FLAGS.has(flag as Flag))) {
+    return SKILL_FOR.feedback ?? DEFAULT_SKILL;
+  }
   for (const flag of FLAG_SEVERITY) {
     if (flags.includes(flag)) return skillForFlag(flag, commentsToRead);
   }
@@ -266,9 +285,28 @@ export const SECTION_TITLES: Record<DisplaySection, string> = {
  * does not belong in the section that means "this is waiting for you". A row
  * with any other flag keeps that flag's section: broken CI beside a running
  * job is still broken.
+ *
+ * Unresolved threads and review notes are not flags — they are counted after
+ * classification, and an approval carrying them still reads as APPROVED — so
+ * they have to be passed in. #5914 was approved with an open thread and a nit
+ * in the review body while three checks ran, and landing in Waiting on CI hid
+ * its action button behind the one thing on the row nobody had to do.
  */
-export function isOnlyWaitingOnCi(flags: readonly string[]): boolean {
-  return flags.length === 1 && flags[0] === "ci-pending";
+export function isOnlyWaitingOnCi(flags: readonly string[], commentsToRead = 0): boolean {
+  return commentsToRead === 0 && flags.length === 1 && flags[0] === "ci-pending";
+}
+
+/**
+ * True when a row asks nothing of you: no flag worth acting on, and nothing
+ * left to read.
+ */
+export function hasNothingToDo(
+  group: string,
+  flags: readonly string[],
+  commentsToRead = 0,
+): boolean {
+  if (commentsToRead > 0) return false;
+  return group === "clean" || isOnlyWaitingOnCi(flags);
 }
 
 export function displaySection(
@@ -277,6 +315,7 @@ export function displaySection(
   isDraft: boolean,
   outstandingReviewers = 0,
   flags: readonly string[] = [],
+  commentsToRead = 0,
 ): DisplaySection {
   if (hasThread) return "in-progress";
   // A draft is not offered to anyone yet, so it is not waiting on you whatever
@@ -284,7 +323,7 @@ export function displaySection(
   // with failing CI reads "draft, CI failing" — they just do not pull it into
   // the actionable queue.
   if (isDraft) return "draft";
-  if (isOnlyWaitingOnCi(flags)) return "waiting-on-ci";
+  if (isOnlyWaitingOnCi(flags, commentsToRead)) return "waiting-on-ci";
   if (group === "ready-to-merge") {
     // One approval clears the technical bar, but a pull request people were
     // asked to look at and have not is not the same thing as one nobody is
@@ -292,8 +331,36 @@ export function displaySection(
     // just housekeeping.
     return outstandingReviewers > 0 ? "partial-approval" : "ready-to-merge";
   }
-  if (group === "clean") return "awaiting-review";
+  // An unflagged row with comments left open is waiting on you, not on a
+  // reviewer: nobody else is going to answer them.
+  if (group === "clean") return commentsToRead > 0 ? "needs-action" : "awaiting-review";
   return "needs-action";
+}
+
+/**
+ * A row's section, from the row itself.
+ *
+ * {@link displaySection} takes six loose positionals, and both call sites were
+ * spelling out the same six from the same row. Every caller in the panel has a
+ * whole row in hand, so this is the form worth having.
+ */
+export function sectionForRow(row: {
+  group: string;
+  threadId?: string | null;
+  isDraft: boolean;
+  waitingOn: readonly string[];
+  flags: readonly string[];
+  unresolvedThreads: number;
+  notedBy: readonly string[];
+}): DisplaySection {
+  return displaySection(
+    row.group,
+    Boolean(row.threadId),
+    row.isDraft,
+    row.waitingOn.length,
+    row.flags,
+    commentsToRead(row),
+  );
 }
 
 /**
@@ -347,15 +414,19 @@ export function workSteps(flags: readonly string[], commentsToRead = 0): WorkSte
  */
 export function actionSummary(flags: readonly string[], commentsToRead = 0): string {
   const steps = workSteps(flags);
-  if (steps.length === 0) return "Work on this";
+  // An unflagged row can still carry an approval's unresolved threads.
+  if (steps.length === 0) return commentsToRead > 0 ? "Review comments" : "Work on this";
   if (steps.length === 1) {
-    // An approval does not clear inline comments: #5801 was approved, green,
-    // and carrying three. "Merge" alone understated what the click starts.
-    if (steps[0]!.flag === "merge-ready" && commentsToRead > 0) {
+    if (PASSIVE_FLAGS.has(steps[0]!.flag) && commentsToRead > 0) {
+      // An approval does not clear inline comments: #5801 was approved, green,
+      // and carrying three. "Merge" alone understated what the click starts.
       // Short enough for the action column and for the sidebar title, which
       // "Review comments and merge" was not: it overflowed the column and put
       // a horizontal scrollbar on the table.
-      return "Review and merge";
+      //
+      // A run still in flight has no such second half — nothing about it is
+      // yours to do — so the label is the comments alone.
+      return steps[0]!.flag === "merge-ready" ? "Review and merge" : "Review comments";
     }
     return ACTION_LABELS[steps[0]!.flag];
   }

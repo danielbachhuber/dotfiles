@@ -233,3 +233,50 @@ describe("buildPrompt: the merge check", () => {
     expect(mergeReady()).not.toMatch(/files as an approval/i);
   });
 });
+
+describe("buildPrompt: comments belong to no flag", () => {
+  it("reports them on a row whose only flag is a run in flight", () => {
+    // #5914: approved with one open thread and a nit in the review body while
+    // three checks ran. The prompt named the running checks and nothing else.
+    const prompt = buildPrompt(
+      row({
+        flags: ["ci-pending"],
+        checks: { pass: 6, fail: 0, skip: 4, pending: 3, cancelled: 0, total: 13 },
+        unresolvedThreads: 1,
+        notedBy: ["hubber"],
+      }),
+    );
+    expect(prompt).toMatch(/1 unresolved review comment\b/);
+    expect(prompt).toContain("hubber");
+    expect(prompt).toMatch(/Read and answer it; an approval does not clear it\./i);
+    expect(prompt).toContain("`address-code-review` skill");
+    expect(prompt).toContain("A deterministic sweep found 2 things");
+  });
+
+  it("reports them on a row carrying no flag at all", () => {
+    const prompt = buildPrompt(row({ flags: [], group: "clean", unresolvedThreads: 2 }));
+    expect(prompt).toMatch(/2 unresolved review comments/);
+    expect(prompt).toMatch(/Read and answer them; an approval does not clear them\./i);
+    expect(prompt).toContain("A deterministic sweep found one thing:");
+    expect(prompt).not.toMatch(/flagged nothing on it/);
+  });
+
+  it("still says nothing on a flagless row with nothing outstanding", () => {
+    const prompt = buildPrompt(row({ flags: [], group: "clean" }));
+    expect(prompt).toMatch(/flagged nothing on it/);
+  });
+
+  it("names the ones on code that has since changed", () => {
+    const prompt = buildPrompt(
+      row({ flags: ["ci-pending"], unresolvedThreads: 3, outdatedThreads: 2 }),
+    );
+    expect(prompt).toMatch(/2 of them on code that has since changed/);
+  });
+
+  it("puts the reading last, after the work that rewrites the code", () => {
+    const prompt = buildPrompt(row({ flags: ["conflict"], unresolvedThreads: 1 }));
+    expect(prompt.indexOf("conflicts with its base branch")).toBeLessThan(
+      prompt.indexOf("unresolved review comment"),
+    );
+  });
+});

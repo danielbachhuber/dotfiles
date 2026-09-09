@@ -67,20 +67,35 @@ function describeFlag(flag: Flag, row: ClassifiedRow): string | null {
       return "It is not a draft and has no reviewer requested and no reviews.";
     case "merge-blocked":
       return "It is approved and green, but GitHub reports the merge as blocked, so a required review or ruleset is unsatisfied.";
-    case "merge-ready": {
-      const notes =
-        row.notedBy.length > 0
-          ? ` ${row.notedBy.join(", ")} wrote notes in the body of their review, which GitHub files as an approval — read that body, not just the diff.`
-          : "";
-      const threads =
-        row.unresolvedThreads > 0
-          ? ` There ${row.unresolvedThreads === 1 ? "is" : "are"} ${row.unresolvedThreads} unresolved review comment${row.unresolvedThreads === 1 ? "" : "s"}${row.outdatedThreads > 0 ? `, ${row.outdatedThreads} of them on code that has since changed` : ""}. Read and answer them before merging; an approval does not clear them.`
-          : "";
-      return `It is approved${row.approvedBy.length ? ` by ${row.approvedBy.join(", ")}` : ""} and every check is green${row.waitingOn.length ? `, though ${row.waitingOn.join(", ")} has not reviewed yet` : ""}.${threads}${notes} Before merging, read the pull request's comments and every review body and confirm each point has actually been dealt with; say what you found rather than merging silently.`;
-    }
+    case "merge-ready":
+      return `It is approved${row.approvedBy.length ? ` by ${row.approvedBy.join(", ")}` : ""} and every check is green${row.waitingOn.length ? `, though ${row.waitingOn.join(", ")} has not reviewed yet` : ""}. Before merging, read the pull request's comments and every review body and confirm each point has actually been dealt with; say what you found rather than merging silently.`;
     default:
       return null;
   }
+}
+
+/**
+ * The reading a row is carrying, as its own finding.
+ *
+ * Unresolved threads and review notes belong to no flag: GitHub files an
+ * approval-with-conditions as APPROVED, and the thread counts are fetched
+ * after classification. Describing them under `merge-ready` covered the case
+ * that prompted it and no other — on #5914, approved with an open thread and a
+ * nit in the review body while three checks ran, the only flag was `ci-pending`
+ * and the prompt said nothing about either.
+ */
+export function describeCommentsToRead(row: ClassifiedRow): string | null {
+  if (commentsToRead(row) === 0) return null;
+
+  const threads =
+    row.unresolvedThreads > 0
+      ? `There ${row.unresolvedThreads === 1 ? "is" : "are"} ${row.unresolvedThreads} unresolved review comment${row.unresolvedThreads === 1 ? "" : "s"}${row.outdatedThreads > 0 ? `, ${row.outdatedThreads} of them on code that has since changed` : ""}. Read and answer ${row.unresolvedThreads === 1 ? "it" : "them"}; an approval does not clear ${row.unresolvedThreads === 1 ? "it" : "them"}.`
+      : "";
+  const notes =
+    row.notedBy.length > 0
+      ? `${threads ? " " : ""}${row.notedBy.join(", ")} wrote notes in the body of their review, which GitHub files as an approval — read that body, not just the diff.`
+      : "";
+  return `${threads}${notes}`;
 }
 
 export function buildPromptParts(row: ClassifiedRow): PromptParts {
@@ -105,7 +120,16 @@ export function buildPromptParts(row: ClassifiedRow): PromptParts {
     "If a skill has you create a worktree, create it at a path INSIDE the one you start in, using a relative path such as `.claude/worktrees/pr-<n>`. bb owns the directory this thread runs in and deletes it when the thread is archived, so a worktree inside it is cleaned up with everything else. One created somewhere else, `/tmp` especially, outlives the thread, stays invisible to bb's diff, and has to be found and removed by hand. Never point `git worktree add` at the directory you are already in.",
   ];
 
-  if (steps.length === 0) {
+  // The flags, plus the reading, which belongs to no flag. Last because it is
+  // the step an earlier fix most often changes: answering a comment about code
+  // a conflict resolution just rewrote is answering the wrong code.
+  const commentFinding = describeCommentsToRead(row);
+  const findings = [
+    ...steps.map(({ flag, skill }) => ({ text: describeFlag(flag, row) ?? flag, skill })),
+    ...(commentFinding ? [{ text: commentFinding, skill: "address-code-review" }] : []),
+  ];
+
+  if (findings.length === 0) {
     return {
       header: [`Look at pull request ${row.repo}#${row.number}: "${row.title}".`, row.url].join(
         "\n",
@@ -118,12 +142,12 @@ export function buildPromptParts(row: ClassifiedRow): PromptParts {
   // Numbered because the steps are sequential, not a menu: resolving a
   // conflict changes the code that review feedback refers to, and a fixed CI
   // run changes what is left to answer. One thread walks them in this order.
-  const numbered = steps.flatMap(({ flag, skill }, index) => {
-    const finding = describeFlag(flag, row);
-    return [`${index + 1}. ${finding ?? flag}`, `   Use the \`${skill}\` skill.`];
-  });
+  const numbered = findings.flatMap(({ text, skill }, index) => [
+    `${index + 1}. ${text}`,
+    `   Use the \`${skill}\` skill.`,
+  ]);
 
-  const usesPrSweep = steps.some((step) => step.skill === "pr-sweep");
+  const usesPrSweep = findings.some((finding) => finding.skill === "pr-sweep");
 
   return {
     header: [`Work through pull request ${row.repo}#${row.number}: "${row.title}".`, row.url].join(
@@ -134,9 +158,9 @@ export function buildPromptParts(row: ClassifiedRow): PromptParts {
     // the panel's opinion rather than a fact about the pull request, so it
     // is the half that opens in the composer for you to disagree with.
     body: [
-      steps.length === 1
+      findings.length === 1
         ? "A deterministic sweep found one thing:"
-        : `A deterministic sweep found ${steps.length} things, worst first. Finish each step, including its commit and push, before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
+        : `A deterministic sweep found ${findings.length} things, worst first. Finish each step, including its commit and push, before starting the next, and re-check the later ones afterwards — an earlier fix often changes them:`,
       ...numbered,
       ...(usesPrSweep
         ? [
