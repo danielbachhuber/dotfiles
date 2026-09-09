@@ -25,6 +25,30 @@ reverted. What they do share is vendored UI (`components/ui/*.tsx`, kept
 byte-identical) and `gh-shared`. `gh-shared` is bundled at build time, so a
 change there needs all three rebuilt.
 
+### Refreshing the two `file:` dependencies
+
+`gh-shared` and `bb-plugin-harvest` are both `file:` dependencies, and each
+plugin holds its own **copy** under `node_modules` rather than a link. A copy
+goes stale silently: all three had drifted to a state predating gh-shared's
+`buildRepoFilter`, `tsc` reported "has no exported member", and the first
+rebuild after that put `(0 , _spawnTarget.buildRepoFilter) is not a function`
+in the panel while the sweep quietly fell back to every repository.
+
+Plain `npm install` refreshes gh-shared. It also replaces the harvest copy with
+a symlink, which puts a second React in the tree and breaks every clock test
+with "Cannot read properties of null (reading 'useState')" — the `harvest:sync`
+script exists to reinstate the copy with `--install-links`. So the sequence is
+both, in order, per plugin:
+
+```sh
+npm install && npm run harvest:sync
+npx tsc --noEmit -p tsconfig.json   # the check that catches a stale copy
+```
+
+Do not reach for a vitest `resolve.alias` or `dedupe` when React doubles up.
+`dedupe` cannot reach a package outside the project root, and the real fault is
+the install shape.
+
 ## The line these plugins hold
 
 The sweep decides **what is true**. An agent decides **what to do about it**, in
