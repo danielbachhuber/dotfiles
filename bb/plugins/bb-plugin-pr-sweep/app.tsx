@@ -977,12 +977,6 @@ function Panel() {
           </EmptyGraphic>
         ) : null}
 
-        {listing.rows.length > 0 && listing.skippedRepos.length ? (
-          <p className="text-xs break-words text-muted-foreground">
-            <SkippedRepos repos={listing.skippedRepos} />
-          </p>
-        ) : null}
-
         {DISPLAY_SECTIONS.map((section) => (
           <Section
             key={section}
@@ -996,6 +990,12 @@ function Panel() {
             onArchive={onArchive}
           />
         ))}
+
+        {listing.rows.length > 0 && listing.skippedRepos.length ? (
+          <p className="text-xs break-words text-muted-foreground">
+            <SkippedRepos repos={listing.skippedRepos} />
+          </p>
+        ) : null}
       </div>
       </div>
 
@@ -1024,8 +1024,10 @@ function Panel() {
  * your checkouts is indistinguishable from having no open pull requests.
  *
  * A fragment rather than its own paragraph: it stands in for the empty state's
- * usual second line when there are no rows, and sits on its own line under the
- * table when there are.
+ * usual second line when there are no rows, and sits on its own line below the
+ * last section when there are. It is a standing fact about this machine rather
+ * than news, so it goes after the work instead of above it, where it pushed
+ * the first section down the page on every load.
  */
 function SkippedRepos({ repos }: { repos: string[] }) {
   return (

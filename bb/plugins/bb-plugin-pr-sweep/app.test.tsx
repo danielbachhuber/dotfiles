@@ -207,6 +207,17 @@ describe("panel", () => {
     await slot.findByText(/acme\/gadgets/);
   });
 
+  it("puts that mention below the sections, not above them", async () => {
+    // A standing fact about this machine, not news. Above the first section it
+    // pushed the work down the page on every load.
+    const slot = render(listing({ skippedRepos: ["acme/gadgets"] }));
+    const notice = await slot.findByText(/Not swept: acme\/gadgets/);
+    const heading = await slot.findByText(/Needs Action \(/);
+    expect(
+      heading.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("surfaces a sweep error without blanking the rows", async () => {
     const slot = render(
       listing({ lastError: "`gh` is not authenticated. Run `gh auth login`." }),
