@@ -316,6 +316,7 @@ export function displaySection(
   outstandingReviewers = 0,
   flags: readonly string[] = [],
   commentsToRead = 0,
+  awaitingReReview = false,
 ): DisplaySection {
   if (hasThread) return "in-progress";
   // A draft is not offered to anyone yet, so it is not waiting on you whatever
@@ -331,16 +332,23 @@ export function displaySection(
     // just housekeeping.
     return outstandingReviewers > 0 ? "partial-approval" : "ready-to-merge";
   }
-  // An unflagged row with comments left open is waiting on you, not on a
-  // reviewer: nobody else is going to answer them.
-  if (group === "clean") return commentsToRead > 0 ? "needs-action" : "awaiting-review";
+  if (group === "clean") {
+    // A reviewer who still owes a look decides the section, comments or not.
+    // The comments are real work, but they are not the next move: the row is
+    // waiting either way, and it says so in its own Status column. #5950 read
+    // "awaiting review" under a Needs Action heading.
+    if (isAwaitingReviewer({ outstandingReviewers, awaitingReReview })) return "awaiting-review";
+    // With nobody outstanding, comments left open are waiting on you —
+    // nobody else is going to answer them.
+    return commentsToRead > 0 ? "needs-action" : "awaiting-review";
+  }
   return "needs-action";
 }
 
 /**
  * A row's section, from the row itself.
  *
- * {@link displaySection} takes six loose positionals, and both call sites were
+ * {@link displaySection} takes seven loose positionals, and both call sites were
  * spelling out the same six from the same row. Every caller in the panel has a
  * whole row in hand, so this is the form worth having.
  */
@@ -352,6 +360,7 @@ export function sectionForRow(row: {
   flags: readonly string[];
   unresolvedThreads: number;
   notedBy: readonly string[];
+  awaitingReReview: boolean;
 }): DisplaySection {
   return displaySection(
     row.group,
@@ -360,6 +369,7 @@ export function sectionForRow(row: {
     row.waitingOn.length,
     row.flags,
     commentsToRead(row),
+    row.awaitingReReview,
   );
 }
 
@@ -438,6 +448,21 @@ export function actionSummary(flags: readonly string[], commentsToRead = 0): str
 }
 
 /**
+ * True when a reviewer still owes this pull request a look.
+ *
+ * Both the Status column and the section resolve against this one predicate.
+ * They used to decide separately, and disagreed: #5950 was approved, awaiting
+ * a re-review from a second reviewer, and carrying four unresolved threads, so
+ * the badge read "awaiting review" while the row sat under Needs Action.
+ */
+export function isAwaitingReviewer(review: {
+  outstandingReviewers: number;
+  awaitingReReview: boolean;
+}): boolean {
+  return review.awaitingReReview || review.outstandingReviewers > 0;
+}
+
+/**
  * What an unflagged pull request is actually doing. "clean" is true but
  * uninformative: most unflagged rows are not idle, they are sitting with a
  * reviewer. Only a row with nobody outstanding is merely clean.
@@ -446,7 +471,12 @@ export function unflaggedStatus(review: {
   waitingOn: readonly string[];
   awaitingReReview: boolean;
 }): "awaiting review" | "clean" {
-  return review.awaitingReReview || review.waitingOn.length > 0 ? "awaiting review" : "clean";
+  return isAwaitingReviewer({
+    outstandingReviewers: review.waitingOn.length,
+    awaitingReReview: review.awaitingReReview,
+  })
+    ? "awaiting review"
+    : "clean";
 }
 
 export type StatusTone = "positive" | "negative" | "info" | "neutral";

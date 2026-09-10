@@ -290,11 +290,45 @@ describe("displaySection", () => {
     expect(displaySection("needs-action", false, false, 0, ["ci-pending"], 2)).toBe("needs-action");
   });
 
-  it("keeps an unflagged row with comments out of Awaiting Review", () => {
+  it("keeps an unflagged row with comments out of Awaiting Review when nobody is outstanding", () => {
     // Nobody else is going to answer an open thread on an approved pull
     // request.
     expect(displaySection("clean", false, false, 0, [], 1)).toBe("needs-action");
     expect(displaySection("clean", false, false, 0, [], 0)).toBe("awaiting-review");
+  });
+
+  it("files an unflagged row with a reviewer outstanding under Awaiting Review", () => {
+    // #5935 and #5950 both read "awaiting review" in the Status column while
+    // sitting under Needs Action, because the two decisions were made
+    // separately. A reviewer who owes a look decides the section, comments or
+    // not: #5950 was approved by one reviewer, awaiting a re-review from
+    // another, and carrying four unresolved threads.
+    expect(displaySection("clean", false, false, 1, [], 1)).toBe("awaiting-review");
+    expect(displaySection("clean", false, false, 1, [], 6, true)).toBe("awaiting-review");
+    expect(displaySection("clean", false, false, 0, [], 6, true)).toBe("awaiting-review");
+  });
+
+  it("agrees with the row's own Status column on every unflagged row", () => {
+    for (const outstanding of [0, 1]) {
+      for (const awaitingReReview of [false, true]) {
+        for (const comments of [0, 3]) {
+          const section = displaySection(
+            "clean",
+            false,
+            false,
+            outstanding,
+            [],
+            comments,
+            awaitingReReview,
+          );
+          const status = unflaggedStatus({
+            waitingOn: outstanding > 0 ? ["hubber"] : [],
+            awaitingReReview,
+          });
+          if (status === "awaiting review") expect(section).toBe("awaiting-review");
+        }
+      }
+    }
   });
 
   it("still files a draft under Draft when it carries comments", () => {
