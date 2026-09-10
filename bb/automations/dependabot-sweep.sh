@@ -148,6 +148,40 @@ dependabot_title() {
   fi
 }
 
+# A checkout of the pull request branch itself, so that bb shows the PR and its
+# CI state in the thread header.
+#
+# bb reads a thread's pull request by running bare `gh pr view` in the
+# environment's working directory, and that resolves the *local* branch name.
+# Only a checkout whose local branch is named after the PR head qualifies: the
+# shared workspace sits on main, and a bb-managed worktree branched from the
+# head gets a `bb/thr_...` branch that matches no pull request. So the sweep
+# creates the worktree itself and hands the thread an unmanaged workspace.
+#
+# Prints the path on success and nothing on failure; the caller falls back to
+# the shared workspace so a sweep still produces threads when, say, the branch
+# is already checked out somewhere else.
+ensure_pr_worktree() {
+  local number="$1" head="$2"
+  local dir="${WORKTREE_ROOT}/pr-${number}"
+
+  if [ -d "$dir" ]; then
+    printf '%s' "$dir"
+    return 0
+  fi
+  mkdir -p "$WORKTREE_ROOT" || return 1
+
+  # Stale metadata from a directory removed by hand would block `worktree add`.
+  "$GIT" -C "$WORKSPACE" worktree prune >/dev/null 2>&1 || true
+
+  "$GIT" -C "$WORKSPACE" fetch --quiet origin \
+    "+refs/heads/${head}:refs/remotes/origin/${head}" >/dev/null 2>&1 || return 1
+  "$GIT" -C "$WORKSPACE" worktree add --quiet -B "$head" "$dir" \
+    "origin/${head}" >/dev/null 2>&1 || return 1
+
+  printf '%s' "$dir"
+}
+
 spawned=0
 skipped_for_cap=0
 
@@ -262,6 +296,34 @@ done < <(printf '%s\n' "$all_threads")
 
 if [ -d "$WORKTREE_ROOT" ]; then
   open_numbers="$(printf '%s' "$open_prs" | jq -r '.[].number')"
+
+  # An empty queue is the one answer this phase cannot take at face value. The
+  # `--author` filter resolves through GitHub's search index, which answers an
+  # exit-0 empty list when the index is lagging or throttled rather than the
+  # error `set -e` would catch, and the loop below reads that as "nothing is
+  # open" and deletes every checkout. It did, on 2026-09-10: 23 pull requests
+  # that had never once been closed lost their worktree and their branch.
+  #
+  # The REST list endpoint does not go through search, so it settles the
+  # question. It is asked only when the queue is empty and there are checkouts
+  # to lose, which keeps it off the common path; a repo that genuinely has no
+  # open bumps pays one extra call and stays silent.
+  cleanup_ok=yes
+  if [ -z "$open_numbers" ]; then
+    if rest_open="$("$GH" api "repos/${REPO}/pulls?state=open&per_page=100" \
+         --paginate --jq '.[] | select(.user.login == "dependabot[bot]") | .number')" \
+       && [ -z "$rest_open" ]; then
+      : # Genuinely nothing open, so cleanup is safe.
+    else
+      cleanup_ok=no
+      echo "Skipped checkout cleanup: the open pull request queue came back empty, but ${REPO} still has open Dependabot pull requests, or could not be reached. Nothing was removed." >&2
+    fi
+  fi
+
+  # Cleanup is the last phase, so an untrustworthy queue simply ends the run.
+  # Nothing is lost by deferring it: the next sweep with a real queue removes
+  # whatever is genuinely stale.
+  [ "$cleanup_ok" = yes ] || exit 0
 
   # Threads still on the board, minus the ones this run just filed away.
   live_numbers=""

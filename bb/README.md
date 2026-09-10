@@ -120,6 +120,17 @@ the review wrote there is worth seeing. The thread's transcript is untouched
 either way, though a thread reopened after its checkout is gone will report its
 workspace as unavailable.
 
+That pass will not act on an empty queue without a second opinion. The
+`--author` filter goes through GitHub's search index, which answers an exit-0
+empty list when the index lags rather than the error `set -e` would catch, and
+"no open PRs" is exactly the input that tells the cleanup to delete every
+checkout. It did on 2026-09-10, to 23 pull requests that had never been closed.
+So an empty queue is now checked against the REST list endpoint, which does not
+go through search, and cleanup is skipped for the run if the repository does in
+fact still have open Dependabot PRs. The extra call is only made when the queue
+is empty and there are checkouts to lose, so a genuinely quiet repository still
+records a silent tick.
+
 The threads stop at a draft assessment. Posting the comment, approving, and
 merging stay manual, because approving carries your identity.
 
