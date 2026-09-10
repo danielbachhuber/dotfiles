@@ -1,0 +1,18 @@
+#!/bin/bash
+#
+# Tell me when a pull left part of bb behind.
+#
+# `git pull` updates the source; it does not rebuild a plugin or re-deploy an
+# automation's script snapshot, so bb can keep running the old one without
+# saying anything. This prints what drifted and the command that fixes it.
+#
+# It only reports. Applying the change means npm installs and an automation
+# update that can fire a run, and neither belongs in the middle of a pull.
+#
+# Installed by pointing core.hooksPath at this directory; see ../setup.sh.
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -x "$root/bb/sync.sh" ] || exit 0
+
+# Never fail a pull over this: the hook is a courtesy, not a gate.
+"$root/bb/sync.sh" --check || true

@@ -17,7 +17,8 @@ state directories stay on the machine: nothing from `~/.bb`, and nothing from
 
 | Path | What it configures |
 | --- | --- |
-| `setup.sh` | Symlinks the shell, vim, and terminal config into `$HOME`. |
+| `setup.sh` | Symlinks the shell, vim, and terminal config into `$HOME`, and points `core.hooksPath` at `githooks/`. |
+| `githooks/` | Repository git hooks. `post-merge` reports bb artifacts a pull left stale. |
 | `bb/` | [bb](https://getbb.app) plugins and skills, plus `bb/setup.sh`. See [bb/README.md](bb/README.md). |
 | `claude/` | Claude Code settings, skills, hooks, scripts, and `CLAUDE.md`. |
 | `agents/` | `AGENTS.md`, shared agent instructions. |

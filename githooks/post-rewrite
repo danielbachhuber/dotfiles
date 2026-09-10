@@ -1,0 +1,15 @@
+#!/bin/bash
+#
+# The rebase counterpart to post-merge: `git pull --rebase` rewrites commits
+# instead of merging, so post-merge never fires. `pull.rebase` is unset today,
+# which makes this insurance rather than a load-bearing path.
+#
+# Git also calls this after `git commit --amend`, where nothing was pulled and
+# there is nothing to report.
+
+[ "$1" = "rebase" ] || exit 0
+
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -x "$root/bb/sync.sh" ] || exit 0
+
+"$root/bb/sync.sh" --check || true

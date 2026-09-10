@@ -50,12 +50,56 @@ part of `setup.sh`, for the same reason everything else there is: an automation
 is a row in `bb.db`, not a file bb reads from disk.
 
 bb stores its own snapshot copy of a script when the automation is created, so
-editing a file in `automations/` does not change what runs. Re-run `setup.sh`
-after an edit, or the `update ... --script-file` command that `create` printed.
+editing a file in `automations/` does not change what runs. `setup.sh` will not
+fix that either: it skips any automation already registered. Run `sync.sh`,
+below, or the `update ... --script-file` command that `create` printed.
 
 The stored copy is written under a fresh randomized filename on every update,
 so compare against the `Script:` line that `show` prints rather than a path you
 noted earlier.
+
+## Keeping a checkout in sync
+
+`setup.sh` builds this configuration on a machine that does not have it and
+skips everything already present, so a `git pull` that changes a plugin or an
+automation leaves the running copy behind. `sync.sh` covers that case.
+
+The two kinds of artifact go stale in opposite directions. Plugins are
+installed from a `path:` source pointing at `plugins/<name>`, so a pull changes
+the source in place and what falls behind is the build in `dist/`. Automations
+are snapshotted into `~/.bb/plugins/automations/scripts/`, so a pull changes
+the source and the snapshot keeps running the old body without saying so. That
+second one is not hypothetical: the Dependabot sweep ran a two-commit-old
+script for weeks, and the version in this repository had meanwhile lost a
+function it still called. Skills need nothing, being symlinks.
+
+```sh
+bb/sync.sh --check   # report what drifted, change nothing
+bb/sync.sh           # report it and apply it
+```
+
+A stale plugin is rebuilt in the order that actually works — `npm install`,
+`harvest:sync` where it exists, `tsc --noEmit`, `bb plugin build`,
+`bb plugin reload` — and a plugin that fails to typecheck is neither built nor
+reloaded, so a bad pull cannot take a working panel down. Staleness counts a
+plugin's `file:` dependencies too, read out of its `package.json`: an edit to
+`gh-shared` correctly rebuilds all three sweeps, and nothing has to remember
+which three those are.
+
+A stale automation is re-deployed with pause, update, resume. The update
+re-passes the interpreter, timeout, and environment read back out of bb rather
+than letting them default, because some of that exists nowhere else —
+`DEPENDABOT_WORKTREE_ROOT` was set by hand after registration and is not in
+`setup.sh`. An automation that was already paused stays paused. Since an update
+sometimes fires a run immediately, the run log is compared either side and a
+run that does fire is reported.
+
+`githooks/post-merge` in the repository root runs `sync.sh --check` after every
+pull, so drift is visible immediately. It only reports: applying it means npm
+installs and an automation update that can spawn threads, and neither belongs
+in the middle of a `git pull`. `post-rewrite` does the same for
+`git pull --rebase`. Both are wired up by the root `setup.sh`, which points
+`core.hooksPath` at `githooks/`.
 
 Pause before you refresh a snapshot, and resume afterward:
 
