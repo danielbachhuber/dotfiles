@@ -219,8 +219,9 @@ dependency bump would quietly ride on it. Override with `DEPENDABOT_MODEL` and
 
 The worktrees land beside the source checkout by default. Point
 `DEPENDABOT_WORKTREE_ROOT` somewhere else in the automation's script variables
-to move them. One worktree costs a tracked-file copy of the repository, roughly
-27 MB for psi-product, and lives only as long as its PR stays open.
+to move them. One worktree costs a tracked-file copy of the repository, around
+27 MB for the repository swept here, and lives only as long as its PR stays
+open.
 
 Requires `gh` and `git` on the server's PATH, `gh` authenticated as you. The
 server's PATH is not a login shell's, so when either is missing set
