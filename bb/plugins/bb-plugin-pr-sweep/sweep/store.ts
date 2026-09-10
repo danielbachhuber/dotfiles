@@ -55,6 +55,17 @@ export const MIGRATIONS = [
   // this machine has their remote. Stored so the panel can say why it is
   // empty instead of reading as "you have no open pull requests".
   `ALTER TABLE meta ADD COLUMN skipped_repos TEXT NOT NULL DEFAULT '[]'`,
+  // Every reason the thread was started for, as a JSON array, superseding the
+  // single `reason`. One click starts one thread on all of a row's findings,
+  // so the one flag that named the button was never the whole job — and a
+  // thread archived when that flag cleared still had the rest of its list.
+  `ALTER TABLE pr_thread_links ADD COLUMN reasons TEXT`,
+  // Carries the old single reason over, so a thread linked before this column
+  // existed keeps auto-archiving on the flag it was started for. It is the
+  // right answer for those rows: they predate multi-reason prompts only in
+  // what was recorded, and the flag is the best account of them there is.
+  `UPDATE pr_thread_links SET reasons = json_array(reason)
+     WHERE reasons IS NULL AND reason IS NOT NULL`,
 ];
 
 export interface SweepMeta {
@@ -93,10 +104,15 @@ export interface Store {
     number: number,
     threadId: string,
     createdAt: number,
-    reason?: string | null,
+    reasons?: readonly string[],
   ): void;
-  /** Every link with the flag it was started for, for the archive sweep. */
-  threadReasons(): Array<{ repo: string; number: number; threadId: string; reason: string | null }>;
+  /** Every link with the work it was started for, for the archive sweep. */
+  threadReasons(): Array<{
+    repo: string;
+    number: number;
+    threadId: string;
+    reasons: string[];
+  }>;
   /**
    * The pull request's newest thread, which is the one its row acts on.
    *
@@ -124,6 +140,18 @@ export interface Store {
   markThreadScanned(threadId: string, scannedAt: number): void;
 }
 
+/** Tolerates a null column and anything that is not an array of strings. */
+function parseReasons(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
+
 export function createStore(db: DatabaseLike): Store {
   const deleteRepo = db.prepare(`DELETE FROM rows WHERE repo = ?`);
   const insertRow = db.prepare(`INSERT INTO rows (repo, number, payload) VALUES (?, ?, ?)`);
@@ -141,13 +169,17 @@ export function createStore(db: DatabaseLike): Store {
        truncated = excluded.truncated,
        last_error = NULL`,
   );
+  // `reason` is written alongside `reasons` and holds its first entry, which
+  // is the row's worst flag. Nothing reads it any more; it is kept current so
+  // that anyone reading this table by hand is not looking at a stale column.
   const insertLink = db.prepare(
-    `INSERT INTO pr_thread_links (repo, number, thread_id, created_at, reason)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO pr_thread_links (repo, number, thread_id, created_at, reason, reasons)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(thread_id) DO UPDATE SET
        repo = excluded.repo,
        number = excluded.number,
        reason = excluded.reason,
+       reasons = excluded.reasons,
        created_at = excluded.created_at`,
   );
   // Newest first, and by thread_id after that so a tie is at least stable
@@ -160,7 +192,9 @@ export function createStore(db: DatabaseLike): Store {
     `SELECT repo, number, thread_id FROM pr_thread_links
      ORDER BY created_at DESC, thread_id DESC`,
   );
-  const selectReasons = db.prepare(`SELECT repo, number, thread_id, reason FROM pr_thread_links`);
+  const selectReasons = db.prepare(
+    `SELECT repo, number, thread_id, reasons FROM pr_thread_links`,
+  );
   const deleteLink = db.prepare(`DELETE FROM pr_thread_links WHERE thread_id = ?`);
   const selectScans = db.prepare(`SELECT thread_id FROM thread_scan`);
   const insertScan = db.prepare(
@@ -265,8 +299,15 @@ export function createStore(db: DatabaseLike): Store {
       upsertFailure.run(message);
     },
 
-    linkThread(repo, number, threadId, createdAt, reason = null) {
-      insertLink.run(repo, number, threadId, createdAt, reason);
+    linkThread(repo, number, threadId, createdAt, reasons = []) {
+      insertLink.run(
+        repo,
+        number,
+        threadId,
+        createdAt,
+        reasons[0] ?? null,
+        JSON.stringify(reasons),
+      );
     },
 
     threadReasons() {
@@ -275,13 +316,16 @@ export function createStore(db: DatabaseLike): Store {
           repo: string;
           number: number;
           thread_id: string;
-          reason: string | null;
+          reasons: string | null;
         }>
       ).map((link) => ({
         repo: link.repo,
         number: link.number,
         threadId: link.thread_id,
-        reason: link.reason,
+        // A link with no reasons at all — adopted from the composer, or opened
+        // rather than swept — is an empty list, which no caller can mistake
+        // for finished work.
+        reasons: parseReasons(link.reasons),
       }));
     },
 

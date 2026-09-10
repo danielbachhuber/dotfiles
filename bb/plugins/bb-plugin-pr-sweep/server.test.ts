@@ -511,6 +511,186 @@ describe("archiveThread", () => {
   });
 });
 
+describe("a restored thread", () => {
+  it("is linked to its row again on the next sweep", async () => {
+    // Archiving drops the link. bb fires no event when a thread comes back, so
+    // a thread the user unarchived is invisible to the panel until a sweep
+    // reads it again — and the row keeps offering to start a second thread on
+    // a pull request that already has one open.
+    spawnCount = 0;
+    const liveThreads: Array<ReturnType<typeof makeThreadResponse>> = [];
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "pr-sweep",
+      settings: { ghPath: "/nonexistent/gh-does-not-exist" },
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: {
+          spawn: async () => {
+            // A full DTO, since adoption reads `originPluginId` and
+            // `archivedAt` off the listing.
+            const thread = makeThreadResponse({
+              id: `thr_${++spawnCount}`,
+              originPluginId: "pr-sweep",
+              archivedAt: null,
+            });
+            liveThreads.push(thread);
+            return thread;
+          },
+          list: async () => [...liveThreads],
+          events: {
+            list: async () => [
+              {
+                data: {
+                  input: [
+                    { type: "text", text: "https://github.com/acme/widgets/pull/42" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    await plugin(bb);
+    createStore(bb.storage.database() as never).replaceRepoRows("acme/widgets", [
+      seedRow(),
+    ] as never);
+
+    await workOnThis(harness, { repo: "acme/widgets", number: 42 });
+    // Archived, which drops the link, then restored: still live, still this
+    // plugin's own.
+    await harness.behavior.emitThreadEvent("thread.archived", {
+      thread: makeThreadResponse({ id: "thr_1" }),
+    });
+    expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBeNull();
+
+    await harness.behavior.callRpc("refresh", null);
+
+    expect((await harness.behavior.callRpc("listRows", null)).rows[0]!.threadId).toBe("thr_1");
+    // Re-linked with nothing recorded as its work, so the sweep will not close
+    // it a second time on a flag it cannot see the whole of.
+    expect(harness.inspection.sdk.callsTo("threads.archive")).toHaveLength(0);
+  });
+});
+
+describe("the sweep's own archiving", () => {
+  /**
+   * Links a thread for a row carrying `startedWith`, then re-states the row
+   * with `nowCarries` and runs a sweep, which is where auto-archive lives.
+   *
+   * `gh` is pointed at nothing on purpose: the fetch half of the sweep fails,
+   * leaving the seeded rows in place, and the archive pass runs regardless.
+   */
+  async function sweepAfter({
+    startedWith,
+    nowCarries,
+    unresolvedThreads = 0,
+    interactions = [] as Array<{ status: string }>,
+  }: {
+    startedWith: string[];
+    nowCarries: string[];
+    unresolvedThreads?: number;
+    interactions?: Array<{ status: string }>;
+  }) {
+    spawnCount = 0;
+    const liveThreads: Array<{ id: string }> = [];
+    const fixture = createFakePluginHost({
+      pluginId: "pr-sweep",
+      settings: { ghPath: "/nonexistent/gh-does-not-exist" },
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj_a", gitRemoteUrl: "git@github.com:acme/widgets.git", sources: [] },
+          ],
+        },
+        threads: {
+          spawn: async () => {
+            const thread = { id: `thr_${++spawnCount}` };
+            liveThreads.push(thread);
+            return thread;
+          },
+          list: async () => [...liveThreads],
+          get: async () => makeThreadResponse({ id: "thr_1", status: "idle" }),
+          archive: async () => ({}),
+          interactions: { list: async () => interactions },
+        },
+      },
+    });
+    await plugin(fixture.bb);
+
+    const store = createStore(fixture.bb.storage.database() as never);
+    store.replaceRepoRows("acme/widgets", [
+      { ...seedRow(), flags: startedWith, unresolvedThreads },
+    ] as never);
+    await workOnThis(fixture.harness, { repo: "acme/widgets", number: 42 });
+
+    // The pull request as the next sweep would have found it.
+    store.replaceRepoRows("acme/widgets", [
+      { ...seedRow(), flags: nowCarries, unresolvedThreads },
+    ] as never);
+    await fixture.harness.behavior.callRpc("refresh", null);
+
+    return fixture.harness.inspection.sdk.callsTo("threads.archive");
+  }
+
+  it("archives a thread once the one thing it was started for has cleared", async () => {
+    expect(await sweepAfter({ startedWith: ["conflict"], nowCarries: [] })).toHaveLength(1);
+  });
+
+  it("keeps a thread that still has later steps to work", async () => {
+    // #5950. Started on a conflict, live feedback and four unresolved
+    // comments; it resolved the conflict, pushed, and stopped to ask about the
+    // wording of a reply. The next sweep archived it eleven minutes in,
+    // because the flag that named the button was the only one recorded.
+    expect(
+      await sweepAfter({
+        startedWith: ["conflict", "feedback"],
+        nowCarries: ["feedback"],
+        unresolvedThreads: 4,
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("keeps a thread whose later steps have cleared too", async () => {
+    // Not because the work is unfinished — feedback and comments have no
+    // finish line the sweep can see, so their disappearance is not evidence.
+    expect(
+      await sweepAfter({
+        startedWith: ["conflict", "feedback"],
+        nowCarries: [],
+        unresolvedThreads: 4,
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("keeps a thread blocked on a question", async () => {
+    // Idle, and its work done by the row's account — but the thread is
+    // stopped on something only the user can answer, and archiving it throws
+    // the question away.
+    expect(
+      await sweepAfter({
+        startedWith: ["conflict"],
+        nowCarries: [],
+        interactions: [{ status: "pending" }],
+      }),
+    ).toHaveLength(0);
+  });
+
+  it("archives past a question that has been answered", async () => {
+    expect(
+      await sweepAfter({
+        startedWith: ["conflict"],
+        nowCarries: [],
+        interactions: [{ status: "resolved" }],
+      }),
+    ).toHaveLength(1);
+  });
+});
+
 describe("pullRequestForThread", () => {
   async function host() {
     spawnCount = 0;

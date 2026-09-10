@@ -463,21 +463,66 @@ export function statusTone(flag: string | null): StatusTone {
 
 /**
  * The flag that decides a row's action, or null when it carries none. Every
- * other per-row choice — label, skill, model — already resolves against this
- * one, so a thread's stored reason has to as well.
+ * other per-row choice — label, skill, model — resolves against this one.
+ *
+ * What a thread was started to *do* is the whole list rather than this flag;
+ * see {@link reasonsForRow}.
  */
 export function worstFlag(flags: readonly string[]): Flag | null {
   return FLAG_SEVERITY.find((flag) => flags.includes(flag)) ?? null;
 }
 
 /**
- * Whether the work a thread was started for is done, judged from the row
- * rather than from anything the thread said about itself.
+ * The reading a row carries, recorded as a reason of its own.
+ *
+ * Unresolved threads and review notes are not flags — they are counted after
+ * classification — but the prompt sends the thread to answer them all the
+ * same, so a thread that was given them has work no flag accounts for. It is
+ * deliberately not a member of {@link FLAG_SEVERITY}, which is what
+ * {@link parseAutoArchiveActions} validates against: that makes it a reason
+ * the setting can never enable, and so one that keeps its thread out of
+ * auto-archive for good.
+ *
+ * Review notes are why. An approval body carrying conditions still reads as
+ * APPROVED and no recount ever clears it, so "the comments were dealt with"
+ * has no finish line the sweep can see.
+ */
+export const COMMENTS_REASON = "comments";
+
+/**
+ * Every reason a thread started from this row is being sent to work: each
+ * flag, worst first, and the reading if it carries any.
+ *
+ * All of them, not just the worst. The prompt numbers every finding and asks
+ * one thread to walk them in order, so the worst flag alone describes the
+ * first step rather than the job. Recording only that flag is how #5950 —
+ * conflicting, with live feedback and four unresolved comments — was archived
+ * eleven minutes in, the moment its conflict cleared.
+ */
+export function reasonsForRow(row: {
+  flags: readonly string[];
+  unresolvedThreads: number;
+  notedBy: readonly string[];
+}): string[] {
+  return [
+    ...workSteps(row.flags).map((step) => step.flag),
+    ...(commentsToRead(row) > 0 ? [COMMENTS_REASON] : []),
+  ];
+}
+
+/**
+ * Whether every piece of work a thread was started for is done, judged from
+ * the row rather than from anything the thread said about itself.
  *
  * A thread reports success in prose, and prose is not a signal a sweep can
  * act on. The pull request is: the sweep already recomputes every flag from
- * GitHub each cycle, so "the flag that justified this thread is gone" is a
- * fact, checked against the same source that raised it.
+ * GitHub each cycle, so "the flags that justified this thread are gone" is a
+ * fact, checked against the same source that raised them.
+ *
+ * A reason that is not a flag can never be observed to finish, so it never
+ * counts as finished. That is the safe direction: the alternative reads a
+ * reason's absence from the flag list as success, which for a non-flag reason
+ * is true on the sweep it was recorded.
  *
  * Conflicts get one extra guard. `mergeable-unknown` means GitHub has not
  * finished recomputing mergeability, and an unknown is not an answer — the
@@ -485,10 +530,25 @@ export function worstFlag(flags: readonly string[]): Flag | null {
  * fixed. Waiting for a definite MERGEABLE costs one sweep and avoids
  * archiving a thread whose merge never actually landed.
  */
-export function isWorkFinished(reason: string, flags: readonly string[]): boolean {
-  if (flags.includes(reason)) return false;
-  if (reason === "conflict" && flags.includes("mergeable-unknown")) return false;
-  return true;
+export function isWorkFinished(reasons: readonly string[], flags: readonly string[]): boolean {
+  if (reasons.length === 0) return false;
+  return reasons.every((reason) => {
+    if (!(FLAG_SEVERITY as readonly string[]).includes(reason)) return false;
+    if (flags.includes(reason)) return false;
+    if (reason === "conflict" && flags.includes("mergeable-unknown")) return false;
+    return true;
+  });
+}
+
+/**
+ * Whether a thread's work is the kind that closes itself.
+ *
+ * Every reason has to be enabled, not just the worst one. A thread sent to
+ * resolve a conflict *and* address feedback is doing work the setting says
+ * only you can call finished, so the conflict clearing does not close it.
+ */
+export function isAutoArchivable(reasons: readonly string[], actions: ReadonlySet<string>): boolean {
+  return reasons.length > 0 && reasons.every((reason) => actions.has(reason));
 }
 
 /**

@@ -194,51 +194,60 @@ describe("thread links", () => {
 });
 
 describe("thread reasons", () => {
-  it("records the flag a thread was started for", () => {
+  it("records every piece of work a thread was started for", () => {
+    // All of them, because one click sends one thread through the whole
+    // numbered list in its prompt. Keeping only the worst flag is what
+    // archived #5950 the moment its conflict cleared, with reviewer feedback
+    // and four unresolved comments still on its list.
     const store = freshStore();
-    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
+    store.linkThread("acme/widgets", 42, "thr_1", 1, ["conflict", "feedback", "comments"]);
     expect(store.threadReasons()).toEqual([
-      { repo: "acme/widgets", number: 42, threadId: "thr_1", reason: "conflict" },
+      {
+        repo: "acme/widgets",
+        number: 42,
+        threadId: "thr_1",
+        reasons: ["conflict", "feedback", "comments"],
+      },
     ]);
   });
 
-  it("leaves the reason null when none was given", () => {
-    // Links written before the column existed. They are simply never
-    // auto-archived, rather than being archived against a guessed reason.
+  it("leaves the reasons empty when none were given", () => {
+    // A thread adopted from the composer, or opened rather than swept. It is
+    // simply never auto-archived, rather than archived against a guess.
     const store = freshStore();
     store.linkThread("acme/widgets", 42, "thr_1", 1);
-    expect(store.threadReasons()[0]?.reason).toBeNull();
+    expect(store.threadReasons()[0]?.reasons).toEqual([]);
   });
 
-  it("keeps a reason per thread, since each was started for its own flag", () => {
-    // The archive sweep asks "is the flag this thread was started for gone
+  it("keeps reasons per thread, since each was started for its own work", () => {
+    // The archive sweep asks "is the work this thread was started for done
     // yet", one thread at a time. Collapsing two threads into one reason meant
     // the conflict thread was judged by the CI thread's flag.
     const store = freshStore();
-    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
-    store.linkThread("acme/widgets", 42, "thr_2", 2, "ci-failing");
+    store.linkThread("acme/widgets", 42, "thr_1", 1, ["conflict"]);
+    store.linkThread("acme/widgets", 42, "thr_2", 2, ["ci-failing"]);
 
     expect(store.threadReasons()).toEqual(
       expect.arrayContaining([
-        { repo: "acme/widgets", number: 42, threadId: "thr_1", reason: "conflict" },
-        { repo: "acme/widgets", number: 42, threadId: "thr_2", reason: "ci-failing" },
+        { repo: "acme/widgets", number: 42, threadId: "thr_1", reasons: ["conflict"] },
+        { repo: "acme/widgets", number: 42, threadId: "thr_2", reasons: ["ci-failing"] },
       ]),
     );
   });
 
-  it("updates a thread's reason rather than adding a second row for it", () => {
+  it("updates a thread's reasons rather than adding a second row for it", () => {
     const store = freshStore();
-    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
-    store.linkThread("acme/widgets", 42, "thr_1", 2, "ci-failing");
+    store.linkThread("acme/widgets", 42, "thr_1", 1, ["conflict"]);
+    store.linkThread("acme/widgets", 42, "thr_1", 2, ["ci-failing"]);
 
     expect(store.threadReasons()).toEqual([
-      { repo: "acme/widgets", number: 42, threadId: "thr_1", reason: "ci-failing" },
+      { repo: "acme/widgets", number: 42, threadId: "thr_1", reasons: ["ci-failing"] },
     ]);
   });
 
-  it("drops the reason with the link", () => {
+  it("drops the reasons with the link", () => {
     const store = freshStore();
-    store.linkThread("acme/widgets", 42, "thr_1", 1, "conflict");
+    store.linkThread("acme/widgets", 42, "thr_1", 1, ["conflict"]);
     store.unlinkThread("thr_1");
     expect(store.threadReasons()).toEqual([]);
   });

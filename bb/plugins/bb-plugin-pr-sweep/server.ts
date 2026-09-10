@@ -19,7 +19,8 @@ import {
   actionSummary,
   commentsToRead,
   isWorkFinished,
-  worstFlag,
+  isAutoArchivable,
+  reasonsForRow,
   modelForFlags,
   parseAutoArchiveActions,
   parseModelByAction,
@@ -80,6 +81,11 @@ export default async function plugin(bb: BbPluginApi) {
       // sweep can tell it is over without reading the thread. "Address
       // feedback" and "Fix failing CI" have no such line: CI can pass on a
       // change that missed the point, so those stay for you to close.
+      //
+      // A thread is only closed when every finding it was sent to work is
+      // listed here. One that also has feedback to address, or comments to
+      // answer, is doing work this setting does not cover, so the conflict
+      // clearing leaves it open.
       default: "conflict",
     },
     modelByAction: {
@@ -258,7 +264,8 @@ export default async function plugin(bb: BbPluginApi) {
     const titlesInUse = new Set(threads.map((thread) => thread.title));
 
     for (const thread of threads) {
-      if (scanned.has(thread.id) || linked.has(thread.id) || !isAdoptable(thread)) continue;
+      if (scanned.has(thread.id) || linked.has(thread.id)) continue;
+      if (!isAdoptable(thread, bb.pluginId)) continue;
 
       const reference = solePullRequestReference(await firstPromptText(thread.id));
       // Marked either way. A prompt that named no pull request never will, and
@@ -277,9 +284,18 @@ export default async function plugin(bb: BbPluginApi) {
       // Linked either way, because a pull request may have several threads and
       // the store now keeps them all. Renaming is the conditional part.
       //
-      // No reason recorded: auto-archive fires when the flag a thread was
-      // started for disappears, and this thread was not started for a flag.
-      store.linkThread(row.repo, row.number, thread.id, Date.now(), null);
+      // No reasons recorded: auto-archive fires when the work a thread was
+      // started for is done, and this thread was not started for any of it.
+      store.linkThread(row.repo, row.number, thread.id, Date.now());
+
+      // One of this plugin's own, restored after being archived: it already
+      // has the title this pass would give it, and its own scope in the title
+      // if it was the second thread on the pull request. Renaming is for the
+      // composer's threads.
+      if (thread.originPluginId !== null) {
+        bb.log.info(`re-linked ${thread.id} for ${row.repo}#${row.number}`);
+        continue;
+      }
 
       const canonical = threadTitle(row.number, row.title);
       // The scope-based alternative needs a flag, and a thread started from
@@ -630,7 +646,9 @@ export default async function plugin(bb: BbPluginApi) {
     const actions = parseAutoArchiveActions(autoArchiveActions);
     if (actions.size === 0) return;
 
-    const links = store.threadReasons().filter((link) => link.reason && actions.has(link.reason));
+    const links = store
+      .threadReasons()
+      .filter((link) => isAutoArchivable(link.reasons, actions));
     if (links.length === 0) return;
 
     const rows = store.readRows();
@@ -640,17 +658,42 @@ export default async function plugin(bb: BbPluginApi) {
       // or the listing failed. None of those are "the conflict was resolved",
       // so the thread stays and the user decides.
       if (!row) continue;
-      if (!isWorkFinished(link.reason!, row.flags)) continue;
+      if (!isWorkFinished(link.reasons, row.flags)) continue;
 
       const thread = await bb.sdk.threads.get({ threadId: link.threadId });
       if (thread.status !== "idle") continue;
+      if (await isBlockedOnUser(link.threadId)) continue;
 
       await bb.sdk.threads.archive({ threadId: link.threadId });
       store.unlinkThread(link.threadId);
       bb.log.info(
-        `archived ${link.threadId}: ${link.repo}#${link.number} no longer reports ${link.reason}`,
+        `archived ${link.threadId}: ${link.repo}#${link.number} no longer reports ` +
+          link.reasons.join(", "),
       );
       bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
+    }
+  }
+
+  /**
+   * Whether a thread is stopped on something only the user can answer: an
+   * approval prompt, or a question asked through one.
+   *
+   * Such a thread is idle in the same way a finished one is, and archiving it
+   * throws the question away along with the answer nobody has given yet.
+   *
+   * An error here counts as blocked. The check exists to avoid destroying a
+   * question, and "I could not tell" is not grounds for going ahead.
+   */
+  async function isBlockedOnUser(threadId: string): Promise<boolean> {
+    try {
+      const interactions = await bb.sdk.threads.interactions.list({ threadId });
+      return interactions.some(
+        (interaction) =>
+          interaction.status === "pending" || interaction.status === "resolving",
+      );
+    } catch (error) {
+      bb.log.warn(`could not read pending interactions for ${threadId}: ${String(error)}`);
+      return true;
     }
   }
 
@@ -983,9 +1026,9 @@ export default async function plugin(bb: BbPluginApi) {
         } as Parameters<typeof bb.sdk.threads.spawn>[0]);
 
         bb.log.info(`started ${thread.id} for ${key} in ${request.projectId}`);
-        // The worst flag is what the button named and what the thread was sent
-        // to do, so it is the one whose disappearance means "finished".
-        store.linkThread(repo, number, thread.id, Date.now(), worstFlag(row.flags));
+        // Every finding the prompt just handed it, since the thread walks all
+        // of them. Auto-archive waits for the whole list to clear.
+        store.linkThread(repo, number, thread.id, Date.now(), reasonsForRow(row));
         bb.realtime.publish(REALTIME_CHANNEL, { sweptAt: null });
         return { threadId: thread.id, existing: false, reason: null };
       })();

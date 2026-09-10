@@ -12,7 +12,10 @@ import {
   isCounted,
   hasNothingToDo,
   isOnlyWaitingOnCi,
+  isAutoArchivable,
   isWorkFinished,
+  reasonsForRow,
+  COMMENTS_REASON,
   parseAutoArchiveActions,
   worstFlag,
   modelForFlags,
@@ -510,33 +513,108 @@ describe("worstFlag", () => {
   });
 });
 
-describe("isWorkFinished", () => {
-  it("is not finished while the flag is still there", () => {
-    expect(isWorkFinished("conflict", ["conflict"])).toBe(false);
-    expect(isWorkFinished("ci-failing", ["ci-failing", "feedback"])).toBe(false);
+describe("reasonsForRow", () => {
+  const row = { flags: [] as string[], unresolvedThreads: 0, notedBy: [] as string[] };
+
+  it("records every flag, worst first", () => {
+    expect(reasonsForRow({ ...row, flags: ["feedback", "conflict"] })).toEqual([
+      "conflict",
+      "feedback",
+    ]);
   });
 
-  it("is finished once the flag has gone", () => {
-    expect(isWorkFinished("conflict", [])).toBe(true);
-    expect(isWorkFinished("ci-failing", ["no-reviewer"])).toBe(true);
+  it("records the reading as a reason of its own", () => {
+    // Unresolved threads and review notes belong to no flag, and the prompt
+    // still sends the thread to answer them.
+    expect(reasonsForRow({ ...row, flags: ["conflict"], unresolvedThreads: 4 })).toEqual([
+      "conflict",
+      COMMENTS_REASON,
+    ]);
+    expect(reasonsForRow({ ...row, notedBy: ["octocat"] })).toEqual([COMMENTS_REASON]);
+  });
+
+  it("is empty for a row asking nothing", () => {
+    expect(reasonsForRow(row)).toEqual([]);
+  });
+});
+
+describe("isWorkFinished", () => {
+  it("is not finished while any flag is still there", () => {
+    expect(isWorkFinished(["conflict"], ["conflict"])).toBe(false);
+    expect(isWorkFinished(["ci-failing"], ["ci-failing", "feedback"])).toBe(false);
+  });
+
+  it("is finished once every flag has gone", () => {
+    expect(isWorkFinished(["conflict"], [])).toBe(true);
+    expect(isWorkFinished(["ci-failing"], ["no-reviewer"])).toBe(true);
+    expect(isWorkFinished(["conflict", "feedback"], [])).toBe(true);
+  });
+
+  it("is not finished while one of several reasons remains", () => {
+    // #5950: conflicting, with live feedback and four unresolved comments.
+    // Resolving the conflict finished the first of three numbered steps, and
+    // judging the thread on that flag alone archived it mid-run.
+    expect(isWorkFinished(["conflict", "feedback"], ["feedback"])).toBe(false);
+  });
+
+  it("never counts the reading as finished", () => {
+    // No recount clears it: an approval body carrying conditions still reads
+    // as APPROVED, so there is no finish line the sweep can see.
+    expect(isWorkFinished([COMMENTS_REASON], [])).toBe(false);
+    expect(isWorkFinished(["conflict", COMMENTS_REASON], [])).toBe(false);
+  });
+
+  it("is not finished for a thread with no recorded reasons", () => {
+    // A thread adopted from the composer was not started for a flag, so
+    // nothing about the row can say its work is over.
+    expect(isWorkFinished([], [])).toBe(false);
   });
 
   it("does not treat an unknown merge state as a resolved conflict", () => {
     // GitHub drops the conflict flag while it recomputes mergeability, so an
     // unknown reads exactly like a fix that never landed.
-    expect(isWorkFinished("conflict", ["mergeable-unknown"])).toBe(false);
+    expect(isWorkFinished(["conflict"], ["mergeable-unknown"])).toBe(false);
   });
 
   it("lets a different reason finish even while mergeability is unknown", () => {
     // The guard is about conflicts specifically; a CI fix does not wait on
     // GitHub recomputing whether the branch merges.
-    expect(isWorkFinished("ci-failing", ["mergeable-unknown"])).toBe(true);
+    expect(isWorkFinished(["ci-failing"], ["mergeable-unknown"])).toBe(true);
   });
 
   it("judges every flag by its own disappearance", () => {
     for (const flag of FLAG_SEVERITY) {
-      expect(isWorkFinished(flag, [flag])).toBe(false);
+      expect(isWorkFinished([flag], [flag])).toBe(false);
     }
+  });
+});
+
+describe("isAutoArchivable", () => {
+  const conflictsOnly = new Set(["conflict"]);
+
+  it("closes a thread whose only work is enabled", () => {
+    expect(isAutoArchivable(["conflict"], conflictsOnly)).toBe(true);
+  });
+
+  it("leaves a thread carrying work the setting does not cover", () => {
+    // The whole list has to be enabled. "Address feedback" has no finish line
+    // the sweep can see, and a conflict thread that also has feedback to
+    // address is doing that work too.
+    expect(isAutoArchivable(["conflict", "feedback"], conflictsOnly)).toBe(false);
+  });
+
+  it("never closes a thread that was sent to read comments", () => {
+    // The reading is deliberately not a flag, so the setting cannot name it
+    // and this stays false however the setting is written.
+    expect(isAutoArchivable(["conflict", COMMENTS_REASON], conflictsOnly)).toBe(false);
+    expect(
+      isAutoArchivable(["conflict", COMMENTS_REASON], new Set(["conflict", COMMENTS_REASON])),
+    ).toBe(true);
+    expect(parseAutoArchiveActions(`conflict,${COMMENTS_REASON}`).has(COMMENTS_REASON)).toBe(false);
+  });
+
+  it("leaves a thread with no recorded reasons alone", () => {
+    expect(isAutoArchivable([], conflictsOnly)).toBe(false);
   });
 });
 
