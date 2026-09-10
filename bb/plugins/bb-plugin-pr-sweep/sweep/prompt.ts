@@ -108,7 +108,13 @@ export function buildPromptParts(row: ClassifiedRow): PromptParts {
     // Standing user instructions forbid committing without an explicit ask
     // and outrank a skill, so without this the thread does the work and stops
     // at a staged merge. Clicking the row's action is that ask.
-    "I started this from the PR Sweep panel, which is my explicit request for this work. Follow each skill all the way through, including its commit, push, and reply steps. You do not need to ask me before committing or pushing to this PR's own branch.",
+    //
+    // It asks for the work, not for a blanket commit permission. The skills
+    // gate each change on approval before it becomes a commit, and a prompt
+    // that waived that gate turned the walkthrough into a report of commits
+    // already pushed. Authorize the end of the skill; let the skill decide
+    // when it has arrived there.
+    "I started this from the PR Sweep panel, which is my explicit request for this work. Follow each skill all the way through, including its commit, push, and reply steps.",
     "Still ask me first before: force-pushing, rewriting any pushed commit, or merging the PR.",
     "",
     // The thread starts in a bb-managed worktree on a fresh branch, not the

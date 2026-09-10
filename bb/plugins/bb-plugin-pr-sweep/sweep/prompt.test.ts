@@ -69,6 +69,17 @@ describe("buildPrompt", () => {
     }
   });
 
+  it("does not waive the skills' own approval gate", () => {
+    // Authorizing the end of the skill is not the same as waiving the
+    // per-change approval on the way there. This sentence did both, and the
+    // thread reported commits it had already pushed instead of walking the
+    // diffs.
+    for (const flags of [["conflict"], ["feedback"], ["ci-failing"]]) {
+      const prompt = buildPrompt(row({ flags }));
+      expect(prompt).not.toMatch(/do not need to ask me before committing/i);
+    }
+  });
+
   it("still withholds the irreversible actions", () => {
     const prompt = buildPrompt(row({ flags: ["conflict"] }));
     expect(prompt).toMatch(/force-push/i);
