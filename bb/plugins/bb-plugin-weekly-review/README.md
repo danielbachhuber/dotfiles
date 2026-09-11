@@ -14,12 +14,6 @@ time entries, pull requests opened and merged, reviews, issues filed, and daily
 notes. A pull request opened Monday and merged Thursday appears on both days;
 opened and merged the same day collapses to one row.
 
-**Coming up** — the one part of the page that looks forward: the calendar and
-the tasks due, from tomorrow through the end of next week, grouped by day, with
-anything already overdue at the top. A day with nothing on it gets no heading.
-Today is not in it: today is already on the rest of the page, and a meeting
-that happened this morning is not something to plan around.
-
 **Conversations** — the week's Slack threads, grouped by the day each one
 started.
 
@@ -37,6 +31,12 @@ which case it is a one-on-one. Themes sharing a run of significant words then
 merge, which is what puts "Architecture Talk", "Architecture Talk Prep" and
 "Prep Architecture Talk" together across three different Harvest categories.
 Grouped hours and the tail add up to the week's total exactly.
+
+**Coming up** — last on the page, and the one part of it that looks forward:
+the calendar and the tasks due, from tomorrow through the end of next week,
+grouped by day, with anything already overdue at the top. A day with nothing on
+it gets no heading. Today is not in it: today is already on the rest of the
+page, and a meeting that happened this morning is not something to plan around.
 
 ## Meeting notes
 
