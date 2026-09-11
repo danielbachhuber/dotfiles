@@ -63,6 +63,27 @@ export function resolveRange(from?: string, to?: string, today: Date = new Date(
   return { from: toDay(monday), to: toDay(today) };
 }
 
+/**
+ * The window "coming up" means: tomorrow through the end of next week.
+ *
+ * It starts tomorrow, not today. Today is already on the rest of the page —
+ * the review range runs up to and including it — and a meeting at 7:30 this
+ * morning is not something to plan around by the time anyone reads this.
+ *
+ * Measured off today rather than off the week being reviewed, and deliberately
+ * so. The review range can point at a week that has already finished — running
+ * it on a Saturday resolves to the Monday–Friday just past — and nothing about
+ * that week says what is ahead. Sunday counts as the end of next week rather
+ * than the start of it, which matches how `resolveRange` treats a week.
+ */
+export function comingUpWindow(today: Date = new Date()): Range {
+  const dow = today.getDay(); // 0 Sun … 6 Sat
+  // Days from today to the Sunday that closes this week, Sunday being day 7.
+  const toSunday = dow === 0 ? 0 : 7 - dow;
+  const end = new Date(today.getTime() + (toSunday + 7) * MS_PER_DAY);
+  return { from: toDay(new Date(today.getTime() + MS_PER_DAY)), to: toDay(end) };
+}
+
 /** Every calendar day in the range, inclusive. */
 export function daysInRange({ from, to }: Range): Day[] {
   const out: Day[] = [];

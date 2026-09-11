@@ -4,8 +4,8 @@ import { daySchema, weekDataSchema } from "./schema.js";
 import { feedbackSchema } from "./agents.js";
 import { SCALAR_KEYS } from "./sources.js";
 
-/** Which of the two agent steps a prompt belongs to. */
-export const promptKindSchema = z.enum(["notes", "feedback"]);
+/** Which agent step a prompt belongs to. */
+export const promptKindSchema = z.enum(["notes", "slack", "feedback"]);
 export type PromptKind = z.infer<typeof promptKindSchema>;
 
 const sourceStatusSchema = z.object({
@@ -96,12 +96,21 @@ export const rpcContract = defineRpcContract({
        */
       threads: z.object({
         notes: z.string().optional(),
+        slack: z.string().optional(),
         feedback: z.string().optional(),
       }),
       dir: z.string(),
     }),
   },
   week_gather_notes: {
+    input: z.object({ monday: mondaySchema }),
+    output: z.object({ threadId: z.string() }),
+  },
+  /**
+   * Sends an agent for the week's Slack conversations. Slack is reachable over
+   * MCP and nowhere else, so this cannot be a fetcher.
+   */
+  week_gather_slack: {
     input: z.object({ monday: mondaySchema }),
     output: z.object({ threadId: z.string() }),
   },

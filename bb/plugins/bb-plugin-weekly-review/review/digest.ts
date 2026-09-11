@@ -11,11 +11,11 @@
  * turns on what the work was called, and a compact digest keeps the whole week
  * in one prompt instead of sending the agent off to read files.
  */
-import type { WeekData } from "./types.js";
+import type { Day, WeekData } from "./types.js";
 import { attributeTime, categories } from "./overview.js";
-import { buildDaySlices, splitBacklog, weekTotals } from "./week.js";
+import { buildDaySlices, comingUp, splitBacklog, weekTotals } from "./week.js";
 
-export function buildDigest(week: WeekData): string {
+export function buildDigest(week: WeekData, today?: Day): string {
   const github = week.github.data;
   const time = attributeTime(week);
   const totals = weekTotals(week, buildDaySlices(week));
@@ -66,6 +66,18 @@ export function buildDigest(week: WeekData): string {
     out.push(`(${backlog.someday.length} further tasks carry no due date.)`);
   }
 
+  // Conversations, with their summaries kept whole. A Slack thread is often
+  // where a decision was actually made, and the entry has no other record of
+  // it: nothing in Harvest or GitHub says a hand-off was agreed in a DM.
+  const slack = week.slack?.data ?? [];
+  if (slack.length > 0) {
+    out.push("", `## Slack conversations (${slack.length})`);
+    for (const thread of slack) {
+      const who = thread.participants?.length ? ` — ${thread.participants.join(", ")}` : "";
+      out.push(`- ${thread.day} ${thread.channel}${who}: ${thread.summary}`);
+    }
+  }
+
   const notes = week.reflect?.data ?? [];
   if (notes.length > 0) {
     out.push("", "## Daily notes");
@@ -80,17 +92,52 @@ export function buildDigest(week: WeekData): string {
     }
   }
 
+  // What is ahead, so a recommendation for next week argues against the
+  // actual calendar rather than against an empty one. The day is taken from
+  // the caller when given, which is what keeps the digest testable.
+  const ahead = comingUp(week, today ?? new Date().toISOString().slice(0, 10));
+  if (!ahead.empty) {
+    out.push("", `## Coming up (${ahead.window.from} through ${ahead.window.to})`);
+    if (ahead.overdue.length > 0) {
+      out.push(`### Overdue (${ahead.overdue.length})`);
+      for (const task of ahead.overdue) out.push(`- ${task.content} (due ${task.due})`);
+    }
+    for (const day of ahead.days) {
+      out.push(`### ${day.day}`);
+      for (const event of day.events) {
+        const when = event.allDay ? "all day" : (event.startsAt ?? "").slice(11, 16);
+        const who = event.attendees > 1 ? `, ${event.attendees} people` : "";
+        const free = event.free ? ", marked free" : "";
+        // An invitation you have not answered is a decision still owed, which
+        // is exactly the kind of thing next week's plan should account for.
+        const reply = event.response === "needsAction"
+          ? ", unanswered"
+          : event.response === "tentative" ? ", maybe" : "";
+        out.push(`- ${when} ${event.title}${who}${reply}${free}`);
+      }
+      for (const task of day.tasks) out.push(`- task due: ${task.content}`);
+    }
+    if (ahead.later.length > 0) {
+      out.push(`(${ahead.later.length} further tasks are due after next week.)`);
+    }
+  }
+
   const failed = ([
     ["Harvest", week.harvest],
     ["GitHub", week.github],
     ["Todoist", week.todoist],
     ["Docs", week.docs],
-  ] as const).filter(([, source]) => !source.ok);
+    ["Slack", week.slack],
+    ["Calendar", week.calendar],
+    // Absent is not failed: Slack and the calendar are written by an agent
+    // step and by a CLI that may not be configured, and a week gathered
+    // before either existed has no record of them at all.
+  ] as const).filter(([, source]) => source !== undefined && !source.ok);
   if (failed.length > 0) {
     out.push(
       "",
       "## Sources that did not gather",
-      ...failed.map(([name, source]) => `- ${name}: ${source.error ?? "unknown error"}`),
+      ...failed.map(([name, source]) => `- ${name}: ${source?.error ?? "unknown error"}`),
       "Treat these as missing evidence, not as an absence of work.",
     );
   }

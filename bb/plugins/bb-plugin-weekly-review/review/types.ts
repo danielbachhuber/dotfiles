@@ -5,6 +5,7 @@
  */
 import type { z } from "zod";
 import type {
+  calendarEventSchema,
   docRefSchema,
   githubDataSchema,
   harvestEntrySchema,
@@ -30,6 +31,7 @@ export interface SourceResult<T> {
   data: T;
 }
 
+export type CalendarEvent = z.infer<typeof calendarEventSchema>;
 export type HarvestEntry = z.infer<typeof harvestEntrySchema>;
 export type PullRequest = z.infer<typeof pullRequestSchema>;
 export type Review = z.infer<typeof reviewSchema>;

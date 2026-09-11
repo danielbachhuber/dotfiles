@@ -55,6 +55,56 @@ That command validates the file and puts the notes on the page. If it reports a
 validation error, fix the file and run it again. Say which meetings you matched
 and which you could not, then stop.`;
 
+/**
+ * The default prompt for collecting the week's Slack conversations.
+ *
+ * The same kind of job as the notes: Slack is reachable over MCP and nowhere
+ * else, so no fetcher can do this. What comes back is evidence rather than a
+ * reading — what was discussed and what came of it, not whether it went well.
+ */
+export const DEFAULT_SLACK_PROMPT = `Collect this week's Slack conversations so they sit beside the rest of the
+week's evidence.
+
+The week runs {{FROM}} through {{TO}}.
+
+1. Find the threads you took part in. Two searches, both scoped to the range:
+
+   - messages you sent, \`from:@me after:{{SEARCH_AFTER}} before:{{SEARCH_BEFORE}}\`
+   - messages that mention you, the same date bounds
+
+   Search public channels, private channels and DMs — all three are part of the
+   week. A thread you were pulled into and stayed quiet in still counts: being
+   named in it is what makes it yours.
+
+2. Read each thread you find, so the record is what the conversation was rather
+   than what one message in it said.
+
+3. Record one entry per thread, not one per message. A thread carried on across
+   several days belongs to the day it started, so it appears on the page once.
+
+   - \`channel\` — the channel name, or the people in a DM
+   - \`permalink\` — a link to the thread, so the page can point at it
+   - \`participants\` — display names of who spoke
+   - \`summary\` — what it was about and what came of it. A decision reached, a
+     question still open, a hand-off agreed. Two or three sentences.
+
+   Leave out what you cannot read rather than guessing at it, and say afterwards
+   what you skipped. A channel you have no access to is a gap in the record; an
+   invented summary is worse than a gap.
+
+4. Write the result to a file under /tmp as JSON:
+
+   [ { "day": "YYYY-MM-DD", "channel": "…", "permalink": "…",
+       "participants": ["…"], "summary": "…" } ]
+
+   then record it with:
+
+   {{COMMAND}}
+
+That command validates the file and puts the conversations on the page. If it
+reports a validation error, fix the file and run it again. Say how many threads
+you recorded and what you could not reach, then stop.`;
+
 /** Substitutes `{{NAME}}` placeholders. A template missing one still works. */
 export function renderPrompt(
   template: string,

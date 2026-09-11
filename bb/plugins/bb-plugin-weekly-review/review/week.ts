@@ -1,7 +1,10 @@
 import type {
-  Day, HarvestEntry, Issue, PullRequest, Review, ReflectNote, SlackThread, Task, WeekData,
+  CalendarEvent, Day, HarvestEntry, Issue, PullRequest, Review, ReflectNote, SlackThread, Task,
+  WeekData,
 } from './types.js';
-import { daysInRange, fromDay, instantToDay, isWithin, toDay, type Range } from './dates.js';
+import {
+  comingUpWindow, daysInRange, fromDay, instantToDay, isWithin, toDay, type Range,
+} from './dates.js';
 
 /** What happened to an authored PR on a particular day. */
 export interface PrEvent {
@@ -172,4 +175,80 @@ export function splitBacklog(tasks: Task[], today: Day, horizonDays = 14): Backl
 
   const byDue = (a: Task, b: Task) => (a.due ?? "").localeCompare(b.due ?? "");
   return { overdue: overdue.sort(byDue), upcoming: upcoming.sort(byDue), someday };
+}
+
+export interface ComingUpDay {
+  day: Day;
+  events: CalendarEvent[];
+  /** Tasks due on this day. */
+  tasks: Task[];
+}
+
+export interface ComingUp {
+  /** The window this covers: tomorrow through the end of next week. */
+  window: Range;
+  /** Already late, and not a recurring habit one day behind. */
+  overdue: Task[];
+  /** Only days with something on them — a free Saturday is not worth a heading. */
+  days: ComingUpDay[];
+  /** Due inside the backlog horizon but past the end of next week. */
+  later: Task[];
+  /** True when nothing at all is ahead, which is different from not having looked. */
+  empty: boolean;
+}
+
+/**
+ * What is still ahead: the calendar and the task backlog on one list.
+ *
+ * `today` is passed in rather than read, so this stays a pure function of the
+ * week and a date — the same input gives the same answer in a test at any hour.
+ *
+ * The someday pile is deliberately absent. It is a backlog rather than a claim
+ * on next week, and listing it would bury the few tasks that are actually late.
+ */
+export function comingUp(week: WeekData, today: Day): ComingUp {
+  const window = comingUpWindow(fromDay(today));
+  const backlog = splitBacklog(week.todoist.data.incomplete, today);
+
+  const events = new Map<Day, CalendarEvent[]>();
+  for (const event of week.calendar?.data ?? []) {
+    if (!isWithin(event.day, window)) continue;
+    const existing = events.get(event.day);
+    if (existing === undefined) events.set(event.day, [event]);
+    else existing.push(event);
+  }
+
+  const tasks = new Map<Day, Task[]>();
+  const later: Task[] = [];
+  for (const task of backlog.upcoming) {
+    if (task.due === null) continue;
+    // Each task sits on its own due day, never nudged onto a day it is not
+    // due. A recurring one due today or earlier is spared the overdue block by
+    // `splitBacklog` and falls out here: it is today's business, and today is
+    // what the rest of the page is about.
+    if (task.due < window.from) continue;
+    if (task.due > window.to) {
+      later.push(task);
+      continue;
+    }
+    const existing = tasks.get(task.due);
+    if (existing === undefined) tasks.set(task.due, [task]);
+    else existing.push(task);
+  }
+
+  const days = daysInRange(window)
+    .map((day) => ({
+      day,
+      events: events.get(day) ?? [],
+      tasks: tasks.get(day) ?? [],
+    }))
+    .filter((day) => day.events.length > 0 || day.tasks.length > 0);
+
+  return {
+    window,
+    overdue: backlog.overdue,
+    days,
+    later,
+    empty: days.length === 0 && backlog.overdue.length === 0 && later.length === 0,
+  };
 }

@@ -35,11 +35,12 @@ import { buildDigest } from "./review/digest.js";
 import {
   DEFAULT_FEEDBACK_PROMPT,
   DEFAULT_NOTES_PROMPT,
+  DEFAULT_SLACK_PROMPT,
   feedbackSchema,
   renderPrompt,
 } from "./review/agents.js";
 import type { PromptKind } from "./review/contract.js";
-import { reflectNoteSchema } from "./review/schema.js";
+import { reflectNoteSchema, slackThreadSchema } from "./review/schema.js";
 import { datedSections, matchDoc, matchNote, sectionNear, entriesWithoutNotes } from "./review/meeting-notes.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { join as joinPath } from "node:path";
@@ -66,6 +67,7 @@ export default async function plugin(bb: BbPluginApi) {
     gh: { type: "string", label: "Path to the gh CLI", default: "gh" },
     hrvst: { type: "string", label: "Path to the hrvst CLI", default: "hrvst" },
     td: { type: "string", label: "Path to the td CLI", default: "td" },
+    gws: { type: "string", label: "Path to the gws CLI", default: "gws" },
     fetchDocScript: {
       type: "string",
       label: "Script that prints a Google Doc as text",
@@ -105,6 +107,7 @@ export default async function plugin(bb: BbPluginApi) {
         gh: values.gh.trim() || "gh",
         hrvst: values.hrvst.trim() || "hrvst",
         td: values.td.trim() || "td",
+        gws: values.gws.trim() || "gws",
         fetchDocScript: values.fetchDocScript.trim(),
       },
       weeksDir: values.weeksDir.trim() || join(PLUGIN_ROOT, "data", "weeks"),
@@ -251,6 +254,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   const DEFAULT_PROMPTS: Record<PromptKind, string> = {
     notes: DEFAULT_NOTES_PROMPT,
+    slack: DEFAULT_SLACK_PROMPT,
     feedback: DEFAULT_FEEDBACK_PROMPT,
   };
 
@@ -320,6 +324,39 @@ export default async function plugin(bb: BbPluginApi) {
       }),
       `Weekly review notes — ${monday}`,
       `gathering notes for ${monday}`,
+    );
+  }
+
+  /**
+   * Sends an agent for the week's Slack conversations.
+   *
+   * Its own step rather than part of the notes one: a Slack failure has no
+   * business losing the daily notes, and the two prompts are edited
+   * separately.
+   */
+  async function gatherSlack(monday: string): Promise<{ threadId: string }> {
+    const { weeksDir } = await tools();
+    const week = await readWeek(weeksDir, monday);
+    if (week === null) throw new Error(`No week gathered for ${monday}. Generate it first.`);
+
+    const providerId = (await settings.get()).agentProviderId.trim();
+
+    return spawnAgent(
+      monday,
+      "slack",
+      providerId,
+      renderPrompt(describePrompt("slack").prompt, {
+        FROM: week.from,
+        TO: week.to,
+        // Slack's `after:` and `before:` are exclusive, so the bounds sit one
+        // day outside the week. Passing the week's own dates would silently
+        // drop Monday and Friday.
+        SEARCH_AFTER: toDay(new Date(fromDay(week.from).getTime() - MS_PER_DAY)),
+        SEARCH_BEFORE: toDay(new Date(fromDay(week.to).getTime() + MS_PER_DAY)),
+        COMMAND: `bb weekly-review slack ${monday} --file <path-to-your-json>`,
+      }),
+      `Weekly review Slack — ${monday}`,
+      `gathering Slack conversations for ${monday}`,
     );
   }
 
@@ -492,6 +529,32 @@ export default async function plugin(bb: BbPluginApi) {
     return parsed.data.length;
   }
 
+  /**
+   * Validates and records the week's Slack conversations. Beside the week for
+   * the same reason the notes are: a re-gather must not discard them.
+   */
+  async function recordSlack(monday: string, path: string): Promise<number> {
+    const { weeksDir } = await tools();
+    const parsed = slackThreadSchema
+      .array()
+      .safeParse(JSON.parse(await readFile(path, "utf8")));
+    if (!parsed.success) {
+      throw new Error(
+        `That is not a valid Slack file: ${parsed.error.issues
+          .slice(0, 5)
+          .map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`)
+          .join("; ")}`,
+      );
+    }
+    await writeFile(
+      joinPath(weekDir(weeksDir, monday), "slack.json"),
+      JSON.stringify(parsed.data, null, 2),
+      "utf8",
+    );
+    bb.realtime.publish(WEEK_GENERATED, { monday });
+    return parsed.data.length;
+  }
+
   bb.rpc.register(rpcContract, {
     weeks_list: async () => {
       const { weeksDir } = await tools();
@@ -524,6 +587,7 @@ export default async function plugin(bb: BbPluginApi) {
       };
     },
     week_gather_notes: ({ monday }) => gatherNotes(monday),
+    week_gather_slack: ({ monday }) => gatherSlack(monday),
     week_feedback: ({ monday }) => reviewEntry(monday),
 
     prompt_get: ({ kind }) => describePrompt(kind),
@@ -559,9 +623,10 @@ export default async function plugin(bb: BbPluginApi) {
     "  bb weekly-review digest <monday>",
     "  bb weekly-review meetings <monday>",
     "  bb weekly-review notes <monday> --file <path-to-json>",
+    "  bb weekly-review slack <monday> --file <path-to-json>",
     "  bb weekly-review entry <monday>",
     "  bb weekly-review feedback <monday> --file <path-to-json>",
-    "  bb weekly-review prompt [notes|feedback] [reset]",
+    "  bb weekly-review prompt [notes|slack|feedback] [reset]",
     "  bb weekly-review source list",
     `  bb weekly-review source set <${SCALAR_KEYS.join("|")}> <value>`,
     "  bb weekly-review source add-doc <google-doc-id> <label...>",
@@ -653,6 +718,11 @@ export default async function plugin(bb: BbPluginApi) {
         usage: "bb weekly-review notes <monday> --file <path-to-json>",
       },
       {
+        name: "slack",
+        summary: "Record the week's Slack conversations from a JSON file",
+        usage: "bb weekly-review slack <monday> --file <path-to-json>",
+      },
+      {
         name: "entry",
         summary: "Print the week's hand-written entry as it stands in the doc",
         usage: "bb weekly-review entry <monday>",
@@ -665,7 +735,7 @@ export default async function plugin(bb: BbPluginApi) {
       {
         name: "prompt",
         summary: "Show or reset the prompt an agent step is given",
-        usage: "bb weekly-review prompt [notes|feedback] [reset]",
+        usage: "bb weekly-review prompt [notes|slack|feedback] [reset]",
       },
       {
         name: "source",
@@ -762,7 +832,11 @@ export default async function plugin(bb: BbPluginApi) {
           }
         }
         case "prompt": {
-          const kind: PromptKind = positional.includes("notes") ? "notes" : "feedback";
+          const kind: PromptKind = positional.includes("notes")
+            ? "notes"
+            : positional.includes("slack")
+              ? "slack"
+              : "feedback";
           if (positional.includes("reset")) {
             sources.writePrompt(kind, "");
             return { exitCode: 0, stdout: `Restored the default ${kind} prompt.` };
@@ -809,6 +883,28 @@ export default async function plugin(bb: BbPluginApi) {
           try {
             const count = await recordNotes(monday, file);
             return { exitCode: 0, stdout: `Recorded ${count} notes for ${monday}` };
+          } catch (error) {
+            return {
+              exitCode: 1,
+              stderr: error instanceof Error ? error.message : String(error),
+            };
+          }
+        }
+        case "slack": {
+          const monday = positional[0];
+          const file = flag("file");
+          if (monday === undefined || file === undefined) {
+            return {
+              exitCode: 1,
+              stderr: "Usage: bb weekly-review slack <monday> --file <path-to-json>",
+            };
+          }
+          try {
+            const count = await recordSlack(monday, file);
+            return {
+              exitCode: 0,
+              stdout: `Recorded ${count} Slack conversations for ${monday}`,
+            };
           } catch (error) {
             return {
               exitCode: 1,

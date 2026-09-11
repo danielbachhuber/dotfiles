@@ -103,6 +103,34 @@ export const slackThreadSchema = z.object({
   participants: z.array(z.string()).optional(),
 });
 
+/**
+ * One calendar event, already flattened out of Google's two start shapes.
+ *
+ * All-day events carry `start.date` and timed ones carry `start.dateTime`, so
+ * `day` and `startsAt` are derived at fetch time rather than left for the page
+ * to work out twice.
+ */
+export const calendarEventSchema = z.object({
+  id: z.string(),
+  day: daySchema,
+  /** Absent on an all-day event, which has no time to show. */
+  startsAt: instantSchema.optional(),
+  allDay: z.boolean(),
+  title: z.string(),
+  /** Null on an all-day event: a day is not a duration worth printing. */
+  minutes: z.number().nullable(),
+  /** Everyone invited, including you. Zero on a block you made for yourself. */
+  attendees: z.number(),
+  /** Your own response: `accepted`, `tentative`, `needsAction`, or absent. */
+  response: z.string().optional(),
+  /**
+   * True when the event is marked "free" rather than "busy". Focus blocks come
+   * through this way, and they are worth showing more quietly than a meeting.
+   */
+  free: z.boolean(),
+  url: z.string().optional(),
+});
+
 export const docRefSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -137,5 +165,11 @@ export const weekDataSchema = z.object({
   todoist: sourceResult(todoistDataSchema),
   docs: sourceResult(z.array(docRefSchema)),
   slack: sourceResult(z.array(slackThreadSchema)).optional(),
+  /**
+   * What is still ahead. Optional because it is gathered from a window
+   * measured off today rather than off the week, and because a week gathered
+   * before the calendar source existed has none.
+   */
+  calendar: sourceResult(z.array(calendarEventSchema)).optional(),
   reflect: sourceResult(z.array(reflectNoteSchema)).optional(),
 });

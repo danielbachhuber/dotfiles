@@ -2,10 +2,11 @@
  * Gathers one week. Every source is captured rather than awaited bare, so a
  * missing credential is reported on the page instead of failing the run.
  */
-import type { Range } from "./dates.js";
+import { comingUpWindow, type Range } from "./dates.js";
 import type { Sources } from "./sources.js";
-import type { SourceResult, WeekData } from "./types.js";
+import type { CalendarEvent, SourceResult, WeekData } from "./types.js";
 import { capture } from "./fetch/shell.js";
+import { fetchCalendar } from "./fetch/calendar.js";
 import { fetchDocs } from "./fetch/docs.js";
 import { fetchGithub } from "./fetch/github.js";
 import { fetchHarvest } from "./fetch/harvest.js";
@@ -17,6 +18,8 @@ export interface Tools {
   gh: string;
   hrvst: string;
   td: string;
+  /** The Google Workspace CLI, which is how the calendar is read. */
+  gws: string;
   /** Script that prints a Google Doc as plain text, given its id. */
   fetchDocScript: string;
 }
@@ -51,8 +54,14 @@ export async function generateWeek(
     return result;
   };
 
+  // What is still ahead, from today rather than from the range: a week that
+  // has already finished says nothing about next week. Gathered here so the
+  // page has it without a second round trip, even though it is not part of
+  // the week's own record.
+  const ahead = comingUpWindow();
+
   // The scriptable CLIs run concurrently; docs are sequential inside their fetcher.
-  const [harvest, github, todoist] = await Promise.all([
+  const [harvest, github, todoist, calendar] = await Promise.all([
     timed("Harvest", () => capture([], () => fetchHarvest(range, config))),
     timed("GitHub", () =>
       capture(
@@ -61,6 +70,8 @@ export async function generateWeek(
       )),
     timed("Todoist", () =>
       capture({ completed: [], incomplete: [] }, () => fetchTodoist(range, config))),
+    timed("Calendar", () =>
+      capture<CalendarEvent[]>([], () => fetchCalendar(ahead, config))),
   ]);
 
   const docs =
@@ -80,6 +91,7 @@ export async function generateWeek(
     github,
     todoist,
     docs,
+    calendar,
     ...(existing?.slack === undefined ? {} : { slack: existing.slack }),
     ...(existing?.reflect === undefined ? {} : { reflect: existing.reflect }),
   };

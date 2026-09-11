@@ -17,9 +17,9 @@ import {
 import type { PluginNavPanelProps } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { rpcContract } from "./server";
-import type { SourceResult, WeekData } from "./review/types.js";
-import { buildDaySlices, weekTotals } from "./review/week.js";
-import { formatDayShort, fromDay } from "./review/dates.js";
+import type { CalendarEvent, SlackThread, SourceResult, Task, WeekData } from "./review/types.js";
+import { buildDaySlices, comingUp, weekTotals } from "./review/week.js";
+import { formatDayShort, fromDay, toDay } from "./review/dates.js";
 import type { Feedback } from "./review/agents.js";
 import type { TimeEntry } from "./review/time-sections.js";
 import type { Theme } from "./review/themes.js";
@@ -386,6 +386,278 @@ function ThemeEntryRow({
 /* -------------------------------------------------------------------------- */
 
 /* -------------------------------------------------------------------------- */
+/* Coming up                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** `7:30a`. Lower case and no padding, so a column of times stays quiet. */
+function clockTime(startsAt: string): string {
+  return new Date(startsAt)
+    .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    .replace(":00", "")
+    .replace(" AM", "a")
+    .replace(" PM", "p");
+}
+
+/** `45m`, `1h`, `1h30`. A duration, not a timestamp. */
+function duration(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h${rest}`;
+}
+
+function EventRow({ event }: { event: CalendarEvent }) {
+  const context = [
+    event.allDay || event.minutes === null ? null : duration(event.minutes),
+    event.attendees > 1 ? `${event.attendees} people` : null,
+    event.response === "needsAction" ? "unanswered" : null,
+    event.response === "tentative" ? "maybe" : null,
+  ].filter((part): part is string => part !== null);
+
+  return (
+    <div className="flex items-baseline gap-2 text-sm">
+      <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        {event.allDay || event.startsAt === undefined ? "all day" : clockTime(event.startsAt)}
+      </span>
+      <span className="min-w-0 flex-1">
+        {event.url === undefined ? (
+          <span className={cn("break-words", event.free ? "text-muted-foreground" : "text-foreground")}>
+            {event.title}
+          </span>
+        ) : (
+          <UrlLink
+            href={event.url}
+            className={cn(
+              "break-words hover:underline",
+              event.free ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
+            {event.title}
+          </UrlLink>
+        )}
+        {context.length === 0 ? null : (
+          <span className="ml-2 text-xs text-muted-foreground">{context.join(" · ")}</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function TaskRow({ task, showDue }: { task: Task; showDue?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-2 text-sm">
+      <span className="w-14 shrink-0 text-right text-xs text-muted-foreground">
+        {showDue === true ? (task.due ?? "") : "task"}
+      </span>
+      <span className="min-w-0 flex-1">
+        {task.url === "" ? (
+          <span className="break-words text-foreground">{task.content}</span>
+        ) : (
+          <UrlLink href={task.url} className="break-words text-foreground hover:underline">
+            {task.content}
+          </UrlLink>
+        )}
+        {task.recurring ? (
+          <span className="ml-2 text-xs text-muted-foreground">recurring</span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * What is still ahead: the calendar and the tasks due, one block per day.
+ *
+ * The rest of the page is a record of a week that has happened. This is the
+ * one part that looks the other way, which is why it says which window it
+ * covers rather than leaving that to be inferred from the week's dates.
+ */
+function ComingUpSection({ week }: { week: WeekData }) {
+  const ahead = useMemo(() => comingUp(week, toDay(new Date())), [week]);
+  const gathered = week.calendar !== undefined;
+
+  return (
+    <section className="mt-6">
+      <h2 className="text-sm font-semibold text-foreground">Coming up</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {formatDayShort(ahead.window.from)} through {formatDayShort(ahead.window.to)}
+        {week.calendar?.ok === false
+          ? ` · the calendar did not gather: ${week.calendar.error ?? "unknown error"}`
+          : ""}
+      </p>
+
+      {!gathered ? (
+        <div className="mt-2">
+          <EmptyState>
+            No calendar in this week's record. Re-gather it to read the days ahead.
+          </EmptyState>
+        </div>
+      ) : ahead.empty ? (
+        <div className="mt-2">
+          <EmptyState>Nothing on the calendar and nothing due. A clear fortnight.</EmptyState>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-3">
+          {ahead.overdue.length === 0 ? null : (
+            <div className="rounded-lg border border-destructive/40 bg-card px-3 py-2">
+              <div className="text-xs font-medium text-destructive">
+                Overdue ({ahead.overdue.length})
+              </div>
+              <div className="mt-1 space-y-1">
+                {ahead.overdue.map((task) => (
+                  <TaskRow key={task.id} task={task} showDue />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ahead.days.map((day) => (
+            <div key={day.day} className="rounded-lg border border-border bg-card px-3 py-2">
+              <div className="text-xs font-medium text-muted-foreground">
+                {formatDayShort(day.day)}
+              </div>
+              <div className="mt-1 space-y-1">
+                {day.events.map((event) => (
+                  <EventRow key={event.id} event={event} />
+                ))}
+                {day.tasks.map((task) => (
+                  <TaskRow key={task.id} task={task} />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {ahead.later.length === 0 ? null : (
+            <p className="text-xs text-muted-foreground">
+              {ahead.later.length} further {ahead.later.length === 1 ? "task is" : "tasks are"} due
+              after next week.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Slack conversations                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The week's Slack threads, grouped by the day each one started.
+ *
+ * Slack is reachable over MCP and nowhere else, so nothing here is fetched by
+ * the gather — an agent step writes it. Which means the empty case is the
+ * common one, and it says so rather than looking like a source that failed.
+ */
+function SlackSection({
+  threads,
+  onCollect,
+  collecting,
+  threadId,
+  onOpenThread,
+}: {
+  threads: SlackThread[];
+  onCollect: () => void;
+  collecting: boolean;
+  threadId: string | undefined;
+  onOpenThread: (id: string) => void;
+}) {
+  const byDay = useMemo(() => {
+    const index = new Map<string, SlackThread[]>();
+    for (const thread of threads) {
+      const existing = index.get(thread.day);
+      if (existing === undefined) index.set(thread.day, [thread]);
+      else existing.push(thread);
+    }
+    return [...index.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [threads]);
+
+  return (
+    <section className="mt-6">
+      <h2 className="flex items-center justify-between gap-2 text-sm font-semibold text-foreground">
+        Conversations
+        <span className="flex items-center gap-2">
+          {threadId === undefined ? null : (
+            <button
+              type="button"
+              onClick={() => onOpenThread(threadId)}
+              className="cursor-pointer text-xs font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Open the thread
+            </button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs font-normal text-muted-foreground"
+            onClick={onCollect}
+            disabled={collecting}
+          >
+            <Icon
+              name={collecting ? "Spinner" : "SideChat"}
+              className={cn("size-3.5", collecting && "animate-spin")}
+            />
+            {threads.length === 0 ? "Collect Slack" : "Collect again"}
+          </Button>
+        </span>
+      </h2>
+
+      {byDay.length === 0 ? (
+        <div className="mt-2">
+          <EmptyState>
+            No Slack conversations collected for this week. Slack is only reachable
+            over MCP, so an agent has to go and read it.
+          </EmptyState>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-3">
+          {byDay.map(([day, dayThreads]) => (
+            <div key={day}>
+              <div className="text-xs font-medium text-muted-foreground">
+                {formatDayShort(day)}
+              </div>
+              <div className="mt-1 space-y-2">
+                {dayThreads.map((thread, index) => (
+                  <div
+                    key={`${thread.channel}-${thread.permalink ?? index}`}
+                    className="rounded-lg border border-border bg-card px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      {thread.permalink === undefined || thread.permalink === "" ? (
+                        <span className="break-words text-sm font-medium text-foreground">
+                          {thread.channel}
+                        </span>
+                      ) : (
+                        <UrlLink
+                          href={thread.permalink}
+                          className="break-words text-sm font-medium text-foreground hover:underline"
+                        >
+                          {thread.channel}
+                        </UrlLink>
+                      )}
+                      {thread.participants === undefined
+                      || thread.participants.length === 0 ? null : (
+                        <span className="text-xs text-muted-foreground">
+                          {thread.participants.join(" · ")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                      {thread.summary}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* Source status                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -397,6 +669,7 @@ function SourceFooter({ week }: { week: WeekData }) {
     ["Docs", week.docs],
     ["Slack", week.slack],
     ["Reflect", week.reflect],
+    ["Calendar", week.calendar],
   ];
   return (
     <div className="mt-8 border-t border-border pt-3 text-xs text-muted-foreground">
@@ -549,6 +822,7 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
   const [reviewing, setReviewing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [gatheringNotes, setGatheringNotes] = useState(false);
+  const [gatheringSlack, setGatheringSlack] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
 
@@ -599,6 +873,20 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setGatheringNotes(false);
+    }
+  };
+
+  const askForSlack = async () => {
+    if (selected === null || gatheringSlack) return;
+    setGatheringSlack(true);
+    try {
+      const { threadId } = await rpc.call("week_gather_slack", { monday: selected });
+      setThreads((current) => ({ ...current, slack: threadId }));
+      navigate.toThread(threadId);
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setGatheringSlack(false);
     }
   };
 
@@ -756,6 +1044,8 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               {week.from} – {week.to}
             </p>
 
+            <ComingUpSection week={week} />
+
             {grouping === null ? null : (
               <>
                 <h2 className="mt-6 flex items-center justify-between gap-2 text-sm font-semibold text-foreground">
@@ -809,6 +1099,14 @@ function WeeklyReviewPage({ subPath }: PluginNavPanelProps) {
               </>
             )}
 
+            <SlackSection
+              threads={week.slack?.data ?? []}
+              onCollect={askForSlack}
+              collecting={gatheringSlack}
+              threadId={threads.slack}
+              onOpenThread={navigate.toThread}
+            />
+
             <SourceFooter week={week} />
           </>
         )}
@@ -845,6 +1143,18 @@ export default definePluginApp((app) => {
       <PromptSection
         kind="notes"
         placeholders="Sent to the notes thread. {{FROM}} and {{TO}} become the week's dates, {{MEETINGS_COMMAND}} the command that lists its meetings, and {{COMMAND}} the one that records the result."
+      />
+    ),
+  });
+
+  app.slots.settingsSection({
+    id: "slack-prompt",
+    title: "Slack prompt",
+    description: "What an agent is asked when it collects the week's Slack conversations.",
+    component: () => (
+      <PromptSection
+        kind="slack"
+        placeholders="Sent to the Slack thread. {{FROM}} and {{TO}} become the week's dates, {{SEARCH_AFTER}} and {{SEARCH_BEFORE}} the exclusive bounds Slack search wants, and {{COMMAND}} the command that records the result."
       />
     ),
   });

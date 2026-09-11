@@ -10,9 +10,18 @@ It does not write the entry. It gathers what happened and gets out of the way.
 Sources split into two kinds, and the page follows.
 
 **The week spine** — everything with a date, one section per day: that day's
-time entries, pull requests opened and merged, reviews, issues filed, Slack
-threads, and daily notes. A pull request opened Monday and merged Thursday
-appears on both days; opened and merged the same day collapses to one row.
+time entries, pull requests opened and merged, reviews, issues filed, and daily
+notes. A pull request opened Monday and merged Thursday appears on both days;
+opened and merged the same day collapses to one row.
+
+**Coming up** — the one part of the page that looks forward: the calendar and
+the tasks due, from tomorrow through the end of next week, grouped by day, with
+anything already overdue at the top. A day with nothing on it gets no heading.
+Today is not in it: today is already on the rest of the page, and a meeting
+that happened this morning is not something to plan around.
+
+**Conversations** — the week's Slack threads, grouped by the day each one
+started.
 
 **Where the time went** — the body of the page, opening with every theme and
 its hours on one list, then each theme in full. Grouped by what the work was
@@ -74,7 +83,8 @@ the text rather than hidden behind it, so a near match reads as what it is.
 | Todoist completed | `td completed list` | no |
 | Todoist incomplete | `td task list` | no — overdue and near-term reach the digest |
 | Reference docs | a script that prints a Google Doc as text | no |
-| Slack | by hand | yes |
+| Calendar | `gws calendar events list`, primary calendar | yes — and forward, not back |
+| Slack | agent step, over MCP | yes |
 | Daily notes | agent step, over MCP | yes |
 
 ## Two kinds of state, kept apart
@@ -98,8 +108,10 @@ bb weekly-review source remove-doc "Annual goals"
 where an agent can read it without going through this plugin.
 
 **Settings — paths only.** `bb plugin config weekly-review` holds where `gh`,
-`hrvst`, `td`, and the Google Doc script are, plus where weeks are written. A
-path is not a fact about anyone, so those are safe as declarative settings.
+`hrvst`, `td`, `gws`, and the Google Doc script are, plus where weeks are
+written. A path is not a fact about anyone, so those are safe as declarative
+settings. The calendar needs no configuration beyond the path: it reads
+`primary`, which identifies nobody.
 
 ## The entry, and feedback on it
 
@@ -139,14 +151,47 @@ bb weekly-review entry <monday>                          # what the agent will r
 bb weekly-review feedback <monday> --file <path-to-json>  # how it records the result
 ```
 
+## Coming up
+
+The calendar is read through `gws` on the primary calendar, with `singleEvents`
+set so a recurring meeting arrives as the instances it actually has.
+
+Its window is measured from today rather than from the week being reviewed,
+and runs from tomorrow through the end of next week. The review range can point
+at a week that has already finished — running it on a Saturday resolves to the
+Monday–Friday just past — and nothing about that week says what is ahead.
+
+Two things are dropped, both because a live payload contains them and neither
+is a commitment. Google files working-location markers as events, so a plain
+read of a fortnight returns a "Home" all-day row per working day. And an event
+you have declined is still returned. Events marked "free" are kept and shown
+more quietly: a focus block is real time, even though it is not a meeting.
+
+Tasks come from the Todoist incomplete list already gathered for the digest.
+Anything overdue leads the section; anything due inside the window sits on its
+own day, never nudged onto a day it is not due on; anything due after next week
+is counted in a line rather than listed. The no-due-date pile stays out — it is
+a backlog, not a claim on next week. A recurring task due today or earlier is
+spared the overdue block, and is today's business rather than next week's, so
+it is not here either.
+
 ## Slack
 
-Slack is reachable over MCP rather than from a script and has no gathering step
-yet. Drop `slack.json` into the week's directory by hand and it will be read:
+Slack is reachable over MCP rather than from a script, so no fetcher can read
+it. **Collect Slack** sends an agent, which finds the threads you sent a
+message in or were mentioned in, reads each one, and records them with
+`bb weekly-review slack`.
+
+One entry per thread rather than per message, and a thread carried on across
+several days belongs to the day it started, so it appears on the page once. The
+`summary` is the one piece of judgment in the section — what the conversation
+was about and what came of it — which is why it belongs to an agent and not to
+a rule. What it cannot read it leaves out and says so; an invented summary is
+worse than a gap.
 
 ```json
-[{ "day": "2026-08-31", "channel": "standup",
-   "summary": "…", "permalink": "https://…" }]
+[{ "day": "2026-08-31", "channel": "#standup",
+   "participants": ["Octocat"], "summary": "…", "permalink": "https://…" }]
 ```
 
 ## CLI
@@ -158,9 +203,10 @@ bb weekly-review path [<monday>]
 bb weekly-review digest <monday>
 bb weekly-review meetings <monday>
 bb weekly-review notes <monday> --file <path-to-json>
+bb weekly-review slack <monday> --file <path-to-json>
 bb weekly-review entry <monday>
 bb weekly-review feedback <monday> --file <path-to-json>
-bb weekly-review prompt [notes|feedback] [reset]
+bb weekly-review prompt [notes|slack|feedback] [reset]
 bb weekly-review source list | set <key> <value> | add-doc <id> <label> | remove-doc <id|label>
 ```
 
@@ -191,8 +237,13 @@ personally identifying — so they go in the database instead.
 ```sh
 npm install
 npx tsc --noEmit
+npm test
 bb plugin build . && bb plugin reload weekly-review
 ```
+
+The suites cover the parts that are pure: the calendar parser against the
+shapes a live payload actually contains, the coming-up grouping, and each
+agent prompt against the placeholders its caller substitutes.
 
 `review/` holds the logic and is deliberately free of BB: pure date and
 bucketing functions, one fetcher per source that shells out to a CLI, the
