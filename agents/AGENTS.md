@@ -2,6 +2,13 @@
 
 - Whenever you prepare a PR description, PR comment, issue body, or issue comment on my behalf, first write the content to a markdown file in `~/projects/drafts/` so I can easily access and edit it before anything is posted. Don't post to GitHub until I've confirmed. Once the GitHub operation succeeds, delete the draft file from `~/projects/drafts/`.
   - Pull requests should be prefixed with `pull-request-`, issues with `issue-`, and replies with `reply-`. Each should then have a stable descriptive suffix, likely the branch name. If the PR or issue already exists, then include the number immediately after the prefix.
+- Avoid em dashes in drafted text, except when preserving a verbatim quote.
+- When synthesizing bullet points from a source, include the supporting verbatim quote beneath each bullet, with a speaker and timestamp/locator when available.
+- Don't cite figures from search-result summaries. Read the underlying source and confirm the figure there first, or leave it out.
+- When citing numbers from a source document, give the page number and link to the source with a page anchor (`<url>#page=NN`). Check that the PDF page index matches the printed page number. For PDFs viewed in Google Drive, which ignores page anchors, give the page number as text.
+- Describe the current system on its own terms. Do not document prior-state behavior unless I explicitly ask for it.
+- Mannered prose substitutes metaphor and flourish for direct statement. Instead of "a parameter worth varying," the mannered writer produces "a dial worth turning." Instead of "this point still matters," they write "this point earns its keep." The phrases exist to display the writer, not to convey the idea, and readers can tell. That is why mannered prose irritates: it makes the reader work harder so the writer can perform. It is also imprecise. Metaphors drag in connotations the writer did not choose and cannot control. The fix is to say what you mean. When a literal phrase is available, use it.
+- Use approachable English without jargon and without assumed contextual references.
 
 ## Pull Requests
 
@@ -22,16 +29,6 @@
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
 - Do not commit brainstorming or design-spec documents; leave them available for review.
 - In starting work on a new pull request in a new work tree, please draft the pull request description at the end of the initial body of work. This will give me a summary to read without having to explicitly ask for you to draft the pull request description.
-
-## Writing
-
-- Avoid em dashes in drafted text, except when preserving a verbatim quote.
-- When synthesizing bullet points from a source, include the supporting verbatim quote beneath each bullet, with a speaker and timestamp/locator when available.
-- Don't cite figures from search-result summaries. Read the underlying source and confirm the figure there first, or leave it out.
-- When citing numbers from a source document, give the page number and link to the source with a page anchor (`<url>#page=NN`). Check that the PDF page index matches the printed page number. For PDFs viewed in Google Drive, which ignores page anchors, give the page number as text.
-- Describe the current system on its own terms. Do not document prior-state behavior unless I explicitly ask for it.
-- Mannered prose substitutes metaphor and flourish for direct statement. Instead of "a parameter worth varying," the mannered writer produces "a dial worth turning." Instead of "this point still matters," they write "this point earns its keep." The phrases exist to display the writer, not to convey the idea, and readers can tell. That is why mannered prose irritates: it makes the reader work harder so the writer can perform. It is also imprecise. Metaphors drag in connotations the writer did not choose and cannot control. The fix is to say what you mean. When a literal phrase is available, use it.
-- Use approachable English without jargon and without assumed contextual references.
 
 ## Working style
 
