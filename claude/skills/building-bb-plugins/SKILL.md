@@ -1,12 +1,12 @@
 ---
 name: building-bb-plugins
-description: Use when writing, modifying, or reviewing a bb plugin in ~/.dotfiles/bb/plugins/ — scaffolding a new one, adding a panel, composer action, thread-header action, form, or RPC method, or spawning threads from a plugin. Carries Daniel's house preferences that the bb-plugin-authoring skill does not cover.
+description: Use when writing, modifying, or reviewing a bb plugin in ~/projects/bb-plugins/ — scaffolding a new one, adding a panel, composer action, thread-header action, form, or RPC method, or spawning threads from a plugin. Carries Daniel's house preferences that the bb-plugin-authoring skill does not cover.
 ---
 
 # Building bb plugins
 
 Read `bb-plugin-authoring` for the API surface. This is what that skill does not
-tell you: the preferences for plugins in `~/.dotfiles/bb/plugins/`, each one
+tell you: the preferences for plugins in `~/projects/bb-plugins/`, each one
 learned the hard way.
 
 ## Reuse BB's own components
@@ -56,7 +56,7 @@ handler too: what the frontend chooses to draw is not an authorization decision.
 
 ## Structure
 
-- Canonical source lives in `~/.dotfiles/bb/plugins/`, activated with a path
+- Canonical source lives in `~/projects/bb-plugins/`, activated with a path
   install (`npm install && bb plugin install . --yes`). `npm install` is required
   because `app.tsx` is compiled at install time; `server.ts` loads as TypeScript
   with no build step.
@@ -125,7 +125,7 @@ curl -s -X POST -H "content-type: application/json" -H "origin: $BASE" \
 
 ## This repository is public
 
-`~/.dotfiles` is `danielbachhuber/dotfiles`, a public repository. No committed
+`~/projects/bb-plugins` is `danielbachhuber/bb-plugins`, a public repository. No committed
 file may contain a credential, a real private repository or project name, or
 content copied out of a thread. Test fixtures use invented names
 (`acme-widgets`, `octocat`). Nothing under `~/.bb` is ever committed.

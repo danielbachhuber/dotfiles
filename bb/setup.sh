@@ -5,6 +5,9 @@
 # bb keeps its settings in ~/.bb/bb.db rather than in files, so there is
 # nothing to symlink: this script replays the configuration through the CLI.
 # See README.md for what must never be committed here.
+#
+# The first-party plugins live in danielbachhuber/bb-plugins and are installed
+# by that repository's own setup.sh.
 
 set -euo pipefail
 
@@ -14,44 +17,6 @@ if ! command -v bb >/dev/null 2>&1; then
   echo "bb is not on PATH. Install bb first: https://getbb.app" >&2
   exit 1
 fi
-
-# --- Skills -----------------------------------------------------------------
-# BB reads user skills from each provider's own directory (~/.claude/skills for
-# claude-code, ~/.codex/skills/.system for codex, ~/.hermes/skills for
-# acp-hermes-agent), not from ~/.bb/skills.
-#
-# building-bb-plugins is about authoring a plugin and lives in ../claude/skills/
-# with every other skill. improve-bb is about this directory specifically — the
-# plugins, their conventions, and how they have broken — so it is kept beside
-# them and linked into the provider directory here.
-mkdir -p "$HOME/.claude/skills"
-for skill in "$DIR"/skills/*/; do
-  [ -d "$skill" ] || continue
-  ln -sfn "${skill%/}" "$HOME/.claude/skills/$(basename "$skill")"
-  echo "linked skill $(basename "$skill")"
-done
-
-# --- Plugins -----------------------------------------------------------------
-# A path install builds against dependencies that are already on disk, so each
-# plugin needs its own npm install before bb can build its bundles.
-installed="$(bb plugin list --json 2>/dev/null || echo '[]')"
-
-for plugin in "$DIR"/plugins/*/; do
-  [ -f "$plugin/package.json" ] || continue
-  # plugins/ also holds shared libraries the plugins depend on. A bb plugin is
-  # the thing with a "bb" manifest block; anything else is not installable.
-  jq -e '.bb | type == "object"' "$plugin/package.json" >/dev/null 2>&1 || continue
-  id="$(basename "$plugin")"
-  id="${id#bb-plugin-}"
-
-  if printf '%s' "$installed" | grep -q "\"$id\""; then
-    echo "==> $id (already installed, skipping)"
-    continue
-  fi
-
-  echo "==> $id"
-  ( cd "$plugin" && npm install --silent && bb plugin install . --yes )
-done
 
 # --- Automations -------------------------------------------------------------
 # Automations are rows in bb.db like everything else, so they are reproduced

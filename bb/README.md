@@ -30,10 +30,6 @@ registrations are all rows in that database, next to the credentials above.
 The versionable form of that configuration is therefore `setup.sh`, which
 reproduces it through the `bb` CLI on a new machine:
 
-- `plugins/` — first-party plugins, installed from these directories with
-  `bb plugin install .` so bb loads them via a `path:` source.
-- Plugin-building preferences, as a skill under `../claude/skills/` (BB reads
-  user skills per provider, not from `~/.bb/skills`).
 - Settings → General and keyboard overrides, applied as `bb settings` calls.
   Nothing is customized today; add a line to `setup.sh` when that changes.
 - `automations/` — script bodies for scheduled work, registered by `setup.sh`.
@@ -61,30 +57,19 @@ noted earlier.
 ## Keeping a checkout in sync
 
 `setup.sh` builds this configuration on a machine that does not have it and
-skips everything already present, so a `git pull` that changes a plugin or an
-automation leaves the running copy behind. `sync.sh` covers that case.
+skips everything already present, so a `git pull` that changes an automation
+leaves the running copy behind. `sync.sh` covers that case.
 
-The two kinds of artifact go stale in opposite directions. Plugins are
-installed from a `path:` source pointing at `plugins/<name>`, so a pull changes
-the source in place and what falls behind is the build in `dist/`. Automations
-are snapshotted into `~/.bb/plugins/automations/scripts/`, so a pull changes
-the source and the snapshot keeps running the old body without saying so. That
-second one is not hypothetical: the Dependabot sweep ran a two-commit-old
-script for weeks, and the version in this repository had meanwhile lost a
-function it still called. Skills need nothing, being symlinks.
+Automations are snapshotted into `~/.bb/plugins/automations/scripts/`, so a
+pull changes the source here and the snapshot keeps running the old body
+without saying so. That is not hypothetical: the Dependabot sweep ran a
+two-commit-old script for weeks, and the version in this repository had
+meanwhile lost a function it still called.
 
 ```sh
 bb/sync.sh --check   # report what drifted, change nothing
 bb/sync.sh           # report it and apply it
 ```
-
-A stale plugin is rebuilt in the order that actually works — `npm install`,
-`harvest:sync` where it exists, `tsc --noEmit`, `bb plugin build`,
-`bb plugin reload` — and a plugin that fails to typecheck is neither built nor
-reloaded, so a bad pull cannot take a working panel down. Staleness counts a
-plugin's `file:` dependencies too, read out of its `package.json`: an edit to
-`gh-shared` correctly rebuilds all three sweeps, and nothing has to remember
-which three those are.
 
 A stale automation is re-deployed with pause, update, resume. The update
 re-passes the interpreter, timeout, and environment read back out of bb rather
@@ -235,7 +220,7 @@ machine. Audited 2026-08-27.
 
 | Configuration | Reproduced by `setup.sh` |
 | --- | --- |
-| First-party plugins in `plugins/` | Yes, installed from a `path:` source |
+| First-party plugins | Elsewhere: `danielbachhuber/bb-plugins`, which has its own `setup.sh` |
 | Automations in `automations/` | Yes, one per entry in `BB_DEPENDABOT_SWEEPS` |
 | Which builtin plugins are disabled | No, see below |
 | Plugin settings | No, see below |
@@ -275,28 +260,23 @@ want to pin them to something else.
 ./setup.sh
 ```
 
-It is idempotent: an already-installed plugin is skipped, and an automation
-whose name is already registered against the project is left alone. Directories
-under `plugins/` without a `bb` manifest block are shared libraries, not
-plugins, and are passed over.
+It is idempotent: an automation whose name is already registered against the
+project is left alone.
 
 Re-running it does not pick up an edit to a script under `automations/`, because
 bb runs its own snapshot copy. Refresh those with the paused update above.
 
 ## Building plugins
 
-House preferences for the plugins here — reuse BB's own components rather than
-hand-rolling a composer or picker, pin the provider for spawned threads, where
-logic goes relative to vendored shadcn source, the testing-harness gotchas, and
-how to verify against a running server — live in a skill, so that an agent asked
-to build a plugin actually receives them:
+The plugins themselves are in `danielbachhuber/bb-plugins`, which has its own
+`setup.sh` and `sync.sh`. House preferences for writing one — reuse BB's own
+components rather than hand-rolling a composer or picker, pin the provider for
+spawned threads, where logic goes relative to vendored shadcn source, the
+testing-harness gotchas, and how to verify against a running server — live in
+`../claude/skills/building-bb-plugins/SKILL.md`, so that an agent asked to
+build a plugin actually receives them.
 
-```
-../claude/skills/building-bb-plugins/SKILL.md
-```
-
-It sits under `claude/` rather than here because BB reads user skills from each
+That skill sits under `claude/` because BB reads user skills from each
 provider's own directory — `~/.claude/skills` for claude-code,
 `~/.codex/skills/.system` for codex, `~/.hermes/skills` for acp-hermes-agent.
-`~/.bb/skills` is not a scanned directory. Symlink it into `~/.claude/skills`
-the way the other skills in this repository are.
+`~/.bb/skills` is not a scanned directory.
