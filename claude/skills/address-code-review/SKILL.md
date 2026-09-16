@@ -89,13 +89,24 @@ Push once, after the last commit:
 git push origin <headRef>
 ```
 
-Then reply per comment. **A comment addressed by a commit gets the SHA and nothing else:**
+Then reply per comment. **A comment addressed by a commit gets the full 40-character SHA and nothing else:**
 
 ```bash
-gh api repos/<owner>/<repo>/pulls/<n>/comments/<comment-id>/replies -f body='b2de47ae27' --jq '.html_url'
+git rev-parse HEAD   # read the SHA back; never retype it from earlier output
+gh api repos/<owner>/<repo>/pulls/<n>/comments/<comment-id>/replies \
+  -f body='b2de47ae27f19c3a8d4e5b6079f1a2c3d4e5f607' --jq '.html_url'
 ```
 
 No "Fixed in", no summary. The SHA links to the commit, and the commit message carries the explanation.
+
+Copy the SHA from `git rev-parse`, not from a `git commit` or `git push` line you read a moment ago. A retyped or abbreviated SHA with one character wrong is one GitHub cannot resolve, and it renders as plain text — which looks exactly like a reply posted before the push, but isn't. Confirm the link resolved:
+
+```bash
+gh api repos/<owner>/<repo>/pulls/comments/<reply-id> \
+  -H 'Accept: application/vnd.github.html+json' --jq '.body_html'
+```
+
+`<a class="commit-link" ...>` means it linked. A bare `<p>` with the SHA as text means it did not; `PATCH` the same endpoint with the correct SHA.
 
 Prose replies (questions, pushback, out-of-scope) are different: write them to `~/projects/drafts/pr-<n>-review-replies.md` first, show them in chat, and post only after the user confirms. Delete the draft once posted.
 
@@ -112,6 +123,7 @@ Push before replying, always. A reply posted before the push names a SHA the rem
 | Final message shows a diff but not the comment | Both belong in the same message, quote first |
 | All diffs in one message | One comment per message, wait between each |
 | Reply before push | Push first, so the SHA resolves |
+| SHA retyped from memory or abbreviated | Read it back with `git rev-parse HEAD`, post all 40 characters |
 | Prose around the SHA | Bare SHA only for a commit-addressed comment |
 | Top-level PR comment | Reply in the thread via `/comments/<id>/replies` |
 | Commit before approval | Show the diff, wait for a yes |
