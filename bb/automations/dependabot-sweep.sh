@@ -88,9 +88,10 @@ open_prs="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state open 
 # --- What already has a thread -----------------------------------------------
 #
 # bb itself is the record of which PRs have been picked up, so there is no state
-# file to keep in sync. Archived threads count: a PR that was reviewed and put
-# away must not come back on the next sweep. Hidden threads count too, in case
-# one was spawned by something other than this script.
+# file to keep in sync. Only a thread still on the board counts: archiving is
+# how a PR gets set aside for later, so an archived thread means nobody is
+# reviewing that bump and the sweep should offer it again. Hidden threads count,
+# in case one was spawned by something other than this script.
 #
 # The match runs against `owner/name#number`, which the spawn prompt opens with
 # so that bb captures it in the thread's fallback title. Deliberately not the
@@ -104,7 +105,6 @@ open_prs="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state open 
 all_threads="$("$BB" thread list --project "$PROJECT" --include-hidden --json \
   | jq -r '.[] | [.id, .status, (.archivedAt | tostring),
                   ((.title // "") + " " + (.titleFallback // ""))] | @tsv' || true)"
-existing="$(printf '%s\n' "$all_threads" | cut -f4)"
 
 # The PR number the thread is about, or nothing if it is not one of ours.
 thread_pr_number() {
@@ -115,6 +115,36 @@ thread_pr_number() {
       ;;
   esac
 }
+
+# The pull requests that still have a thread speaking for them.
+#
+# An archived thread does not qualify, whether it finished its review, errored
+# out, or was cleared off the board unread. Every one of those means the same
+# thing for an *open* pull request: nothing is speaking for it now. Counting
+# them stranded fourteen open bumps, some for three weeks, and each sweep
+# reported the silence as a clean run.
+#
+# Merged pull requests never reach this loop, so the archive phase below is not
+# undone by the change: a thread archived for a merge has no open PR to respawn
+# against.
+#
+# A PR with both an archived thread and a live one stays handled: the live
+# thread is what puts its number in this list.
+handled=""
+seen=""
+while IFS=$'\t' read -r id status archived_at text; do
+  [ -z "$id" ] && continue
+  number="$(thread_pr_number "$text")"
+  [ -z "$number" ] && continue
+
+  if [ "$archived_at" != "null" ]; then
+    seen="${seen}${number}
+"
+    continue
+  fi
+  handled="${handled}${number}
+"
+done < <(printf '%s\n' "$all_threads")
 
 # --- Spawn -------------------------------------------------------------------
 
@@ -165,7 +195,18 @@ ensure_pr_worktree() {
   local number="$1" head="$2"
   local dir="${WORKTREE_ROOT}/pr-${number}"
 
+  # A surviving checkout is not necessarily the code under review. Dependabot
+  # force-pushes a branch to rebase it or to widen a bump, so a directory left
+  # over from an earlier sweep can sit several versions behind the pull request
+  # it is named after, and the thread would review the wrong commit without any
+  # sign that it had. Catch it up, unless the review left work behind.
   if [ -d "$dir" ]; then
+    if [ -n "$("$GIT" -C "$dir" status --porcelain 2>/dev/null)" ]; then
+      echo "Left the checkout for #${number} at its current commit: it has uncommitted changes." >&2
+    elif "$GIT" -C "$WORKSPACE" fetch --quiet origin \
+           "+refs/heads/${head}:refs/remotes/origin/${head}" >/dev/null 2>&1; then
+      "$GIT" -C "$dir" reset --quiet --hard "origin/${head}" >/dev/null 2>&1 || true
+    fi
     printf '%s' "$dir"
     return 0
   fi
@@ -188,7 +229,7 @@ skipped_for_cap=0
 while IFS=$'\t' read -r number title head; do
   [ -z "$number" ] && continue
 
-  if printf '%s\n' "$existing" | grep -qF "${REPO}#${number}"; then
+  if printf '%s\n' "$handled" | grep -qx "$number"; then
     continue
   fi
 
@@ -199,6 +240,12 @@ while IFS=$'\t' read -r number title head; do
 
   url="https://github.com/${REPO}/pull/${number}"
   package="$(dependabot_package "$title")"
+
+  # Say so when this is a second attempt, or the run log reads as a first pass
+  # over a PR that has been open for a week.
+  if printf '%s\n' "$seen" | grep -qx "$number"; then
+    echo "Picking #${number} up again: its earlier thread was archived while the pull request stayed open."
+  fi
 
   workspace="$(ensure_pr_worktree "$number" "$head")"
   if [ -z "$workspace" ]; then

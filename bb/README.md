@@ -109,20 +109,29 @@ spawns one bb thread per open Dependabot pull request, each pointed at the
 automation, so the sweep itself spends no model tokens; only the threads it
 creates do.
 
-Threads are titled after the package rather than the bot, behind a `Dep: `
-prefix that keeps them sortable in the sidebar: `Dep: jose #5775`,
-`Dep: @testing-library/user-event #5776`, `Dep: sentry group #5580`.
-Dependabot writes two
-title shapes, a single bump and a grouped one, and the script reduces both to
-the part worth reading in a sidebar. A shape it does not recognize keeps its
-title verbatim.
+Threads are titled after the package rather than the bot, behind a `Dep #n: `
+prefix that keeps them sortable in the sidebar: `Dep #5775: jose`,
+`Dep #5776: @testing-library/user-event`, `Dep #5580: sentry group`. Dependabot
+writes two title shapes, a single bump and a grouped one, and the script
+reduces both to the part worth reading in a sidebar. A shape it does not
+recognize keeps its title verbatim.
 
-A PR gets a thread once. The script asks bb which threads already exist, active
-and archived alike, so a review you finished and archived does not come back at
-2pm. There is no state file to fall out of sync. The match runs on
-`owner/name#number`, which the prompt opens with so bb captures it in the
-thread's fallback title — not on the display title, since a bare `#5775` would
-also match any unrelated thread mentioning that number.
+An open PR keeps a thread until you deal with it. The script asks bb which
+threads already exist, and only a thread still on the board counts: archiving is
+how a bump gets set aside for later, so an archived thread against a still-open
+PR brings it back on the next sweep. There is no state file to fall out of sync.
+The match runs on `owner/name#number`, which the prompt opens with so bb
+captures it in the thread's fallback title — not on the display title, since a
+bare `#5775` would also match any unrelated thread mentioning that number.
+
+Counting archived threads as done is what the sweep used to do, and it fails
+quietly in one direction only: the PR stays open, nothing is reviewing it, and
+every run reports a clean sweep. It stranded fourteen open bumps, the oldest by
+three weeks, until a run that should have found fourteen spawned three. A thread
+that errored out, finished, or was cleared off the board unread all mean the
+same thing for a PR that is still open, so none of them suppress a new one.
+Merged PRs never reach this check, so the archive-on-merge pass below is not
+undone by it.
 
 At most five threads are created per run, so a backlog arrives over several
 sweeps instead of all at once. When the cap bites, the run says how many PRs it
@@ -140,6 +149,12 @@ request. The sweep therefore runs `git worktree add -B <head>` itself and hands
 the thread an unmanaged workspace. If that fails, because the branch is already
 checked out somewhere else or the fetch does not land, the thread still spawns
 against the shared workspace and the run says so on stderr.
+
+A checkout that survives from an earlier sweep is brought up to the PR head
+before it is reused. Dependabot force-pushes a branch to rebase it or to widen
+a bump, so a directory named after a PR can sit several versions behind the code
+under review, with nothing on screen to say so. A clean checkout is fetched and
+hard-reset; one with uncommitted changes is reported and left as it is.
 
 The same pass removes a checkout once its PR is no longer open and no
 unarchived thread still points at it, so an agent reading the code while the
