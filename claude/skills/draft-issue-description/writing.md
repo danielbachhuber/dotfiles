@@ -1,23 +1,7 @@
-# Task
+# Writing the issue
 
-Write a GitHub issue body from the brief below, and save it to the output path named at the
-end of this task.
-
-The brief is your primary source, and it should be complete enough to write from directly.
-You may read files in the repository to confirm a path or check a surrounding function. Do
-that sparingly and report it: needing to go looking means the brief had a gap.
-
-What you cannot see is the conversation that produced this issue. The trigger, the
-reasoning, and the completion criteria exist only in the brief. Do not invent them.
-
-## What to do
-
-1. Write the issue body as markdown to the output path. That file is the deliverable.
-2. Return JSON matching the supplied schema.
-
-**Write exactly one file, at the output path.** The repository is writable in this sandbox
-so that you can reach the drafts directory. Do not create, edit, or delete anything else,
-and do not run `git` commands that change state.
+Follow the house style in the `## Writing` and `## GitHub Issues` sections of
+`~/.claude/CLAUDE.md`. This repo documents no issue format, so the format lives here.
 
 ## The format
 
@@ -35,8 +19,8 @@ The shape, in order:
 3. **`**Done is:**`** followed by a blank line and a short bulleted list of concrete,
    verifiable completion criteria.
 
-Every code reference is a link, using the SHA-pinned permalinks the brief supplies, inline on
-the symbol or path rather than as a footnote. Link only what the brief gives you a permalink
+Every code reference is a link, using the SHA-pinned permalinks from `permalink.sh`, inline
+on the symbol or path rather than as a footnote. Link only what you generated a permalink
 for. A name with no permalink stays a plain backticked name: pointing it at a file that does
 not contain it is worse than not linking it.
 
@@ -65,24 +49,20 @@ for the answer being no.
 State each thing once, in as few words as carry it. A sentence needing three subordinate
 clauses is two sentences.
 
-Where the brief frames something as a hypothesis, keep it a hypothesis. Do not promote "it
+Where something is a hypothesis, keep it a hypothesis. Do not promote "it
 looks like X" into "X". An issue that overstates its own confidence sends someone down the
 wrong path.
 
-Write completion criteria from the brief's `Done is` slot. Tighten the wording; do not add
-criteria the author did not set, and do not drop one. Where the work is an investigation, a
+Write completion criteria from your `Done is` answers. Where the work is an investigation, a
 recorded answer is a legitimate criterion. Criteria are about code and answers: never make
 updating a tracking document or inventory a criterion.
 
 Give a figure the provenance it needs to be believed, in one clause. Never mention a
-correction to an earlier analysis. Brief bullets prefixed `(background)` stay out of the
-body.
+correction to an earlier analysis.
 
-Every fact under `Must appear` has to be in the body. Never move one to `unused`.
-
-Claim only what the brief supports, or what you confirmed by reading the code.
+Claim only what you confirmed by reading the code or what the trigger states.
 
 ## Output
 
 The file holds raw markdown, ready to post: no wrapping code fence, no preamble, no title
-line, no closing summary. The title goes in the JSON, not the file.
+line, no closing summary. The title goes to `gh issue create`, not the file.

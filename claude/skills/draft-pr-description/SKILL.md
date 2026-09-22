@@ -6,18 +6,14 @@ argument-hint: [pr-number-or-branch]
 
 # Draft PR description
 
-`codex` writes the prose. Your job is the brief.
-
-`codex` runs in the repo and can read it, so it can check a path or a surrounding function
-if it has to. It cannot see this conversation. Every decision, rejected alternative,
-measurement and caveat reaches the description only through the brief you hand it, and a
-thin brief produces a description that could sit on any pull request. Give `codex` enough
-direction that it never needs to go exploring: what it finds by reading code is the diff
-restated, which is the one thing a reviewer can already see for themselves.
+You write the description from what this session knows. The diff is the one thing a
+reviewer can already read for themselves, so a description that restates it adds nothing.
+The value is in what the diff cannot show: every decision, rejected alternative,
+measurement and caveat from this session, and the prior state the change replaces.
 
 ## 1. Gather
 
-Collect before you write a word of the brief. Run these from the repo.
+Collect before you write a word. Run these from the repo.
 
 ```bash
 git diff main...HEAD
@@ -28,7 +24,7 @@ For a PR that already exists, take what is live so the draft starts from the cur
 
 ```bash
 gh pr view <n> --json title,body,isDraft,files --jq '{title, isDraft, files: [.files[].path]}'
-gh pr view <n> --json body --jq .body > ~/projects/drafts/pr-<n>-current.md
+gh pr view <n> --json body --jq .body > ~/projects/drafts/pull-request-<n>-current.md
 ```
 
 Then dig for the prior state, which is the part you cannot reconstruct from the diff:
@@ -38,127 +34,63 @@ git log --oneline --follow -12 -- <path>       # what built this file, with PR n
 git log --oneline -S '<removed-string>' -- <path>   # when the behaviour being changed arrived
 ```
 
-## 2. Write the brief
+## 2. Find the repo's format
 
-Copy the template and fill every slot:
+A repo that documents its own PR format outranks anything this skill would invent. Look for
+a format document and a template:
 
 ```bash
-cp ~/.claude/skills/draft-pr-description/brief-template.md ~/projects/drafts/brief-<slug>.md
+ls docs/contributing/writing-pr-descriptions.md docs/contributing/pull-requests.md CONTRIBUTING.md 2>/dev/null
+ls .github/pull_request_template.md .github/PULL_REQUEST_TEMPLATE.md docs/pull_request_template.md 2>/dev/null
 ```
 
-The slots are `What changed`, `Why now`, `Prior state`, `Measurements`, `Decisions`,
-`Verified, not assumed`, `Out of scope`, `Testing`, `Must appear`, `Uncertainties`. A slot
-with nothing real in it gets `None.` rather than a guess.
+Read the first format document and the first template found. If the repo has its own
+PR-description skill, load it too. If you find nothing in a repo you know documents its
+format, look for where it moved before inventing a structure.
 
-`Must appear` is the lever for a second pass. `codex` weighs relevance and will drop a
-figure it judges redundant, reporting it under `unused`. When the author wants that figure
-back, list it under `Must appear` and re-run rather than editing the body by hand: the
-brief stays the source of truth, and the next run does not lose the fix.
+## 3. Work through the checklist
 
-Three slots carry most of the value, and all three come from the conversation rather than
-the diff. Write them from what this session actually did:
+Read `checklist.md` in this skill's directory and answer each question. You do not need to
+write the answers to a file. Three carry most of the value, and all three come from the
+conversation rather than the diff:
 
-| Slot | What belongs there |
+| Question | What belongs there |
 | --- | --- |
 | `Decisions` | Each choice, the alternative genuinely considered, why it lost. Including the ones you talked yourself out of. |
 | `Verified, not assumed` | Everything checked with a command or an API call rather than reasoned about, and the check itself. Branch protection, downstream consumers, whether a flag survives, whether a skipped job blocks a merge. |
 | `Uncertainties` | Estimated versus measured, what a reviewer should doubt, figures that rest on outliers. |
 
-`(background)` marks a brief bullet that must not reach the description at all. Reserve it
-for corrections to your own earlier analysis: a number you got wrong and fixed belongs in
-the brief, never in a pull request body. Method stays publishable otherwise, held to one
-clause by concision rather than banned.
-
 Scan back through the session for corrections. A number you revised, a design you priced
-and rejected, an assumption that turned out wrong: those belong in `Decisions` or
-`Uncertainties`. They are the details a reviewer would otherwise spend an hour
-rediscovering, and they are invisible in the diff.
+and rejected, an assumption that turned out wrong: the design and the assumption belong in
+the description. They are the details a reviewer would otherwise spend an hour
+rediscovering, and they are invisible in the diff. A correction to your own earlier analysis
+does not.
 
-## 3. Run codex
+Where the checklist turns up something you have not measured or checked, go do it now, or
+carry it into the description as an uncertainty.
 
-```bash
-~/.claude/skills/draft-pr-description/build-prompt.sh \
-  ~/projects/drafts/brief-<slug>.md \
-  ~/projects/drafts/pr-<slug>.md \
-  /tmp/pr-description-prompt.md
-```
+## 4. Write the draft
 
-The second argument is where `codex` writes the description. It is baked into the prompt,
-and `codex` reports the path back as `draft_path`, so it must be the path you intend to
-read in step 4.
+Read `writing.md` in this skill's directory, then write the body to
+`~/projects/drafts/pull-request-<slug>.md` (`pull-request-<n>-<slug>.md` for a PR that
+already exists). Settle the title at the same time.
 
-It prints the prompt path and, on stderr, a manifest naming the style guide, the repo's
-format document, and the template it found. **Read the manifest.** If `format doc` says
-`none found` in a repo you know documents its format, the search paths in the script need
-the new location, and `codex` is about to invent a format instead.
+## 5. Fact-check before showing it
 
-```bash
-codex exec - --sandbox workspace-write \
-  -c 'sandbox_workspace_write.writable_roots=["/Users/danielb/projects/drafts"]' \
-  --skip-git-repo-check \
-  --output-schema ~/.claude/skills/draft-pr-description/schema.json \
-  --output-last-message /tmp/pr-description-result.json \
-  < /tmp/pr-description-prompt.md > /tmp/pr-description-run.log 2>&1
-```
+Read the draft back and check it against the code, not against your memory of the session.
 
-**`codex` writes the draft file itself, so the sandbox has to let it.** `--sandbox
-read-only` fails in a way that looks like success: exit 0, a well-formed result JSON, a
-sensible `outline`, and a `gaps` entry saying the write was blocked. No file is created.
-`workspace-write` alone is not enough either, because `~/projects/drafts` sits outside the
-repo and only `writable_roots` reaches it.
-
-Two plain commands, not a pipeline: a worktree-isolated session refuses compound commands
-it cannot verify. Expect up to a couple of minutes. `codex` echoes the prompt to stdout,
-which is why stdout goes to the log. If the result file is missing or `jq` cannot parse
-it, read `/tmp/pr-description-run.log`.
-
-## 4. Fact-check before showing it
-
-The description is already on disk: `codex` wrote it at the path you passed as
-`<draft-out.md>`. The result JSON carries only metadata — `title`, `draft_path`,
-`outline`, `unused`, `gaps` — and **no `body` field**. Never pipe `jq -r .body` into the
-draft path: it truncates the file `codex` just wrote to the single word `null`.
-
-```bash
-jq -r '.title, .draft_path' /tmp/pr-description-result.json
-jq -r 'if (.gaps | length) == 0 then "(no gaps)" else .gaps[] | "- \(.)" end' /tmp/pr-description-result.json
-jq -r 'if (.unused | length) == 0 then "(all used)" else .unused[] | "- \(.)" end' /tmp/pr-description-result.json
-```
-
-Confirm `draft_path` matches the path you asked for and the file is non-trivial
-(`wc -l`) before reading it. A one-line draft means the write was blocked, not that
-`codex` was terse.
-
-Check the body against the code, not only against the brief. The brief can be wrong, and
-`codex` can read the repo and still land a claim slightly off.
-
-- **Invented facts.** Any claim with no line in the brief behind it. This is the failure
-  to hunt for hardest, because it reads as confident.
-- **Dropped caveats.** A number that appears in the body without the qualifier the brief
-  attached to it.
-- **Overclaiming.** "Fixes", "removes", "resolves" where the brief only supports "reduces".
+- **Invented facts.** Any claim you cannot point to a command, a line, or a session
+  decision behind. This is the failure to hunt for hardest, because it reads as confident.
+- **Dropped caveats.** A number that appears without the qualifier it needs.
+- **Overclaiming.** "Fixes", "removes", "resolves" where the evidence only supports
+  "reduces".
 - **Lost structure.** Headings from the repo template, or an expander the format requires.
 - **Claims you can check in under a minute.** Check them. A job name, a `needs:` edge, a
   file path, whether a downstream workflow really is scoped to one branch.
 
-Then decide where the fix goes. The test is not how big the error is. It is whether the
-brief was right:
+## 6. Add the diff links
 
-| What you found | Where the fix goes |
-| --- | --- |
-| Wording, a link repeated four times, a vague noun where the real identifier reads better, a dropped backtick | Edit the draft yourself. The brief was right and the prose slipped. |
-| A wrong or missing fact, an invented or dropped criterion, a hypothesis written as fact, the wrong structure | Fix the brief and re-run. |
-
-Editing the body to paper over a brief defect leaves the brief wrong, so the next run
-reproduces it. That is the one case where a hand edit costs more than a re-run.
-
-`gaps` is the useful half of the output. It names what to go measure before the next run,
-and flags anything `codex` had to read the repo to resolve, which is a brief that needed
-one more line.
-
-## 5. Add the diff links
-
-`codex` names files by path, because the pull request number usually does not exist when the
+The draft names files by path, because the pull request number usually does not exist when the
 body is drafted. Once it does, turn the notable paths into diff-view links so a reviewer
 lands on the hunk rather than the whole file:
 
@@ -169,7 +101,7 @@ lands on the hunk rather than the whole file:
 Link the one or two files that need real review, not every path in the body. Splice them in
 with Edit.
 
-## 6. Lay out before/after media
+## 7. Lay out before/after media
 
 Anything visual, a screenshot or a screencast, goes in a two-column table with `Before` and
 `After` as the headers: one media cell per column, and an optional caption row beneath it.
@@ -188,7 +120,7 @@ nothing needs to be committed to the repo or hosted anywhere:
 
 ```bash
 gh pr create --repo <owner>/<repo> --title "<title>" \
-  --body-file ~/projects/drafts/pr-<slug>.md \
+  --body-file ~/projects/drafts/pull-request-<slug>.md \
   --attach ./before.png --attach ./after.png
 ```
 
@@ -279,48 +211,41 @@ A before video usually means running the same recording twice against one dev st
 with the change and once with it reverted. Revert by rewriting the lines, not by stashing:
 the stash stack is shared across worktrees.
 
-## 7. Show, then apply
+## 8. Show, then apply
 
-Relay the title, the body, the gaps, and anything you flagged. Then wait.
+Relay the title, the body, and anything you flagged. Then wait.
 
 Editing a live PR body is a GitHub write, and it needs its own approval even when the
 description was requested. Re-fetch before applying, in case it was edited meanwhile.
 
 ```bash
-gh pr edit <n> --repo <owner>/<repo> --body-file ~/projects/drafts/pr-<slug>.md
-gh pr create --repo <owner>/<repo> --title "<title>" --body-file ~/projects/drafts/pr-<slug>.md
+gh pr edit <n> --repo <owner>/<repo> --body-file ~/projects/drafts/pull-request-<slug>.md
+gh pr create --repo <owner>/<repo> --title "<title>" --body-file ~/projects/drafts/pull-request-<slug>.md
 ```
 
-Add `--attach` for any media (step 6), and re-read the body afterwards: an appended asset
+Add `--attach` for any media (step 7), and re-read the body afterwards: an appended asset
 means the reference was not substituted and still needs splicing.
 
-Delete the brief and draft files from `~/projects/drafts/` once the GitHub operation
-succeeds.
+Delete the draft from `~/projects/drafts/` once the GitHub operation succeeds.
 
 ## Revising one section
 
 A reviewer asking for more detail in one section does not need a whole regenerated body,
-which would churn prose the author already approved. Fill only the relevant brief slots,
-tell `codex` in the brief title that it is drafting that section alone, and splice the
-result in with Edit.
+which would churn prose the author already approved. Work through only the checklist
+questions that section draws on, write that section alone, and splice it in with Edit.
 
 ## Common mistakes
 
 | Mistake | Fix |
 | --- | --- |
-| Brief describes the diff and nothing else | The diff is the one thing a reviewer can already read. The brief earns its place through `Prior state`, `Decisions`, and `Verified`. |
-| Session decisions left out | The repo is readable; the conversation is not. An alternative you priced and rejected is invisible unless you write it down. |
+| Description restates the diff and nothing else | The diff is the one thing a reviewer can already read. The description earns its place through the prior state, the decisions, and what was verified. |
+| Session decisions left out | The repo is readable later; the conversation is not. An alternative you priced and rejected is lost unless the description records it. |
 | Numbers without provenance | A figure with no method and no caveat comes back as a confident claim the reviewer cannot check. |
-| `codex` exits 0 and the draft is missing or one line | The sandbox blocked the write. `--sandbox workspace-write` plus `writable_roots` covering `~/projects/drafts`; read `gaps`, which says so. |
-| `jq -r .body` into the draft path | The schema has no `body`. `codex` already wrote the file; that pipe overwrites it with `null`. |
-| Skipping the manifest on stderr | Without the repo's format document, `codex` invents a structure and the body arrives in the wrong shape. |
 | Regenerating a whole body to fix one section | Splice one section. Wholesale regeneration rewrites prose the author already signed off. |
-| Fact-checked only against the brief | The brief can be wrong. Re-run the greps behind the load-bearing claims; a confident sentence built on a stale fact is the expensive failure. |
-| Posting because the prose reads well | Fluent and wrong is the expected failure. Check every claim against a brief line. |
-| Verbose brief, verbose description | `codex` mirrors the register it is fed. Write brief bullets as a clause per fact; tightening the brief tightens the output more reliably than asking for brevity in the prompt. |
-| Reciting how a number was measured | Provenance is one clause, not a sentence of sample sizes and API limits. Only a correction to your own earlier analysis is banned outright, with `(background)`. |
-| Hand-patching a fact `codex` dropped | Put it under `Must appear` and re-run. Editing the body leaves the brief wrong, so the next run drops it again. |
-| Filling empty slots with plausible text | `None.` is a valid answer and a useful signal. Invented content in the brief becomes invented content in the description. |
+| Skipping the format lookup | Without the repo's format document, the body arrives in the wrong shape. |
+| Fact-checked from memory | Re-run the greps behind the load-bearing claims. A confident sentence built on a stale fact is the expensive failure. |
+| Posting because the prose reads well | Fluent and wrong is the expected failure. Check every claim against its evidence. |
+| Reciting how a number was measured | Provenance is one clause, not a sentence of sample sizes and API limits. Only a correction to your own earlier analysis is banned outright. |
 | Before/after media as two labelled paragraphs | A two-column `Before` / `After` table. Side by side is the layout that answers the reviewer's actual question. |
 | Bare video URL inside a table cell | It renders as a plain link. `<video src="URL" controls></video>` in the cell, then confirm with a `<video` count against `body_html`. |
 | Trusting `--attach` order to label the assets | Download each asset with the gh token and compare hashes. A swapped before/after argues the opposite of the truth. |

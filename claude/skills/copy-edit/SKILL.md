@@ -6,12 +6,11 @@ argument-hint: [path-to-draft]
 
 # Copy Edit
 
-Send text to `codex` for a clarity pass under the house style rules, show the result as a diff, and
+Make a clarity pass over the text under the house style rules in the `## Writing` section of
+`~/.claude/CLAUDE.md` and the rules in `rules.md`. Edit a copy, show the result as a diff, and
 wait for approval before you overwrite anything.
 
 ## 1. Find the file
-
-`codex` reads a file, so the text must be on disk.
 
 - Path given as an argument: use it.
 - No argument: use the draft this session is already working on, usually in `~/projects/drafts/`.
@@ -25,72 +24,58 @@ wait for approval before you overwrite anything.
 
 ## 2. Choose the scope
 
-**Send only the prose you are responsible for.** Anything you send comes back edited, so a whole
-file goes in only when the whole file is up for editing.
+**Edit only the prose you are responsible for.** A whole file is in scope only when the whole
+file is up for editing.
 
-| Situation | Send |
+| Situation | Edit |
 | --- | --- |
 | A draft you wrote, whole | The file. |
 | A file you edited in part — a doc where you added two sections, an existing page you touched | Only the sections you changed. |
 | A long file where one section is under discussion | Only that section. |
 
-For part of a file, cut the region to a temp file and edit that:
+Copy the scope to a working pair of files: the input stays untouched as the baseline for the
+diff, and you edit the revised copy.
 
 ```bash
+cp "$FILE" /tmp/copy-edit-input.md
 sed -n '40,72p' docs/architecture/authentication.md > /tmp/copy-edit-input.md
 awk '/^## Auth$/,/^## HTTP status codes$/' docs/architecture/orpc.md > /tmp/copy-edit-input.md
 ```
 
-Check the extract before sending it: whole sections, balanced code fences, no half sentence at
+```bash
+cp /tmp/copy-edit-input.md /tmp/copy-edit-revised.md
+```
+
+For part of a file, check the extract: whole sections, balanced code fences, no half sentence at
 either end. Splice the result back with Edit in step 5, not by overwriting the file.
 
 Tell the user which scope you chose and why.
 
-## 3. Build the prompt and run codex
+## 3. Edit
 
-`build-prompt.sh` assembles three parts: the `## Writing` section of `~/.claude/CLAUDE.md`, the
-copy-edit brief, and the text. Run it, then run `codex`.
+Read `rules.md` in this skill's directory, then edit `/tmp/copy-edit-revised.md` with Edit, one
+sentence or paragraph at a time. Never rewrite the file with Write: a regenerated file drifts in
+line breaks and whitespace, and the diff stops showing only the real edits.
 
-```bash
-~/.claude/skills/copy-edit/build-prompt.sh /tmp/copy-edit-input.md
-```
+As you go, keep two lists for step 4:
 
-```bash
-codex exec - --sandbox read-only --skip-git-repo-check \
-  --output-schema ~/.claude/skills/copy-edit/schema.json \
-  --output-last-message /tmp/copy-edit-result.json \
-  < /tmp/copy-edit-prompt.md > /tmp/copy-edit-run.log 2>&1
-```
-
-Two plain commands, not a pipeline: a worktree-isolated session refuses compound commands it cannot
-verify. The sandbox is read-only, so `codex` cannot touch the original. Expect up to a minute.
-`codex` echoes the whole prompt to stdout, which is why stdout goes to the log. If the result file is
-missing or `jq` cannot parse it, read `/tmp/copy-edit-run.log`.
+- **Notes.** The substantive edits: a sharpened sentence, a cut claim, a resolved ambiguity.
+  Skip punctuation fixes and single-word swaps.
+- **Questions.** Anything you could not fix without more information.
 
 ## 4. Show the result
-
-```bash
-jq -r .revised /tmp/copy-edit-result.json > /tmp/copy-edit-revised.md
-```
 
 ```bash
 git diff --no-index --word-diff=plain -- /tmp/copy-edit-input.md /tmp/copy-edit-revised.md
 ```
 
-```bash
-jq -r '.notes[] | "- \(.why)\n  - was: \(.before)\n  - now: \(.after)"' /tmp/copy-edit-result.json
-jq -r 'if (.questions | length) == 0 then "(no questions)" else .questions[] | "- \(.)" end' /tmp/copy-edit-result.json
-```
-
 Use `--word-diff`, not a line diff: one paragraph per line makes a line diff useless for prose.
 
-Relay all three parts to the user: the diff, then the notes, then the questions. Read the diff
-yourself first and call out, by name:
+Relay three parts to the user: the diff, then the notes, then the questions. Keep each note to a
+short before and after, enough to locate the change, plus one sentence on why. Call out, by name:
 
 - Any edit that changes a technical claim.
-- Any dropped qualifier that carried meaning.
-- Any rewrapped paragraph. Reject those; they bury the real edits.
-- Any paragraph you did not intend to send.
+- Any qualifier you cut, and why it was empty.
 
 ## 5. Apply only after approval
 
@@ -110,9 +95,9 @@ that needs its own approval.
 
 | Mistake | Fix |
 | --- | --- |
-| Sending a whole file when you only wrote part of it | Extract the region first. Every paragraph you send comes back rewritten, and prose churn in untouched sections widens the review for no gain. |
-| Accepting the revision because it reads well | `codex` will occasionally cut a qualifier that carried real meaning, or restate a technical claim wrongly. Read the diff. |
+| Editing a whole file when you only wrote part of it | Extract the region first. Prose churn in untouched sections widens the review for no gain. |
+| Accepting your own revision because it reads well | Read the diff as a reviewer would. A cut qualifier or a restated technical claim reads fluently and is still wrong. |
 | Overwriting the original, then showing the diff | Show first. The user may want none of it. |
-| Accepting a rewrapped file | A hard-wrapped file must come back hard wrapped. If every line changed, the edit is unreviewable. Re-run or apply by hand. |
-| Editing a stale copy of a posted body | Re-fetch with `gh` before the run. |
+| Rewrapping a paragraph | A hard-wrapped file stays hard wrapped. If every line changed, the edit is unreviewable. |
+| Editing a stale copy of a posted body | Re-fetch with `gh` before editing. |
 | Losing template structure | Check that the headings from `.github/pull_request_template.md`, or an issue's `**Done is:**` block, survived. |
