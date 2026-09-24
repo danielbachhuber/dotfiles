@@ -284,14 +284,5 @@ bb runs its own snapshot copy. Refresh those with the paused update above.
 ## Building plugins
 
 The plugins themselves are in `danielbachhuber/bb-plugins`, which has its own
-`setup.sh` and `sync.sh`. House preferences for writing one — reuse BB's own
-components rather than hand-rolling a composer or picker, pin the provider for
-spawned threads, where logic goes relative to vendored shadcn source, the
-testing-harness gotchas, and how to verify against a running server — live in
-`../claude/skills/building-bb-plugins/SKILL.md`, so that an agent asked to
-build a plugin actually receives them.
-
-That skill sits under `claude/` because BB reads user skills from each
-provider's own directory — `~/.claude/skills` for claude-code,
-`~/.codex/skills/.system` for codex, `~/.hermes/skills` for acp-hermes-agent.
-`~/.bb/skills` is not a scanned directory.
+`setup.sh` and `sync.sh`. The preferences for writing one are in that
+repository's `AGENTS.md`, which an agent working there reads automatically.
