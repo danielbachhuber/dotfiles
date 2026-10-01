@@ -45,3 +45,5 @@
 ## bb
 
 - When you link a file in a bb thread, such as a draft in `~/projects/drafts/`, the link text can be the filename or a partial path, but the link target must be the absolute path. For example: `[pull-request-my-branch.md](/Users/danielb/projects/drafts/pull-request-my-branch.md)`. Don't use a `~`-relative path, a path relative to the working directory, or a `file://` URL as the target. bb only renders absolute-path links as clickable files.
+  - This applies to every file reference, not only links to drafts. A `file:line` code reference to a file outside the working directory, such as a skill under `~/.claude/skills/`, needs an absolute target: `[writing.md:67](/Users/danielb/.claude/skills/draft-pr-description/writing.md)`, not a bare `writing.md:67`, which bb opens relative to the worktree and fails with a 404.
+  - Image embeds in a draft need absolute paths too. A `./before.png` embed shows as a broken image in the preview. Keep PR media in `~/projects/drafts/<draft-name>-media/` and embed each file by its absolute path.
