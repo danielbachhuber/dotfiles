@@ -79,6 +79,34 @@ if [ -n "${BB_DEPENDABOT_SWEEPS:-}" ]; then
     | jq -r '.[] | [.project, .repo, .workspace] | @tsv')
 fi
 
+# Keep every project's checkout current. Registered against Personal, which
+# exists on every machine, and passed as an inline `exec` rather than a
+# --script-file so edits to the script take effect without a snapshot refresh.
+if bb automation list --project proj_personal --json 2>/dev/null \
+  | jq -e '.[] | select(.name == "Update projects")' >/dev/null; then
+  echo "==> update projects (already registered, skipping)"
+else
+  echo "==> update projects"
+  bb automation create --project proj_personal \
+    --name "Update projects" \
+    --cron "*/15 5-15 * * *" \
+    --timezone "America/Los_Angeles" \
+    --interpreter bash \
+    --timeout 600000 \
+    --script "exec $DIR/automations/update-projects.sh"
+fi
+
+# "Update projects" replaces the bb-plugins-only automation that ran
+# bb-plugins/update.sh.
+while IFS=$'\t' read -r project id; do
+  [ -z "$id" ] && continue
+  echo "==> removing the old Update bb-plugins automation"
+  bb automation delete "$id" --project "$project" --yes >/dev/null
+done < <(for project in $(bb project list --json | jq -r '.[].id'); do
+  bb automation list --project "$project" --json 2>/dev/null \
+    | jq -r --arg p "$project" '.[] | select(.name == "Update bb-plugins") | [$p, .id] | @tsv'
+done)
+
 # --- Settings → General ------------------------------------------------------
 # Every preference lives in bb.db. Add the ones worth carrying between
 # machines here; nothing is customized today. For example:

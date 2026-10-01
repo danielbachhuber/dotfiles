@@ -101,6 +101,29 @@ completed without a run more than once. Pausing first does not reliably prevent
 it, so treat the pause as a precaution rather than a guarantee and check
 `automations runs` afterward.
 
+### Update projects
+
+`automations/update-projects.sh` runs every 15 minutes from 5am to 3pm Pacific
+and keeps each bb project's checkout current. For every project that has a
+checkout on this machine, it fast-forwards the default branch (whatever
+`origin/HEAD` names: `main`, `master`, `trunk`) and then runs the project's sync
+script, `sync.sh` at the root or `bb/sync.sh`, when `sync.sh --check` reports
+drift. A new project is covered as soon as it is added to bb.
+
+It only fast-forwards. A checkout on another branch or with uncommitted changes
+is skipped without comment, so a long-running edit does not make every run
+noisy. A diverged branch or a failed fetch is printed and left alone. A run that
+pulls nothing and syncs nothing prints nothing, which bb records as a silent
+tick. Only a failed sync script fails the run, because three failed runs in a
+row pause the automation for every project.
+
+It is registered against the Personal project, and as an inline
+`exec .../update-projects.sh` rather than with `--script-file`, so an edit to the
+script takes effect on the next run without a snapshot refresh. `sync.sh` does
+not track it for the same reason. It replaces the "Update bb-plugins"
+automation, which ran `update.sh` in `danielbachhuber/bb-plugins`; `setup.sh`
+deletes that one when it finds it.
+
 ### Dependabot sweep
 
 `automations/dependabot-sweep.sh` runs at 7am and 2pm Pacific on weekdays and
@@ -236,7 +259,7 @@ machine. Audited 2026-08-27.
 | Configuration | Reproduced by `setup.sh` |
 | --- | --- |
 | First-party plugins | Elsewhere: `danielbachhuber/bb-plugins`, which has its own `setup.sh` |
-| Automations in `automations/` | Yes, one per entry in `BB_DEPENDABOT_SWEEPS` |
+| Automations in `automations/` | Yes: "Update projects", plus one Dependabot sweep per entry in `BB_DEPENDABOT_SWEEPS` |
 | Which builtin plugins are disabled | No, see below |
 | Plugin settings | No, see below |
 | Registered projects | No, added by hand as you start work in a repo |
