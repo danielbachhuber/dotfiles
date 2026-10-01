@@ -79,12 +79,12 @@ than letting them default, because some of that exists nowhere else —
 sometimes fires a run immediately, the run log is compared either side and a
 run that does fire is reported.
 
-`githooks/post-merge` in the repository root runs `sync.sh --check` after every
-pull, so drift is visible immediately. It only reports: applying it means npm
-installs and an automation update that can spawn threads, and neither belongs
-in the middle of a `git pull`. `post-rewrite` does the same for
-`git pull --rebase`. Both are wired up by the root `setup.sh`, which points
-`core.hooksPath` at `githooks/`.
+`githooks/post-merge` in the repository root runs `sync.sh` after every pull,
+so a pulled change to an automation script is deployed straight away. It runs
+`sync.sh --check` first and stops there when nothing drifted, so most pulls
+print nothing. A failed sync is reported but never fails the pull.
+`post-rewrite` does the same for `git pull --rebase`. Both are wired up by the
+root `setup.sh`, which points `core.hooksPath` at `githooks/`.
 
 Pause before you refresh a snapshot, and resume afterward:
 

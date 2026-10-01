@@ -1,13 +1,14 @@
 #!/bin/bash
 #
-# Tell me when a pull left part of bb behind.
+# Bring bb back in line after a pull.
 #
-# `git pull` updates the source; it does not rebuild a plugin or re-deploy an
-# automation's script snapshot, so bb can keep running the old one without
-# saying anything. This prints what drifted and the command that fixes it.
+# `git pull` updates the source; it does not re-deploy an automation's script
+# snapshot, so bb can keep running the old one without saying anything. This
+# runs bb/sync.sh, which reports what drifted and re-deploys it.
 #
-# It only reports. Applying the change means npm installs and an automation
-# update that can fire a run, and neither belongs in the middle of a pull.
+# --check runs first so that a pull touching no bb artifact stays quiet and
+# skips the slower apply. The apply can fire an automation run; sync.sh reports
+# when one does.
 #
 # Installed by pointing core.hooksPath at this directory; see ../setup.sh.
 
@@ -15,4 +16,6 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [ -x "$root/bb/sync.sh" ] || exit 0
 
 # Never fail a pull over this: the hook is a courtesy, not a gate.
-"$root/bb/sync.sh" --check || true
+[ -n "$("$root/bb/sync.sh" --check 2>&1)" ] || exit 0
+"$root/bb/sync.sh" || echo "bb/sync.sh failed; rerun it by hand." >&2
+exit 0

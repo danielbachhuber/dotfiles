@@ -19,8 +19,8 @@
 #   sync.sh            report drift and apply it
 #   sync.sh --check    report drift and change nothing
 #
-# --check is what the post-merge hook runs. It must stay fast and offline: no
-# npm, no network, no writes. It prints nothing when everything is current, so
+# The post-merge hook runs --check first and the full sync only when it reports
+# drift, so --check must stay fast and offline: no network, no writes. It prints nothing when everything is current, so
 # a pull that touches no bb artifact stays quiet.
 
 set -euo pipefail
