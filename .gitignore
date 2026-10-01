@@ -8,3 +8,7 @@ vim/.netrwhist
 # The tools under claude/tools/ carry their own ignore; this is the backstop
 # for the next package added here by hand.
 node_modules/
+
+# Claude Code syncs claude.ai account skills here through the ~/.claude/skills
+# symlink. They are Anthropic's, not mine, and this repository is public.
+claude/skills/synced/
