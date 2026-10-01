@@ -117,7 +117,8 @@ pulls nothing and syncs nothing prints nothing, which bb records as a silent
 tick. Only a failed sync script fails the run, because three failed runs in a
 row pause the automation for every project.
 
-It is registered against the Personal project, and as an inline
+It is registered against the bb project whose source is this checkout (found
+by path, since project IDs differ per machine), and as an inline
 `exec .../update-projects.sh` rather than with `--script-file`, so an edit to the
 script takes effect on the next run without a snapshot refresh. `sync.sh` does
 not track it for the same reason. It replaces the "Update bb-plugins"

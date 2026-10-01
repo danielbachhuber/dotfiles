@@ -4,7 +4,7 @@
 # the project's sync script if it has one. Meant to run on a schedule, once per
 # machine, as a bb script automation registered by ../setup.sh:
 #
-#   bb automation create --project proj_personal --name "Update projects" \
+#   bb automation create --project <dotfiles project> --name "Update projects" \
 #     --cron "*/15 5-15 * * *" --timezone America/Los_Angeles --interpreter bash \
 #     --timeout 600000 --script 'exec ~/.dotfiles/bb/automations/update-projects.sh'
 #

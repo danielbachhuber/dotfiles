@@ -79,21 +79,40 @@ if [ -n "${BB_DEPENDABOT_SWEEPS:-}" ]; then
     | jq -r '.[] | [.project, .repo, .workspace] | @tsv')
 fi
 
-# Keep every project's checkout current. Registered against Personal, which
-# exists on every machine, and passed as an inline `exec` rather than a
-# --script-file so edits to the script take effect without a snapshot refresh.
-if bb automation list --project proj_personal --json 2>/dev/null \
+# Keep every project's checkout current. Registered against the project for
+# this checkout, found by its source path because the ID is generated per
+# machine, so the automation sits with the repository that defines it. Passed
+# as an inline `exec` rather than a --script-file so edits to the script take
+# effect without a snapshot refresh.
+DOTFILES_ROOT="$(cd "$DIR/.." && pwd)"
+dotfiles_project="$(bb project list --json | jq -r --arg p "$DOTFILES_ROOT" \
+  '.[] | select(any(.sources[]; .path == $p)) | .id' | head -1)"
+
+if [ -z "$dotfiles_project" ]; then
+  echo "==> update projects: no bb project has $DOTFILES_ROOT as a source, skipping" >&2
+elif bb automation list --project "$dotfiles_project" --json 2>/dev/null \
   | jq -e '.[] | select(.name == "Update projects")' >/dev/null; then
   echo "==> update projects (already registered, skipping)"
 else
   echo "==> update projects"
-  bb automation create --project proj_personal \
+  bb automation create --project "$dotfiles_project" \
     --name "Update projects" \
     --cron "*/15 5-15 * * *" \
     --timezone "America/Los_Angeles" \
     --interpreter bash \
     --timeout 600000 \
     --script "exec $DIR/automations/update-projects.sh"
+fi
+
+# An earlier version of this script registered "Update projects" against the
+# Personal project. Remove that copy once the dotfiles one exists.
+if [ -n "$dotfiles_project" ]; then
+  while IFS= read -r id; do
+    [ -z "$id" ] && continue
+    echo "==> removing the Personal-project copy of Update projects"
+    bb automation delete "$id" --project proj_personal --yes >/dev/null
+  done < <(bb automation list --project proj_personal --json 2>/dev/null \
+    | jq -r '.[] | select(.name == "Update projects") | .id')
 fi
 
 # "Update projects" replaces the bb-plugins-only automation that ran
