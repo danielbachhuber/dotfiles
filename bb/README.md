@@ -111,10 +111,10 @@ script, `sync.sh` at the root or `bb/sync.sh`, when `sync.sh --check` reports
 drift. A new project is covered as soon as it is added to bb.
 
 It only fast-forwards. A checkout on another branch or with uncommitted changes
-is skipped without comment, so a long-running edit does not make every run
-noisy. A diverged branch or a failed fetch is printed and left alone. A run that
-pulls nothing and syncs nothing prints nothing, which bb records as a silent
-tick. Only a failed sync script fails the run, because three failed runs in a
+is skipped. The skipped checkouts are named together on one line at the end of
+the run, with the reason for each, rather than reported one by one. A diverged branch or a failed fetch is printed and left alone. A run that
+pulls nothing and syncs nothing prints one line saying it ran successfully,
+since bb would otherwise record the empty output as a skipped run. Only a failed sync script fails the run, because three failed runs in a
 row pause the automation for every project.
 
 It is registered against the bb project whose source is this checkout (found

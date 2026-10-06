@@ -16,14 +16,16 @@
 # origin's HEAD (main, master, trunk, or anything else).
 #
 # It only fast-forwards. A checkout on another branch or with uncommitted
-# changes is someone's work in progress, and is skipped without comment so that
+# changes is someone's work in progress, and is skipped. Skipped checkouts are
+# listed on one line at the end of the run rather than reported one by one, so
 # a long-lived edit does not make every run noisy. A checkout that has diverged
 # from origin is reported and left alone. Nothing is stashed, reset, or merged.
 #
 # The sync script is `sync.sh` at the repository root, or `bb/sync.sh`. It runs
 # when `sync.sh --check` reports drift, even if nothing was pulled, so a build
 # that failed last time is retried. A run with nothing pulled and nothing to
-# sync prints nothing, which bb records as a silent tick.
+# sync prints one line saying it ran successfully, since bb would otherwise
+# record the empty output as a skipped run.
 #
 # Exits non-zero only when a sync script fails. A fetch that fails (offline) or
 # a diverged branch is printed but does not count as a failed run, since three
@@ -55,6 +57,7 @@ paths="$(bb project list --json | jq -r --arg host "$host_id" \
    | unique | .[]')" || { echo "Could not list bb projects." >&2; exit 1; }
 
 failed=0
+skipped=()
 
 update_project() {
   local dir="$1" name default branch before sync check
@@ -76,10 +79,16 @@ update_project() {
   [ -n "$default" ] || return 0
 
   branch="$(git -C "$dir" symbolic-ref --short -q HEAD)"
-  [ "$branch" = "$default" ] || return 0
+  if [ "$branch" != "$default" ]; then
+    skipped+=("$name (on ${branch:-a detached HEAD})")
+    return 0
+  fi
 
   # Untracked files are left out: a pull can proceed around them.
-  [ -z "$(git -C "$dir" status --porcelain --untracked-files=no)" ] || return 0
+  if [ -n "$(git -C "$dir" status --porcelain --untracked-files=no)" ]; then
+    skipped+=("$name (uncommitted changes)")
+    return 0
+  fi
 
   if ! git -C "$dir" fetch --quiet origin "$default" 2>/dev/null; then
     echo "$name: could not fetch origin/$default." >&2
@@ -118,9 +127,24 @@ update_project() {
   fi
 }
 
+out="$(mktemp)"
+err="$(mktemp)"
+trap 'rm -f "$out" "$err"' EXIT
+
+count=0
 while IFS= read -r dir; do
   [ -n "$dir" ] || continue
-  update_project "$dir" || failed=1
+  count=$((count + 1))
+  update_project "$dir" >>"$out" 2>>"$err" || failed=1
 done <<< "$paths"
+
+cat "$out"
+cat "$err" >&2
+if [ ! -s "$out" ] && [ ! -s "$err" ]; then
+  echo "Ran successfully: $count projects checked, nothing to update."
+fi
+if [ "${#skipped[@]}" -gt 0 ]; then
+  printf 'Skipped: %s\n' "$(printf '%s, ' "${skipped[@]}" | sed 's/, $//')"
+fi
 
 exit "$failed"
