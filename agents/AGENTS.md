@@ -27,6 +27,13 @@
 
 - Do not create git commits unless I explicitly ask. Leave changes in the working tree for review.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
+- Stacked pull requests need rebases, never merge commits. This is the exception to the rule above. When a PR belongs to a stack (GitHub shows it as part of "stack #N"), always update it with the `gh stack` CLI, whether it conflicts with its base or is only behind:
+  1. `gh stack checkout <PR URL>` checks out every branch in the stack. Use the URL, since a bare number is tried as a stack number first.
+  2. `gh stack rebase` rebases the whole stack onto the latest base branch.
+  3. Fix any conflicts and continue the rebase.
+  4. `gh stack push` pushes every branch in the stack with `--force-with-lease`.
+
+  Run the usual checks before step 4, and ask me before pushing, since it rewrites history on branches other people may be reviewing.
 - Do not commit brainstorming or design-spec documents; leave them available for review.
 - In starting work on a new pull request in a new work tree, please draft the pull request description at the end of the initial body of work. This will give me a summary to read without having to explicitly ask for you to draft the pull request description.
 
