@@ -27,6 +27,7 @@
 ## Git workflow
 
 - Do not create git commits unless I explicitly ask. Leave changes in the working tree for review.
+- Push after every commit you make, so the remote stays current. Plain pushes only: anything that rewrites history, including `gh stack push`, still needs my go-ahead.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
 - Stacked pull requests need rebases, never merge commits. This is the exception to the rule above. When a PR belongs to a stack (GitHub shows it as part of "stack #N"), always update it with the `gh stack` CLI, whether it conflicts with its base or is only behind:
   1. `gh stack checkout <PR URL>` checks out every branch in the stack. Use the URL, since a bare number is tried as a stack number first.
