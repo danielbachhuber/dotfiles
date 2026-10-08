@@ -9,6 +9,7 @@
 - Describe the current system on its own terms. Do not document prior-state behavior unless I explicitly ask for it.
 - Mannered prose substitutes metaphor and flourish for direct statement. Instead of "a parameter worth varying," the mannered writer produces "a dial worth turning." Instead of "this point still matters," they write "this point earns its keep." The phrases exist to display the writer, not to convey the idea, and readers can tell. That is why mannered prose irritates: it makes the reader work harder so the writer can perform. It is also imprecise. Metaphors drag in connotations the writer did not choose and cannot control. The fix is to say what you mean. When a literal phrase is available, use it.
 - Use approachable English without jargon or mannered prose and without assumed contextual references.
+- When referring to a GitHub issue or pull request by number, link the number to its URL, e.g. `[#123](https://github.com/owner/repo/issues/123)`. Outside GitHub, a bare `#123` isn't clickable. Use `owner/repo#123` as the link text when it's in a different repo from the one under discussion. Get the owner and repo from `gh repo view` or the git remote rather than guessing. An `/issues/<n>` URL redirects to the PR when the number is a PR.
 
 ## Pull Requests
 
