@@ -17,6 +17,15 @@
 - When editing a pull request description, make sure to first fetch the existing description. I may have edited it in the interim and it's frustrating to have my edits blown away.
 - When replying to PR review comments, push the commit first, then leave the reply. That way the reply can reference the commit SHA, and the reviewer can follow the link to the exact changeset. Use the full 40-character SHA, read back from `git rev-parse HEAD` rather than retyped from earlier output: an abbreviated SHA is easy to get a character wrong, and a SHA GitHub can't resolve renders as plain text instead of a commit link.
 
+## Code Review
+
+- When you review a pull request in bb, publish the findings with the `dynamic-ui` skill, one card per finding, instead of listing them in chat. Put a card with your verdict (approve, comment, or request changes) first. In chat, say only whether you'd approve and how many findings are above the composer.
+- Give each finding the diff it's about as `changes`, taken from `gh pr diff`. When a finding depends on code the PR doesn't change, quote that code in `details`.
+- Each finding card offers these actions, with the likely one marked primary:
+  - **Attach as draft inline review comment**: a `message` action whose `draft` is the comment text. It adds the comment to my pending review on the line the finding is about, creating the pending review if there isn't one. The review stays unsubmitted until I submit it myself.
+  - **Create issue**: a `message` action that drafts the issue in `~/projects/drafts/`, following the GitHub Issues rules below.
+  - **Fix in a PR against this PR**: a `thread` action in the PR's project. Its prompt stands alone: it names the PR and the finding, and asks for a branch off the PR's head branch and a PR whose base is that branch.
+
 ## GitHub Issues
 
 - When editing an issue body, first fetch the existing body — same reason as PR descriptions.
