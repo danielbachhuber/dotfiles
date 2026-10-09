@@ -21,6 +21,7 @@
 
 - When you review a pull request in bb, publish the findings with the `dynamic-ui` skill, one card per finding, instead of listing them in chat. Put a card with your verdict (approve, comment, or request changes) first. In chat, say only whether you'd approve and how many findings are above the composer.
 - Give each finding the diff it's about as `changes`, taken from `gh pr diff`. When a finding depends on code the PR doesn't change, quote that code in `details`.
+- Follow the `show-dont-tell` skill when writing each finding: pick the form it lists for that kind of finding, put it in `summary`, and cut the prose to the point it makes.
 - Each finding card offers these actions, with the likely one marked primary:
   - **Attach as draft inline review comment**: a `message` action whose `draft` is the comment text. It adds the comment to my pending review on the line the finding is about, creating the pending review if there isn't one. The review stays unsubmitted until I submit it myself.
   - **Create issue**: a `message` action that drafts the issue in `~/projects/drafts/`, following the GitHub Issues rules below.
