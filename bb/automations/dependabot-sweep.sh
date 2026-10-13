@@ -20,7 +20,8 @@
 #                            Default "<DEPENDABOT_WORKSPACE>-dependabot".
 #   DEPENDABOT_MAX_THREADS   most threads to spawn per run. Default 5.
 #   DEPENDABOT_PROVIDER      provider for spawned threads. Default claude-code.
-#   DEPENDABOT_MODEL         model for spawned threads. Default claude-sonnet-5.
+#   DEPENDABOT_MODEL         model for spawned threads. Default: the provider's
+#                            default model, looked up on each run.
 #   DEPENDABOT_GH            path to the gh CLI, when it is not on PATH.
 #   DEPENDABOT_GIT           path to the git CLI, when it is not on PATH.
 #
@@ -36,10 +37,20 @@ MAX_THREADS="${DEPENDABOT_MAX_THREADS:-5}"
 PROVIDER="${DEPENDABOT_PROVIDER:-claude-code}"
 # Pinned rather than inherited. With no --model, bb falls back to the project's
 # remembered default, which is whatever model was last used by hand in that
-# project: a dependency review would silently ride on it.
-MODEL="${DEPENDABOT_MODEL:-claude-sonnet-5}"
+# project: a dependency review would silently ride on it. So with no
+# DEPENDABOT_MODEL, ask the provider which model it marks as its default.
+MODEL="${DEPENDABOT_MODEL:-}"
 
 BB="${BB_CLI:-bb}"
+
+if [ -z "$MODEL" ]; then
+  MODEL="$("$BB" provider models "$PROVIDER" --json \
+    | jq -r 'first(.[] | select(.isDefault) | .id) // empty')"
+  if [ -z "$MODEL" ]; then
+    echo "Could not find a default model for ${PROVIDER}; set DEPENDABOT_MODEL" >&2
+    exit 1
+  fi
+fi
 
 # The server's PATH is not a login shell's, so gh is often missing from it even
 # when it is installed. Resolve it the way the sweep plugins do: an explicit

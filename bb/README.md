@@ -235,8 +235,9 @@ export BB_DEPENDABOT_SWEEPS='[
 `project` is the bb project name from `bb project list`, and `workspace` is the
 checkout the per-PR worktrees are branched from.
 
-Threads are pinned to Sonnet, and to the `claude-code` provider, rather than
-inheriting. Without `--model`, bb falls back to the project's remembered
+Threads use the `claude-code` provider and that provider's default model,
+which the script looks up with `bb provider models` on each run and passes as
+`--model`. Without `--model`, bb falls back to the project's remembered
 default, which is whatever was last chosen by hand in that project, so a routine
 dependency bump would quietly ride on it. Override with `DEPENDABOT_MODEL` and
 `DEPENDABOT_PROVIDER` in the automation's script variables.
