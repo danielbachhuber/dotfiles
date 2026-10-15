@@ -25,7 +25,7 @@
 - Each finding card offers these actions, with the likely one marked primary:
   - **Attach as draft inline review comment**: a `message` action whose `draft` is the comment text. It adds the comment to my pending review on the line the finding is about, creating the pending review if there isn't one. The review stays unsubmitted until I submit it myself.
   - **Create issue**: a `message` action that drafts the issue in `~/projects/drafts/`, following the GitHub Issues rules below.
-  - **Fix in a PR against this PR**: a `thread` action in the PR's project. Its prompt stands alone: it names the PR and the finding, and asks for a branch off the PR's head branch and a PR whose base is that branch.
+  - **Fix in a PR against this PR**: a `thread` action in the PR's project. Its prompt stands alone: it names the PR and the finding, and asks for a branch off the PR's head branch and a PR whose base is that branch, following the PR-against-a-PR rule in the bb section below.
 
 ## GitHub Issues
 
@@ -67,4 +67,10 @@
   - This applies to every file reference, not only links to drafts. A `file:line` code reference to a file outside the working directory, such as a skill under `~/.claude/skills/`, needs an absolute target: `[writing.md:67](/Users/danielb/.claude/skills/draft-pr-description/writing.md)`, not a bare `writing.md:67`, which bb opens relative to the worktree and fails with a 404.
   - Image embeds in a draft need absolute paths too. A `./before.png` embed shows as a broken image in the preview. Keep PR media in `~/projects/drafts/<draft-name>-media/` and embed each file by its absolute path.
 - When a bb thread is about a pull request and runs in its own bb worktree, check the PR's branch out there with `gh pr checkout <number>` before starting, so I don't have to ask you to switch to it. If git says the branch is already checked out in another worktree, add `--detach`. In the project checkout, leave the current branch alone unless I ask. `bb status` shows which kind of environment the thread is in.
+- When you create a branch off another PR's head branch (a PR against a PR), point both bases at that parent branch, not `main`:
+  1. As soon as the branch exists, run `bb environment update "$BB_ENVIRONMENT_ID" --merge-base-branch origin/<parent-branch>`. Otherwise the thread's diff compares against `origin/main` and shows the parent PR's changes, plus any newer `main` commits as reversions. Confirm with `bb environment diff-files "$BB_ENVIRONMENT_ID" --target all --merge-base-branch origin/<parent-branch>` that only this branch's files show.
+  2. Open the PR with `gh pr create --base <parent-branch>`.
+
+  A thread spawned with `bb thread spawn --base-branch origin/<parent-branch>` already has that merge base, so it only needs step 2.
+- The thread's merge-base branch should always be a remote branch such as `origin/main`, never a local one such as `main`. A local `main` is often behind `origin/main`, so the diff shows commits already on `origin/main` as if this branch added them. Check it with `bb environment show "$BB_ENVIRONMENT_ID" --json` (`mergeBaseBranch`). If it's a local branch, run `git fetch origin <branch>`, then `bb environment update "$BB_ENVIRONMENT_ID" --merge-base-branch origin/<branch>`. Confirm with `bb environment diff-files` that only this branch's files show.
 - If you create a new worktree partway through a bb thread (for example with `git worktree add`) and start working in it, switch the thread to it with the `update_environment_directory` tool, passing the worktree's absolute path. That way the thread's diff, terminals, and later turns follow the work. Stop the turn after the switch succeeds, as the tool requires.
