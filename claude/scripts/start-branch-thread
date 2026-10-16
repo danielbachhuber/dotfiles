@@ -1,0 +1,210 @@
+#!/bin/bash
+#
+# Start a bb thread already on the right branch and diff base.
+#
+# Usage:
+#   start-branch-thread [<PR URL or number> | <branch>] [--against-pr] [--base <branch>]
+#                       [--repo owner/repo] (--prompt <text> | --prompt-file <path|->)
+#                       [-- <bb thread spawn options>]
+#
+# <PR URL or number>  Runs in the worktree that has the PR's head branch checked
+#                     out, creating <project checkout>-pr-<number> if none does.
+#                     Diff base: origin/<PR base branch>.
+# --against-pr        With a PR: runs in a new bb worktree branched from
+#                     origin/<PR head branch>, for a fix PR against the PR.
+#                     Diff base: origin/<PR head branch>.
+# <branch>            Runs in the worktree that has <branch> checked out, creating
+#                     <project checkout>-<branch> if none does. A branch that
+#                     doesn't exist yet is created from origin/<base>.
+#                     Diff base: origin/<base>.
+# (neither)           Runs in a new bb worktree branched from origin/<base>.
+#                     Diff base: origin/<base>.
+# --base <branch>     The base for <branch> or a new worktree. Defaults to the
+#                     base of the branch's open PR, then the repo's default branch.
+# --repo owner/repo   The repo, when it isn't in a PR URL or the current directory.
+#
+# Prints the new thread ID on stdout. Progress and timing go to stderr.
+
+set -euo pipefail
+
+now_ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
+START_MS=$(now_ms)
+log() { echo "[$(( $(now_ms) - START_MS ))ms] $*" >&2; }
+die() { echo "start-branch-thread: $*" >&2; exit 1; }
+nwo_from_remote() {
+	sed -E 's#^(git@github\.com:|https://github\.com/|ssh://git@github\.com/)##; s#\.git$##' <<<"$1" \
+		| tr '[:upper:]' '[:lower:]'
+}
+
+TARGET=""
+AGAINST_PR=0
+BASE=""
+NWO=""
+PROMPT=""
+PROMPT_FILE=""
+SPAWN_ARGS=()
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--against-pr) AGAINST_PR=1 ;;
+		--base) BASE="$2"; shift ;;
+		--repo) NWO="$2"; shift ;;
+		--prompt) PROMPT="$2"; shift ;;
+		--prompt-file) PROMPT_FILE="$2"; shift ;;
+		--) shift; SPAWN_ARGS=("$@"); break ;;
+		-h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 0 ;;
+		-*) die "unknown option $1" ;;
+		*) [ -z "$TARGET" ] || die "unexpected argument $1"; TARGET="$1" ;;
+	esac
+	shift
+done
+
+if [ -n "$PROMPT_FILE" ]; then
+	PROMPT=$(cat "$PROMPT_FILE")
+fi
+[ -n "$PROMPT" ] || die "pass --prompt or --prompt-file"
+
+if [[ "$TARGET" =~ ^https://github\.com/[^/]+/[^/]+/pull/[0-9]+ || "$TARGET" =~ ^[0-9]+$ ]]; then
+	MODE=pr
+elif [ -n "$TARGET" ]; then
+	MODE=branch
+else
+	MODE=new
+fi
+[ "$AGAINST_PR" = 0 ] || [ "$MODE" = pr ] || die "--against-pr needs a PR URL or number"
+
+# 1. Resolve the PR, if there is one.
+PR_JSON=""
+if [ "$MODE" = pr ]; then
+	GH_REPO_ARGS=()
+	[ -n "$NWO" ] && GH_REPO_ARGS=(--repo "$NWO")
+	PR_JSON=$(gh pr view "$TARGET" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} \
+		--json number,url,title,headRefName,baseRefName,isCrossRepository)
+	URL=$(jq -r .url <<<"$PR_JSON")
+	NWO=$(sed -E 's#^https://github.com/([^/]+/[^/]+)/pull/.*#\1#' <<<"$URL")
+fi
+if [ -z "$NWO" ]; then
+	REMOTE=$(git remote get-url origin 2>/dev/null) || die "pass --repo, or run from inside the repo"
+	NWO=$(nwo_from_remote "$REMOTE")
+fi
+NWO=$(tr '[:upper:]' '[:lower:]' <<<"$NWO")
+
+# 2. Find the bb project whose remote is this repo.
+PROJECT_JSON=$(bb project list --json | jq --arg nwo "$NWO" '
+	[ .[] | select(.gitRemoteUrl != null)
+	  | select((.gitRemoteUrl | ascii_downcase
+	      | sub("^(git@github\\.com:|https://github\\.com/|ssh://git@github\\.com/)"; "")
+	      | sub("\\.git$"; "")) == $nwo) ] | first')
+[ "$PROJECT_JSON" != "null" ] || die "no bb project has the remote $NWO"
+PROJECT_ID=$(jq -r .id <<<"$PROJECT_JSON")
+SOURCE=$(jq -r '(.sources | map(select(.isDefault)) | first // .sources[0]).path' <<<"$PROJECT_JSON")
+log "bb project $PROJECT_ID at $SOURCE"
+
+# 3. Work out the branch, its base, and where the worktree goes.
+BRANCH=""
+WORKTREE_DIR=""
+CROSS=false
+if [ "$MODE" = pr ]; then
+	NUMBER=$(jq -r .number <<<"$PR_JSON")
+	TITLE=$(jq -r .title <<<"$PR_JSON")
+	HEAD=$(jq -r .headRefName <<<"$PR_JSON")
+	CROSS=$(jq -r .isCrossRepository <<<"$PR_JSON")
+	log "PR $NWO#$NUMBER: $HEAD -> $(jq -r .baseRefName <<<"$PR_JSON")"
+	if [ "$AGAINST_PR" = 1 ]; then
+		[ "$CROSS" = false ] || die "--against-pr needs the PR's head branch on origin, and this PR comes from a fork"
+		MODE=new
+		BASE="$HEAD"
+		ABOUT="a fix PR against $URL ($TITLE). Open it with \`gh pr create --base $HEAD\`."
+	else
+		BRANCH="$HEAD"
+		BASE=$(jq -r .baseRefName <<<"$PR_JSON")
+		WORKTREE_DIR="$SOURCE-pr-$NUMBER"
+		ABOUT="$URL ($TITLE)."
+	fi
+elif [ "$MODE" = branch ]; then
+	BRANCH="$TARGET"
+	WORKTREE_DIR="$SOURCE-$(tr '/' '-' <<<"$BRANCH")"
+	OPEN_PR=$(gh pr list --repo "$NWO" --head "$BRANCH" --state open --json url,title,baseRefName --limit 1 | jq '.[0] // empty')
+	if [ -n "$OPEN_PR" ]; then
+		[ -n "$BASE" ] || BASE=$(jq -r .baseRefName <<<"$OPEN_PR")
+		ABOUT="$(jq -r .url <<<"$OPEN_PR") ($(jq -r .title <<<"$OPEN_PR"))."
+	else
+		ABOUT=""
+	fi
+fi
+if [ -z "$BASE" ]; then
+	BASE=$(git -C "$SOURCE" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##') \
+		|| BASE=$(gh repo view "$NWO" --json defaultBranchRef --jq .defaultBranchRef.name)
+fi
+MERGE_BASE="origin/$BASE"
+
+# 4. Fetch the base, and the branch when origin has it.
+git -C "$SOURCE" fetch --quiet origin "$BASE"
+if [ -n "$BRANCH" ] && [ "$CROSS" = false ]; then
+	git -C "$SOURCE" fetch --quiet origin "$BRANCH" 2>/dev/null || true
+fi
+log "fetched"
+
+# 5. Find or make the worktree.
+if [ "$MODE" = new ]; then
+	ENV_ARGS=(--new-environment worktree --base-branch "$MERGE_BASE")
+	SETUP="This thread runs in a new worktree whose branch starts from \`$MERGE_BASE\`, and the thread's diff base is \`$MERGE_BASE\`."
+else
+	WORKTREE=$(git -C "$SOURCE" worktree list --porcelain | awk -v ref="refs/heads/$BRANCH" '
+		/^worktree / { path = substr($0, 10) }
+		$0 == "branch " ref { print path; exit }')
+	if [ -n "$WORKTREE" ]; then
+		log "reusing $WORKTREE, which has $BRANCH checked out"
+	else
+		WORKTREE="$WORKTREE_DIR"
+		[ ! -e "$WORKTREE" ] || die "$WORKTREE exists but doesn't have $BRANCH checked out"
+		if [ "$MODE" = pr ]; then
+			git -C "$SOURCE" worktree add --quiet --detach "$WORKTREE" "$MERGE_BASE"
+			(cd "$WORKTREE" && gh pr checkout "$NUMBER" --repo "$NWO" >/dev/null 2>&1) \
+				|| die "gh pr checkout $NUMBER failed in $WORKTREE"
+		elif git -C "$SOURCE" show-ref --verify --quiet "refs/heads/$BRANCH"; then
+			git -C "$SOURCE" worktree add --quiet "$WORKTREE" "$BRANCH"
+		elif git -C "$SOURCE" show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+			git -C "$SOURCE" worktree add --quiet --track -b "$BRANCH" "$WORKTREE" "origin/$BRANCH"
+		else
+			git -C "$SOURCE" worktree add --quiet --no-track -b "$BRANCH" "$WORKTREE" "$MERGE_BASE"
+			log "created new branch $BRANCH from $MERGE_BASE"
+		fi
+		log "created $WORKTREE on $BRANCH"
+	fi
+
+	# Reuse the bb environment already at that path, if there is one.
+	ENV_ID=$(bb environment list --project "$PROJECT_ID" --json | jq -r --arg p "$WORKTREE" '
+		[ .[] | select(.path == $p and .status != "destroyed") ] | first | .id // empty')
+	if [ -n "$ENV_ID" ]; then
+		bb environment update "$ENV_ID" --merge-base-branch "$MERGE_BASE" >/dev/null
+		ENV_ARGS=(--environment "$ENV_ID")
+	else
+		ENV_ARGS=(--environment "$WORKTREE")
+	fi
+	SETUP="The branch \`$BRANCH\` is checked out in this environment, and the thread's diff base is \`$MERGE_BASE\`."
+fi
+CONTEXT="$SETUP"
+[ -z "${ABOUT:-}" ] || CONTEXT="This thread is for $ABOUT $SETUP"
+
+# 6. Start the thread, then make sure its environment has the merge base.
+THREAD_JSON=$(printf '%s\n\n%s\n' "$CONTEXT" "$PROMPT" | bb thread spawn --json \
+	--project "$PROJECT_ID" "${ENV_ARGS[@]}" --prompt-file - ${SPAWN_ARGS[@]+"${SPAWN_ARGS[@]}"})
+THREAD_ID=$(jq -r '.id // empty' <<<"$THREAD_JSON")
+[ -n "$THREAD_ID" ] || die "bb thread spawn failed: $THREAD_JSON"
+log "spawned $THREAD_ID"
+
+# Spawn returns before the environment is attached, so wait for it.
+ENV_ID=""
+for _ in $(seq 1 120); do
+	ENV_ID=$(bb thread show "$THREAD_ID" --json | jq -r '.thread.environmentId // empty')
+	[ -n "$ENV_ID" ] && break
+	sleep 0.5
+done
+[ -n "$ENV_ID" ] || die "$THREAD_ID has no environment after 60s; set its merge base to $MERGE_BASE by hand"
+log "environment $ENV_ID is attached"
+
+bb environment update "$ENV_ID" --merge-base-branch "$MERGE_BASE" >/dev/null
+log "merge base set to $MERGE_BASE"
+
+echo "$THREAD_ID"
