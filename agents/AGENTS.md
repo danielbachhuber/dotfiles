@@ -22,7 +22,10 @@
 - When you review a pull request in bb, publish the findings with the `impromptu-ui` skill, laid out as its "Code review findings" section says, instead of listing them in chat. In chat, say only whether you'd approve and how many findings are above the composer.
 - Follow the `show-dont-tell` skill when writing each finding: pick the form it lists for that kind of finding, put it in `summary`, and cut the prose to the point it makes.
 - Each finding card offers these actions, with the likely one marked primary:
-  - **Attach as draft inline review comment**: a `message` action whose `draft` is the comment text. It adds the comment to my pending review on the line the finding is about, creating the pending review if there isn't one. The review stays unsubmitted until I submit it myself.
+  - **Attach as draft inline review comment**: a `message` action whose `draft` is the comment text followed by the finding's suggested fix, when it has one. It adds the comment to my pending review, creating the pending review if there isn't one. The review stays unsubmitted until I submit it myself.
+    - If the fix replaces lines this PR changes, write it as a GitHub ` ```suggestion ` block and anchor the comment to exactly the lines it replaces, as a multi-line comment when it covers several. GitHub can't widen a comment's range after it's added.
+    - If the fix is in a file or on lines the PR doesn't change, where GitHub doesn't allow suggestions, write it as a ` ```diff ` block and anchor the comment to the line the finding is about.
+    - Before attaching a suggestion, apply it to the file, run the typecheck and linter, then restore the file.
   - **Create issue**: a `message` action that drafts the issue in `~/projects/drafts/`, following the GitHub Issues rules below.
   - **Fix in a PR against this PR**: a `thread` action in the PR's project. Its prompt stands alone: it names the PR and the finding, and asks for a branch off the PR's head branch and a PR whose base is that branch, following the PR-against-a-PR rule in the bb section below.
 
