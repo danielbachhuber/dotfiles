@@ -57,6 +57,14 @@
 - For small, well-scoped changes, use a lightweight plan rather than creating a formal spec.
 - Put temporary working files in `/tmp`, not in the repository or tool-state directories.
 
+## Shell
+
+The Bash tool runs zsh, which differs from bash in ways that break common commands:
+
+- zsh expands an unquoted glob anywhere in a word, including after `=`. When nothing matches, the whole command aborts with "no matches found", so `grep -rn foo --include=*.ts .` never runs. Quote the glob (`--include='*.ts'`) or use `rg -g '*.ts'`.
+- A word starting with `=` is a command lookup, so `echo =====` fails with "===== not found" and the rest of the command line is skipped. Quote it (`echo '====='`) or use `printf -- '---\n'`.
+- zsh doesn't split an unquoted `$VAR` on spaces, so `F="a b c"; git add $F` passes one argument. Use an array: `F=(a b c); git add -- "${F[@]}"`.
+
 ## Tools
 
 - For Google Workspace access (Drive, Sheets, Gmail, Docs, Slides, Calendar, etc.), use the `gws-cli` skill. However, ~/.claude/scripts/fetch-google-doc.ts is even more helpful for Google Docs, and ~/.claude/scripts/fetch-google-slides.ts even more helpful for Google Slides. Both scripts accept the document ID as the first argument. If there's an authentication failure, inform the end user instead of trying to fetch the document instead.
