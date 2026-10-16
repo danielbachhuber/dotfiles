@@ -117,6 +117,11 @@ pulls nothing and syncs nothing prints one line saying it ran successfully,
 since bb would otherwise record the empty output as a skipped run. Only a failed sync script fails the run, because three failed runs in a
 row pause the automation for every project.
 
+Each project's results are printed as the run reaches it, so a run that bb
+kills at its 10-minute timeout still shows which project it was on. A fetch
+that cannot connect within 15 seconds, or whose connection goes quiet for 30,
+fails rather than hanging the run.
+
 It is registered against the bb project whose source is this checkout (found
 by path, since project IDs differ per machine), and as an inline
 `exec .../update-projects.sh` rather than with `--script-file`, so an edit to the

@@ -21,6 +21,9 @@
 # a long-lived edit does not make every run noisy. A checkout that has diverged
 # from origin is reported and left alone. Nothing is stashed, reset, or merged.
 #
+# Everything else is printed as it happens rather than at the end, so a run that
+# bb kills for taking too long still shows which project it was on.
+#
 # The sync script is `sync.sh` at the repository root, or `bb/sync.sh`. It runs
 # when `sync.sh --check` reports drift, even if nothing was pulled, so a build
 # that failed last time is retried. A run with nothing pulled and nothing to
@@ -38,6 +41,12 @@ for dir in /opt/homebrew/bin /usr/local/bin; do
   case ":$PATH:" in *":$dir:"*) ;; *) [ -d "$dir" ] && PATH="$dir:$PATH" ;; esac
 done
 export PATH
+
+# A fetch has no timeout of its own, so a dropped connection would hang the run
+# until bb kills it. These make it fail instead, and BatchMode stops ssh from
+# waiting on a prompt that nobody will answer.
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+export GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=30
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is not on PATH." >&2
@@ -58,6 +67,12 @@ paths="$(bb project list --json | jq -r --arg host "$host_id" \
 
 failed=0
 skipped=()
+quiet=yes
+
+# Report something about a project. Everything printed goes through one of
+# these, so the run knows whether to say it found nothing to update.
+say() { quiet=no; echo "$@"; }
+warn() { quiet=no; echo "$@" >&2; }
 
 update_project() {
   local dir="$1" name default branch before sync check
@@ -91,17 +106,17 @@ update_project() {
   fi
 
   if ! git -C "$dir" fetch --quiet origin "$default" 2>/dev/null; then
-    echo "$name: could not fetch origin/$default." >&2
+    warn "$name: could not fetch origin/$default." >&2
     return 0
   fi
 
   before="$(git -C "$dir" rev-parse HEAD)"
   if ! git -C "$dir" merge --ff-only --quiet "origin/$default" >/dev/null 2>&1; then
-    echo "$name: $default has diverged from origin/$default; left alone." >&2
+    warn "$name: $default has diverged from origin/$default; left alone."
     return 0
   fi
   if [ "$before" != "$(git -C "$dir" rev-parse HEAD)" ]; then
-    echo "$name: pulled"
+    say "$name: pulled"
     git -C "$dir" log --oneline "$before..HEAD" | sed 's/^/  /'
   fi
 
@@ -120,27 +135,21 @@ update_project() {
     return 0
   fi
 
-  echo "$name: running ${sync#"$dir"/}"
+  say "$name: running ${sync#"$dir"/}"
   if ! "$sync" 2>&1 | sed 's/^/  /'; then
-    echo "$name: ${sync#"$dir"/} failed." >&2
+    warn "$name: ${sync#"$dir"/} failed."
     return 1
   fi
 }
-
-out="$(mktemp)"
-err="$(mktemp)"
-trap 'rm -f "$out" "$err"' EXIT
 
 count=0
 while IFS= read -r dir; do
   [ -n "$dir" ] || continue
   count=$((count + 1))
-  update_project "$dir" >>"$out" 2>>"$err" || failed=1
+  update_project "$dir" || failed=1
 done <<< "$paths"
 
-cat "$out"
-cat "$err" >&2
-if [ ! -s "$out" ] && [ ! -s "$err" ]; then
+if [ "$quiet" = yes ]; then
   echo "Ran successfully: $count projects checked, nothing to update."
 fi
 if [ "${#skipped[@]}" -gt 0 ]; then
