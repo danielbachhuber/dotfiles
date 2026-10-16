@@ -157,3 +157,125 @@ test('buildMarkdownRequests links land past the tab prefix on nested items', () 
   assert.equal(link.updateTextStyle.range.endIndex, 101 + 'Person'.length);
   assert.equal(link.updateTextStyle.textStyle.link.url, 'https://example.com/p');
 });
+
+import {
+  collectTableRows, findTableRow, resolveColumn, buildCellMarkdownRequests,
+  buildRowMarkdownRequests, buildInsertRowRequests, buildDeleteRowRequests,
+} from './gws-doc-edit';
+
+function para(start: number, text: string) {
+  return {
+    startIndex: start, endIndex: start + text.length + 1,
+    paragraph: { elements: [{ textRun: { content: text + '\n' } }] },
+  };
+}
+// A cell holding the given paragraphs, starting at `start` (its first paragraph starts at start + 1).
+function cell(start: number, texts: string[], span = 1) {
+  let i = start + 1;
+  const content = texts.map(t => { const p = para(i, t); i = p.endIndex; return p; });
+  return { startIndex: start, endIndex: i, content, tableCellStyle: { columnSpan: span } };
+}
+// Rows of [col1, col2] cells, or a single string for a spanning section row.
+function table(start: number, rows: (string | [string[], string[]])[]) {
+  let i = start + 1;
+  const tableRows = rows.map(r => {
+    const rowStart = i;
+    const cells = typeof r === 'string'
+      ? [cell(i + 1, [r], 2), cell(0, [''])]
+      : [cell(i + 1, r[0]), null as any];
+    if (typeof r === 'string') {
+      cells[1] = cell(cells[0].endIndex, ['']);
+    } else {
+      cells[1] = cell(cells[0].endIndex, r[1]);
+    }
+    i = cells[1].endIndex;
+    return { startIndex: rowStart, endIndex: i, tableCells: cells };
+  });
+  return { startIndex: start, endIndex: i + 1, table: { rows: rows.length, columns: 2, tableRows } };
+}
+
+const TABLE_TAB = {
+  tabId: 't.0',
+  content: [
+    para(1, 'Intro'),
+    table(7, [
+      [['Feature'], ['Details']],
+      'Fruit (2)',
+      [['Apple pie', 'A baked dessert.'], ['Made with:', 'apples']],
+      [['Apple sauce'], ['Stewed.']],
+      'Vegetables',
+      [['CARROT_CAKE'], ['Sweet.']],
+    ]),
+  ],
+};
+
+test('collectTableRows names rows by their first paragraph and tracks sections', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  assert.equal(rows.length, 6);
+  assert.equal(rows[1].isSection, true);
+  assert.equal(rows[2].name, 'Apple pie');
+  assert.equal(rows[2].section, 'Fruit (2)');
+  assert.equal(rows[5].section, 'Vegetables');
+  assert.equal(rows[2].tableStart, 7);
+});
+
+test('findTableRow prefers exact names and reports ambiguous matches', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  assert.equal(findTableRow(rows, 'apple pie').rowIndex, 2);
+  assert.equal(findTableRow(rows, '"CARROT_CAKE"').rowIndex, 5);
+  assert.throws(() => findTableRow(rows, 'Apple'), /matches 2 rows/);
+  assert.throws(() => findTableRow(rows, 'Nope'), /No row matching/);
+});
+
+test('findTableRow narrows by section, ignoring the section row count', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  assert.equal(findTableRow(rows, 'sauce', 'Fruit').rowIndex, 3);
+  assert.throws(() => findTableRow(rows, 'CARROT_CAKE', 'Fruit'), /No row/);
+});
+
+test('resolveColumn accepts a 1-based number or header text', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  const ref = rows[2];
+  assert.equal(resolveColumn(rows, ref, '2'), 1);
+  assert.equal(resolveColumn(rows, ref, 'details'), 1);
+  assert.throws(() => resolveColumn(rows, ref, '3'), /out of range/);
+});
+
+test('buildCellMarkdownRequests clears the cell then inserts markdown with links', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  const target = rows[2].row.tableCells[1];
+  const start = target.content[0].startIndex;
+  const reqs = buildCellMarkdownRequests(
+    target, parseMarkdownToBlocks('Made with:\n- [apples](https://x/apples) from the orchard'), 't.0',
+  );
+  assert.deepEqual(reqs[0], { deleteParagraphBullets: { range: { startIndex: start, endIndex: target.endIndex, tabId: 't.0' } } });
+  assert.deepEqual(reqs[1], { deleteContentRange: { range: { startIndex: start, endIndex: target.endIndex - 1, tabId: 't.0' } } });
+  assert.equal(reqs[2].insertText.location.index, start);
+  assert.equal(reqs[2].insertText.text, 'Made with:\napples from the orchard');
+  assert.equal(reqs[3].updateTextStyle.fields.includes('link'), true);
+  const link = reqs.find(r => r.updateTextStyle?.textStyle?.link);
+  assert.equal(link.updateTextStyle.range.startIndex, start + 'Made with:\n'.length);
+  assert.ok(link.updateTextStyle.textStyle.foregroundColor);
+  assert.ok(reqs.some(r => r.createParagraphBullets));
+});
+
+test('buildRowMarkdownRequests fills cells last to first', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  const row = rows[5].row;
+  const reqs = buildRowMarkdownRequests(row, [parseMarkdownToBlocks('A'), parseMarkdownToBlocks('B')], null);
+  const inserts = reqs.filter(r => r.insertText).map(r => r.insertText.text);
+  assert.deepEqual(inserts, ['B', 'A']);
+});
+
+test('row insert and delete requests target the table start and row index', () => {
+  const rows = collectTableRows([TABLE_TAB]);
+  assert.deepEqual(buildInsertRowRequests(rows[3]), [{
+    insertTableRow: {
+      tableCellLocation: { tableStartLocation: { index: 7, tabId: 't.0' }, rowIndex: 3, columnIndex: 0 },
+      insertBelow: true,
+    },
+  }]);
+  assert.deepEqual(buildDeleteRowRequests(rows[5]), [{
+    deleteTableRow: { tableCellLocation: { tableStartLocation: { index: 7, tabId: 't.0' }, rowIndex: 5, columnIndex: 0 } },
+  }]);
+});
