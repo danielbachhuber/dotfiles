@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 !`noglob ~/.claude/scripts/edit-google-pin.ts $ARGUMENTS`
 
-After pinning, edit the document with `~/.claude/scripts/edit-google-doc.ts <outline|find-replace|insert|append|apply>` or `~/.claude/scripts/edit-google-sheet.ts <get|set|append|apply>`. When more than one doc/sheet is pinned, pass `--doc <alias|id>` / `--sheet <alias|id>` to choose the target. Start a doc edit with `outline` to get paragraph indices.
+After pinning, edit the document with `~/.claude/scripts/edit-google-doc.ts <outline|find-replace|insert|append|markdown|rows|find-row|set-cell|insert-row|delete-row|apply>` or `~/.claude/scripts/edit-google-sheet.ts <get|set|append|apply>`. When more than one doc/sheet is pinned, pass `--doc <alias|id>` / `--sheet <alias|id>` to choose the target. Start a doc edit with `outline` to get paragraph indices. For table rows, use `find-row`, `set-cell`, `insert-row`, and `delete-row`, which find rows by their first cell's text.
 
 Notes:
 - `find-replace <find> <replace>` runs across the whole document (all tabs); `insert`/`append` are tab-scoped (default first tab, override with `--tab <id>`).

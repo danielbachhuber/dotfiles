@@ -7,6 +7,9 @@ import {
   lastParagraphText, normalizeStyle,
   buildFindReplaceRequests, buildInsertTextRequests, buildParagraphStyleRequests,
   buildBulletRequests, buildDeleteRequests, parseMarkdownToBlocks, buildMarkdownRequests,
+  collectTableRows, findTableRow, findSectionRow, rowsInSection, resolveColumn,
+  buildCellMarkdownRequests, buildRowMarkdownRequests, buildInsertRowRequests, buildDeleteRowRequests,
+  TableRowRef, TabContent,
 } from './lib/gws-doc-edit';
 
 function fail(msg: string): never {
@@ -16,6 +19,11 @@ function fail(msg: string): never {
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
+}
+function getAllFlags(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) if (args[i] === `--${name}` && i + 1 < args.length) out.push(args[i + 1]);
+  return out;
 }
 function hasFlag(args: string[], name: string): boolean {
   return args.includes(`--${name}`);
@@ -46,6 +54,38 @@ function applyBatch(id: string, requests: any[]): void {
     '--json', JSON.stringify({ requests }),
   ]);
   console.log(`Applied ${requests.length} request(s) to doc ${id}.`);
+}
+
+// Tabs to search for table rows: the --tab one, or every tab.
+function tableTabs(docJson: any, tabSel?: string): TabContent[] {
+  const tabs = collectTabs(docJson);
+  return tabSel ? [selectTab(tabs, tabSel)] : tabs;
+}
+// The row at the same table position as `ref` (plus `offset` rows), from a fresh fetch.
+function rowAt(rows: TableRowRef[], ref: TableRowRef, offset = 0): TableRowRef | undefined {
+  return rows.find(r => r.tabId === ref.tabId && r.tableStart === ref.tableStart && r.rowIndex === ref.rowIndex + offset);
+}
+function oneLine(s: string, max = 100): string {
+  const flat = s.replace(/\n/g, ' / ');
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+function printRow(r: TableRowRef): void {
+  const tab = r.tabId ? `[${r.tabId}] ` : '';
+  const sec = r.section ? ` in "${r.section}"` : '';
+  console.log(`${tab}table ${r.tableNumber + 1}, row ${r.rowIndex + 1}${sec}: ${r.name}`);
+  r.cells.forEach((c, i) => console.log(`  ${i + 1}: ${oneLine(c)}`));
+}
+// Markdown for each cell of a new row, from repeated --cell flags or a --file JSON array.
+function readCells(args: string[]): string[] {
+  const file = getFlag(args, 'file');
+  if (file !== undefined) {
+    const parsed = JSON.parse(readFileSync(file, 'utf-8'));
+    if (!Array.isArray(parsed) || !parsed.every(c => typeof c === 'string')) {
+      fail('--file must be a JSON array of markdown strings, one per column.');
+    }
+    return parsed;
+  }
+  return getAllFlags(args, 'cell');
 }
 
 const HELP = `Usage: edit-google-doc.ts <command> [--doc <alias|id>]
@@ -81,9 +121,33 @@ Commands:
                           --ordered, numbered) list.
   delete --start <n> --end <m> [--tab <id>]
                           Delete the content in an index range (from \`outline\`).
+
+Table rows (a row is named by the first paragraph of its first cell; matching is
+case-insensitive and falls back from exact to prefix to substring. A section row is
+one whose first cell spans the whole table, such as "Fruit (13)"; --section
+limits matching to the rows between that section row and the next. Rows in every
+tab are searched unless --tab is given):
+  rows [--section "<s>"]  List table rows with their section and cell text.
+  find-row "<row>" [--section "<s>"]
+                          Show one row's position and the text of each cell.
+  set-cell "<row>" --column <n|header> (--text "<md>" | --file <path>) [--section "<s>"]
+                          Replace one cell's content with Markdown (same syntax as
+                          \`markdown\`: bullets, **bold**, *italic*, [text](url)).
+                          --column is 1-based or text from the header row. To
+                          change a section row's title or count, name the section
+                          row itself, e.g. set-cell "Fruit" --column 1.
+  insert-row (--after "<row>" | --section "<s>") (--cell "<md>" ... | --file <cells.json>)
+                          Insert a row after the named row (with --section too, the
+                          row is looked up in that section), or at the end of the
+                          section when only --section is given. Pass one --cell per
+                          column in order, or --file with a JSON array of Markdown
+                          strings. Missing trailing cells are left empty. The new row
+                          copies the cell styling of the row above it.
+  delete-row "<row>" [--section "<s>"]
+                          Delete the row.
   apply <requests.json>   Escape hatch: apply a raw JSON array of Docs batchUpdate
                           request objects (or {"requests":[...]}). Use for
-                          tables and anything not covered above.`;
+                          anything not covered above.`;
 
 const [sub, ...rest] = process.argv.slice(2);
 const docSel = getFlag(rest, 'doc');
@@ -217,6 +281,96 @@ try {
     const pin = resolveTarget('doc', docSel);
     const tab = selectTab(collectTabs(fetchDoc(pin.id)), getFlag(rest, 'tab'));
     applyBatch(pin.id, buildDeleteRequests(start, end, tab.tabId));
+    process.exit(0);
+  }
+
+  if (sub === 'rows') {
+    const pin = resolveTarget('doc', docSel);
+    let rows = collectTableRows(tableTabs(fetchDoc(pin.id), getFlag(rest, 'tab')));
+    const section = getFlag(rest, 'section');
+    if (section !== undefined) rows = rowsInSection(rows, findSectionRow(rows, section));
+    if (rows.length === 0) fail('No table rows found.');
+    for (const r of rows) {
+      const tab = r.tabId ? `[${r.tabId}] ` : '';
+      const label = r.isSection ? `== ${r.name} ==` : `${r.name}${r.section ? `  (${r.section})` : ''}`;
+      console.log(`${tab}table ${r.tableNumber + 1}, row ${r.rowIndex + 1}: ${label}`);
+    }
+    process.exit(0);
+  }
+
+  if (sub === 'find-row') {
+    const name = getPositionals(rest, ['doc', 'tab', 'section'])[0];
+    if (name === undefined) fail('Usage: find-row "<row>" [--section "<s>"]');
+    const pin = resolveTarget('doc', docSel);
+    const rows = collectTableRows(tableTabs(fetchDoc(pin.id), getFlag(rest, 'tab')));
+    printRow(findTableRow(rows, name, getFlag(rest, 'section')));
+    process.exit(0);
+  }
+
+  if (sub === 'set-cell') {
+    const name = getPositionals(rest, ['doc', 'tab', 'section', 'column', 'text', 'file'])[0];
+    const column = getFlag(rest, 'column');
+    let text = getFlag(rest, 'text');
+    const file = getFlag(rest, 'file');
+    if (text === undefined && file !== undefined) text = readFileSync(file, 'utf-8');
+    if (name === undefined || column === undefined || text === undefined) {
+      fail('Usage: set-cell "<row>" --column <n|header> (--text "<md>" | --file <path>) [--section "<s>"]');
+    }
+    const pin = resolveTarget('doc', docSel);
+    const rows = collectTableRows(tableTabs(fetchDoc(pin.id), getFlag(rest, 'tab')));
+    const section = getFlag(rest, 'section');
+    // A section row can be targeted by name (to change its title or count) when no --section is given.
+    let ref: TableRowRef;
+    try {
+      ref = findTableRow(rows, name, section);
+    } catch (err) {
+      if (section !== undefined) throw err;
+      try { ref = findSectionRow(rows, name); } catch { throw err; }
+    }
+    const col = resolveColumn(rows, ref, column);
+    const cell = ref.row.tableCells?.[col];
+    if (!cell) fail(`Row "${ref.name}" has no cell in column ${col + 1}.`);
+    applyBatch(pin.id, buildCellMarkdownRequests(cell, parseMarkdownToBlocks(text), ref.tabId));
+    const updated = rowAt(collectTableRows(tableTabs(fetchDoc(pin.id), getFlag(rest, 'tab'))), ref);
+    if (updated) printRow(updated);
+    process.exit(0);
+  }
+
+  if (sub === 'insert-row') {
+    const after = getFlag(rest, 'after');
+    const section = getFlag(rest, 'section');
+    if (after === undefined && section === undefined) fail('insert-row requires --after "<row>" and/or --section "<s>".');
+    const cells = readCells(rest);
+    if (cells.length === 0) fail('insert-row requires --cell "<md>" (one per column) or --file <cells.json>.');
+    const pin = resolveTarget('doc', docSel);
+    const tabSel = getFlag(rest, 'tab');
+    const rows = collectTableRows(tableTabs(fetchDoc(pin.id), tabSel));
+    let ref: TableRowRef;
+    if (after !== undefined) ref = findTableRow(rows, after, section);
+    else {
+      const sec = findSectionRow(rows, section!);
+      const inSection = rowsInSection(rows, sec);
+      if (inSection.length === 0) fail(`Section "${sec.name}" has no rows to copy styling from; use --after "<row>".`);
+      ref = inSection[inSection.length - 1];
+    }
+    if (cells.length > ref.columns) fail(`Got ${cells.length} cells but the table has ${ref.columns} columns.`);
+    applyBatch(pin.id, buildInsertRowRequests(ref));
+    const added = rowAt(collectTableRows(tableTabs(fetchDoc(pin.id), tabSel)), ref, 1);
+    if (!added) fail('Inserted the row but could not find it again to fill its cells.');
+    applyBatch(pin.id, buildRowMarkdownRequests(added.row, cells.map(c => parseMarkdownToBlocks(c)), added.tabId));
+    const done = rowAt(collectTableRows(tableTabs(fetchDoc(pin.id), tabSel)), added);
+    if (done) printRow(done);
+    process.exit(0);
+  }
+
+  if (sub === 'delete-row') {
+    const name = getPositionals(rest, ['doc', 'tab', 'section'])[0];
+    if (name === undefined) fail('Usage: delete-row "<row>" [--section "<s>"]');
+    const pin = resolveTarget('doc', docSel);
+    const rows = collectTableRows(tableTabs(fetchDoc(pin.id), getFlag(rest, 'tab')));
+    const ref = findTableRow(rows, name, getFlag(rest, 'section'));
+    applyBatch(pin.id, buildDeleteRowRequests(ref));
+    console.log(`Deleted ${ref.name ? `"${ref.name}"` : 'the row'} (table ${ref.tableNumber + 1}, row ${ref.rowIndex + 1}).`);
     process.exit(0);
   }
 

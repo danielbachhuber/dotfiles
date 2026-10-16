@@ -240,6 +240,8 @@ function parseInline(src: string): { clean: string; runs: InlineRun[] } {
   return { clean, runs };
 }
 
+const LINK_BLUE = { red: 0x11 / 255, green: 0x55 / 255, blue: 0xcc / 255 };
+
 /** Max list nesting depth Google Docs' default bullet presets define (levels 0..8). */
 const MAX_LIST_DEPTH = 8;
 
@@ -330,7 +332,12 @@ export function buildMarkdownRequests(
       if (run.bold) { textStyle.bold = true; fields.push('bold'); }
       if (run.italic) { textStyle.italic = true; fields.push('italic'); }
       if (run.code) { textStyle.weightedFontFamily = { fontFamily: 'Courier New' }; fields.push('weightedFontFamily'); }
-      if (run.url) { textStyle.link = { url: run.url }; fields.push('link'); }
+      if (run.url) {
+        // The API doesn't apply the editor's link color, so set Docs' default link blue (#1155cc).
+        textStyle.link = { url: run.url };
+        textStyle.foregroundColor = { color: { rgbColor: LINK_BLUE } };
+        fields.push('link', 'foregroundColor');
+      }
       if (!fields.length) continue;
       requests.push({
         updateTextStyle: {
@@ -365,4 +372,226 @@ export function buildMarkdownRequests(
   }
 
   return requests;
+}
+
+// --- Tables -----------------------------------------------------------------
+
+export interface TableRowRef {
+  tabId: string | null;
+  /** Start index of the table element; identifies the table in tableCellLocation. */
+  tableStart: number;
+  /** Position of the table among the tab's top-level tables (0-based). */
+  tableNumber: number;
+  rowIndex: number;
+  columns: number;
+  /** First paragraph of the first cell: the row's name. */
+  name: string;
+  /** Full visible text of each cell, paragraphs joined by "\n". */
+  cells: string[];
+  /** Name of the nearest section row above this one, if any. */
+  section: string | null;
+  /** True when the first cell spans every column (a grouping row such as "Fruit (13)"). */
+  isSection: boolean;
+  row: any;
+}
+
+function cellParagraphTexts(cell: any): string[] {
+  const out: string[] = [];
+  for (const block of cell.content ?? []) {
+    if (!block.paragraph) continue;
+    let text = '';
+    for (const el of block.paragraph.elements ?? []) text += el.textRun?.content ?? '';
+    out.push(text.replace(/\n$/, ''));
+  }
+  return out;
+}
+
+/** Every row of every top-level table in the given tabs, with its name and section. */
+export function collectTableRows(tabs: TabContent[]): TableRowRef[] {
+  const rows: TableRowRef[] = [];
+  for (const tab of tabs) {
+    let tableNumber = 0;
+    for (const block of tab.content) {
+      const table = block.table;
+      if (!table) continue;
+      const columns = table.columns ?? table.tableRows?.[0]?.tableCells?.length ?? 0;
+      let section: string | null = null;
+      (table.tableRows ?? []).forEach((row: any, rowIndex: number) => {
+        const cellTexts = (row.tableCells ?? []).map(cellParagraphTexts);
+        const name = (cellTexts[0]?.find((t: string) => t.trim() !== '') ?? '').trim();
+        const span = row.tableCells?.[0]?.tableCellStyle?.columnSpan ?? 1;
+        const isSection = columns > 1 && span >= columns;
+        if (isSection) section = name;
+        rows.push({
+          tabId: tab.tabId,
+          tableStart: block.startIndex,
+          tableNumber,
+          rowIndex,
+          columns,
+          name,
+          cells: cellTexts.map((ps: string[]) => ps.join('\n')),
+          section: isSection ? null : section,
+          isSection,
+          row,
+        });
+      });
+      tableNumber++;
+    }
+  }
+  return rows;
+}
+
+/** Lowercase, collapse whitespace, drop quotes/backticks and trailing punctuation or "(12)" counts. */
+function normalizeRowName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[`"“”‘’]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s*\(\d+\)$/, '')
+    .replace(/[\s:.\-–—]+$/, '');
+}
+
+function describeRow(r: TableRowRef): string {
+  const where = r.section ? ` in "${r.section}"` : '';
+  return `"${r.name}" (table ${r.tableNumber + 1}, row ${r.rowIndex + 1}${where})`;
+}
+
+/**
+ * Pick the single row matching `wanted` from `rows`. Tries, in order: exact row name,
+ * exact first-cell text, row-name prefix, row-name substring, first-cell substring. The
+ * first tier with any match wins; more than one match in that tier is an error.
+ */
+function pickRow(rows: TableRowRef[], wanted: string, what: string): TableRowRef {
+  const w = normalizeRowName(wanted);
+  const tiers: ((r: TableRowRef) => boolean)[] = [
+    r => normalizeRowName(r.name) === w,
+    r => normalizeRowName(r.cells[0] ?? '') === w,
+    r => normalizeRowName(r.name).startsWith(w),
+    r => normalizeRowName(r.name).includes(w),
+    r => normalizeRowName(r.cells[0] ?? '').includes(w),
+  ];
+  if (w) {
+    for (const tier of tiers) {
+      const hits = rows.filter(tier);
+      if (hits.length === 1) return hits[0];
+      if (hits.length > 1) {
+        throw new Error(
+          `"${wanted}" matches ${hits.length} ${what}s: ${hits.map(describeRow).join(', ')}. ` +
+            'Use the full name, or narrow with --section "<section row>".',
+        );
+      }
+    }
+  }
+  throw new Error(`No ${what} matching "${wanted}". Run \`rows\` to list the table rows.`);
+}
+
+export function findSectionRow(rows: TableRowRef[], section: string): TableRowRef {
+  return pickRow(rows.filter(r => r.isSection), section, 'section row');
+}
+
+/** Rows after a section row, up to the next section row in the same table. */
+export function rowsInSection(rows: TableRowRef[], sectionRow: TableRowRef): TableRowRef[] {
+  const sameTable = rows.filter(r => r.tabId === sectionRow.tabId && r.tableStart === sectionRow.tableStart);
+  const out: TableRowRef[] = [];
+  for (const r of sameTable) {
+    if (r.rowIndex <= sectionRow.rowIndex) continue;
+    if (r.isSection) break;
+    out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Find a row by the text of its first cell. With `section`, only rows between that section
+ * row and the next section row are considered.
+ */
+export function findTableRow(rows: TableRowRef[], name: string, section?: string): TableRowRef {
+  if (!section) return pickRow(rows.filter(r => !r.isSection), name, 'row');
+  const sec = findSectionRow(rows, section);
+  return pickRow(rowsInSection(rows, sec), name, `row under "${sec.name}"`);
+}
+
+/** Resolve a column given as a 1-based number or as text matching the table's header row. */
+export function resolveColumn(rows: TableRowRef[], ref: TableRowRef, column: string): number {
+  if (/^\d+$/.test(column)) {
+    const n = parseInt(column, 10);
+    if (n < 1 || n > ref.columns) throw new Error(`--column ${column} is out of range; the table has ${ref.columns} columns.`);
+    return n - 1;
+  }
+  const header = rows.find(r => r.tabId === ref.tabId && r.tableStart === ref.tableStart && r.rowIndex === 0);
+  const cells = header?.cells ?? [];
+  const w = normalizeRowName(column);
+  const names = cells.map(c => normalizeRowName(c.split('\n')[0]));
+  let i = names.findIndex(n => n === w);
+  if (i < 0) i = names.findIndex(n => n.startsWith(w));
+  if (i < 0) i = names.findIndex(n => n.includes(w));
+  if (i < 0) {
+    throw new Error(`No column matching "${column}". Header: ${cells.map(c => `"${c.split('\n')[0]}"`).join(', ')}.`);
+  }
+  return i;
+}
+
+function tableCellLocation(ref: TableRowRef, rowIndex: number, columnIndex = 0) {
+  return {
+    tableStartLocation: locationFor(ref.tableStart, ref.tabId),
+    rowIndex,
+    columnIndex,
+  };
+}
+
+/**
+ * Replace a table cell's whole content with markdown. Clears the cell's bullets and text,
+ * resets character styling and list indents on the leftover paragraph so nothing carries
+ * over from the old content, then inserts and formats the markdown.
+ */
+export function buildCellMarkdownRequests(cell: any, blocks: MdBlock[], tabId: string | null) {
+  const cellStart = cell.content?.[0]?.startIndex ?? cell.startIndex + 1;
+  const cellEnd = cell.endIndex;
+  const requests: any[] = [
+    { deleteParagraphBullets: { range: rangeFor(cellStart, cellEnd, tabId) } },
+  ];
+  // The cell's final newline can't be deleted; everything before it can.
+  if (cellEnd - 1 > cellStart) requests.push(...buildDeleteRequests(cellStart, cellEnd - 1, tabId));
+  if (blocks.length === 0) return requests;
+
+  const md = buildMarkdownRequests(blocks, cellStart, tabId);
+  const insertedLength: number = md[0].insertText.text.length;
+  requests.push(md[0]);
+  requests.push({
+    updateTextStyle: {
+      range: rangeFor(cellStart, cellStart + insertedLength, tabId),
+      textStyle: {},
+      fields: 'bold,italic,underline,strikethrough,link,foregroundColor,weightedFontFamily',
+    },
+  });
+  requests.push({
+    updateParagraphStyle: {
+      range: rangeFor(cellStart, cellStart + insertedLength + 1, tabId),
+      paragraphStyle: {},
+      fields: 'indentStart,indentFirstLine',
+    },
+  });
+  requests.push(...md.slice(1));
+  return requests;
+}
+
+/** Fill several cells of one row; cells are written last-to-first so earlier indices stay valid. */
+export function buildRowMarkdownRequests(row: any, cellBlocks: (MdBlock[] | null)[], tabId: string | null) {
+  const requests: any[] = [];
+  for (let c = cellBlocks.length - 1; c >= 0; c--) {
+    const blocks = cellBlocks[c];
+    const cell = row.tableCells?.[c];
+    if (blocks === null || !cell) continue;
+    requests.push(...buildCellMarkdownRequests(cell, blocks, tabId));
+  }
+  return requests;
+}
+
+export function buildInsertRowRequests(ref: TableRowRef, below = true) {
+  return [{ insertTableRow: { tableCellLocation: tableCellLocation(ref, ref.rowIndex), insertBelow: below } }];
+}
+
+export function buildDeleteRowRequests(ref: TableRowRef) {
+  return [{ deleteTableRow: { tableCellLocation: tableCellLocation(ref, ref.rowIndex) } }];
 }
