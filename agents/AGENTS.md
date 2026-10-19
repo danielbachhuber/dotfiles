@@ -31,9 +31,10 @@
 - Push after every commit you make, so the remote stays current. Plain pushes only: anything that rewrites history, including `gh stack push`, still needs my go-ahead.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
 - When I ask for stacked pull requests, I want GitHub to show them as a stack ("stack #N" on the PR page). It doesn't do that for PRs that only point at each other with `--base`. Open each PR from its draft with `gh pr create --base <parent-branch>` as usual, then link it into the stack right away:
-  - `gh stack link <parent PR URL> <new PR URL>` creates the stack from the first two PRs, or adds the new PR to the top of the parent's existing stack.
-  - Pass PR URLs, not bare numbers or branch names. A bare number can be read as a stack number, and a branch without a PR gets a new PR with an auto-generated description.
-  - Check the result with `gh stack view` or the PR page. If a stacked PR was opened earlier without being linked, link it the same way.
+  - For the second PR, `gh stack link <parent PR URL> <new PR URL>` creates the stack.
+  - For each PR after that, `gh stack link <stack number> <new PR URL>` adds it to the top of the existing stack. The stack number is the N in "stack #N", which `gh stack link` prints when it creates the stack. Listing only the parent and the new PR fails once a stack exists, because it would remove the PRs below the parent.
+  - Pass PRs as URLs, not bare numbers or branch names. A bare number can be read as a stack number, and a branch without a PR gets a new PR with an auto-generated description.
+  - Check the PR page to confirm it shows the stack. If a stacked PR was opened earlier without being linked, link it the same way.
 - Stacked pull requests need rebases, never merge commits. This is the exception to the no-force-push rule above. When a PR belongs to a stack (GitHub shows it as part of "stack #N"), always update it with the `gh stack` CLI, whether it conflicts with its base or is only behind:
   1. `gh stack checkout <PR URL>` checks out every branch in the stack. Use the URL, since a bare number is tried as a stack number first.
   2. `gh stack rebase` rebases the whole stack onto the latest base branch.
