@@ -24,6 +24,8 @@
 #                            default model, looked up on each run.
 #   DEPENDABOT_GH            path to the gh CLI, when it is not on PATH.
 #   DEPENDABOT_GIT           path to the git CLI, when it is not on PATH.
+#   DEPENDABOT_ME            GitHub login of the person the sweep reviews for.
+#                            Default: the login gh is authenticated as.
 #
 # BB_PROJECT_ID and BB_CLI are injected by the automations plugin.
 
@@ -89,12 +91,15 @@ resolve_git() {
 }
 GIT="$(resolve_git)"
 
+ME="${DEPENDABOT_ME:-$("$GH" api user --jq .login)}"
+
 # --- The queue ---------------------------------------------------------------
 #
 # headRefName comes along because the per-PR worktree is checked out on it.
+# The reviewer fields say whether someone else already has the PR.
 
 open_prs="$("$GH" pr list --repo "$REPO" --author "app/dependabot" --state open \
-  --json number,title,headRefName --limit 50)"
+  --json number,title,headRefName,reviewRequests,latestReviews --limit 50)"
 
 # --- What already has a thread -----------------------------------------------
 #
@@ -237,12 +242,17 @@ ensure_pr_worktree() {
 spawned=0
 skipped_for_cap=0
 
-while IFS=$'\t' read -r number title head; do
+while IFS=$'\t' read -r number title head other_reviewers; do
   [ -z "$number" ] && continue
 
   if printf '%s\n' "$handled" | grep -qx "$number"; then
     continue
   fi
+
+  # A PR someone else is already reviewing is theirs, not mine. Skipped quietly,
+  # since it would otherwise be reported on every sweep for as long as it stays
+  # open.
+  [ -n "$other_reviewers" ] && continue
 
   if [ "$spawned" -ge "$MAX_THREADS" ]; then
     skipped_for_cap=$((skipped_for_cap + 1))
@@ -303,7 +313,15 @@ summary you have already written survives."
   else
     echo "Failed to spawn a thread for ${package} #${number}" >&2
   fi
-done < <(printf '%s' "$open_prs" | jq -r '.[] | [.number, .title, .headRefName] | @tsv')
+done < <(printf '%s' "$open_prs" | jq -r --arg me "$ME" '
+  .[]
+  # Other people asked to review, or who already have: requested users (teams
+  # have no login and do not count) plus authors of submitted reviews, minus me
+  # and bots such as Copilot.
+  | ([(.reviewRequests[] | .login // empty), (.latestReviews[] | .author.login)]
+     | map(select(. != $me and (endswith("[bot]") | not) and (test("copilot"; "i") | not)))
+     | unique | join(",")) as $others
+  | [.number, .title, .headRefName, $others] | @tsv')
 
 # A cap that truncates quietly reads as "everything is handled" when it is not.
 if [ "$skipped_for_cap" -gt 0 ]; then
