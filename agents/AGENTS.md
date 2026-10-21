@@ -47,6 +47,7 @@
 
 ## Working style
 
+- When starting work in a worktree or branch that will end up as a pull request, load the `work-on` skill before writing code, whether the request names an issue or is a one-line instruction such as "switch X to use Y". It owns the workflow from reading the code through handing back the PR. Keep each step proportionate to the change: a fixture swap gets a sentence where a feature gets a table.
 - For small, well-scoped changes, use a lightweight plan rather than creating a formal spec.
 - Put temporary working files in `/tmp`, not in the repository or tool-state directories.
 
