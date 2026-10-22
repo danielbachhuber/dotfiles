@@ -28,6 +28,7 @@
 
 - Do not create git commits unless I explicitly ask. Leave changes in the working tree for review.
   - An instruction to open a pull request, including one in the prompt that started the thread, is not that ask. Finish the work, draft the PR description, and stop. Commit, push, and open the PR only after I confirm.
+- Don't refer to GitHub issues in commit messages: no "Fixes #4", "Closes #4", "See #4", or issue URLs. Link the issue in the pull request description instead, where "Fixes" or "See" decides whether merging closes it. A closing keyword in a commit closes the issue on merge even when the PR description says "See".
 - Push after every commit you make, so the remote stays current. Plain pushes only: anything that rewrites history, including `gh stack push`, still needs my go-ahead.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
 - When I ask for stacked pull requests, I want GitHub to show them as a stack ("stack #N" on the PR page). It doesn't do that for PRs that only point at each other with `--base`. Open each PR from its draft with `gh pr create --base <parent-branch>` as usual, then link it into the stack right away:
