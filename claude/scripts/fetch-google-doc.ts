@@ -13,7 +13,7 @@ if (!docId) {
 
 const raw = execSync(
     `gws docs documents get --params '{"documentId": "${docId}", "includeTabsContent": true}'`,
-    { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }
+    { encoding: 'utf-8', maxBuffer: 200 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }
 );
 
 // Strip stderr noise like "Using keyring backend: keyring"
