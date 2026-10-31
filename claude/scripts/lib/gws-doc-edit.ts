@@ -240,6 +240,8 @@ function parseInline(src: string): { clean: string; runs: InlineRun[] } {
   return { clean, runs };
 }
 
+/** Gap below body paragraphs and list ends; matches the space Docs' editor adds with "Add space after paragraph". */
+const PARAGRAPH_SPACE_BELOW_PT = 10;
 const LINK_BLUE = { red: 0x11 / 255, green: 0x55 / 255, blue: 0xcc / 255 };
 
 /** Max list nesting depth Google Docs' default bullet presets define (levels 0..8). */
@@ -323,6 +325,22 @@ export function buildMarkdownRequests(
   for (const { b, start, textStart } of placed) {
     requests.push(...buildParagraphStyleRequests(start, textStart + b.text.length + 1, b.style, tabId));
   }
+
+  // Space below body paragraphs and below the last item of each list, as rendered Markdown
+  // has. Without it, paragraphs and lists run together with no gap between them.
+  placed.forEach(({ b, start, textStart }, k) => {
+    const next = placed[k + 1]?.b;
+    const isBody = !b.list && b.style === 'NORMAL_TEXT';
+    const endsList = !!b.list && next?.list !== b.list;
+    if (!isBody && !endsList) return;
+    requests.push({
+      updateParagraphStyle: {
+        range: rangeFor(start, textStart + b.text.length + 1, tabId),
+        paragraphStyle: { spaceBelow: { magnitude: PARAGRAPH_SPACE_BELOW_PT, unit: 'PT' } },
+        fields: 'spaceBelow',
+      },
+    });
+  });
 
   // Inline text styling (offsets are relative to the visible text, past the tab prefix).
   for (const { b, textStart } of placed) {

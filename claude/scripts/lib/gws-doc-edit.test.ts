@@ -279,3 +279,13 @@ test('row insert and delete requests target the table start and row index', () =
     deleteTableRow: { tableCellLocation: { tableStartLocation: { index: 7, tabId: 't.0' }, rowIndex: 5, columnIndex: 0 } },
   }]);
 });
+
+test('buildMarkdownRequests adds space below body paragraphs and the last item of each list', () => {
+  const blocks = parseMarkdownToBlocks('## Heading\n\nIntro\n\n- one\n- two\n\nOutro');
+  const reqs = buildMarkdownRequests(blocks, 1, 't.0');
+  const spaced = reqs
+    .filter((r: any) => r.updateParagraphStyle?.fields === 'spaceBelow')
+    .map((r: any) => r.updateParagraphStyle.range.startIndex);
+  // Heading (1-9) and "one" get none; "Intro" (9), "two" (19), and "Outro" (23) do.
+  assert.deepStrictEqual(spaced, [9, 19, 23]);
+});
