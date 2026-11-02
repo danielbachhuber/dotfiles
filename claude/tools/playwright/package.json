@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Reusable headless-browser helper for Claude Code (Playwright/Chromium).",
+  "description": "Reusable headless-browser helper for Claude Code (Playwright + system Google Chrome).",
   "bin": {
     "browse": "./browse.mjs"
   },

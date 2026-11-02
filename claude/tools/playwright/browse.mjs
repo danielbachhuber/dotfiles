@@ -2,10 +2,10 @@
 /**
  * Reusable headless-browser helper for Claude Code.
  *
- * Renders pages with Chromium (Playwright) and extracts useful metadata that a
- * plain HTTP fetch misses on JS-rendered sites: title, meta/og descriptions,
- * the first <h1>, a best-guess visible tagline, and which comment platform (if
- * any) the page loads. Optionally captures a screenshot per URL.
+ * Renders pages with the system Google Chrome (via Playwright) and extracts
+ * useful metadata that a plain HTTP fetch misses on JS-rendered sites: title,
+ * meta/og descriptions, the first <h1>, a best-guess visible tagline, and which
+ * comment platform (if any) the page loads. Optionally captures a screenshot per URL.
  *
  * Usage:
  *   node browse.mjs <url> [url2 ...]
@@ -156,7 +156,9 @@ async function main() {
     console.error('No URLs. Usage: node browse.mjs <url ...> | --file urls.txt [--screenshot dir] [--jsonl out]');
     process.exit(1);
   }
-  const browser = await chromium.launch({ headless: true });
+  // Use the auto-updating system Chrome rather than Playwright's bundled
+  // Chromium, and keep Chrome's sandbox on: this tool loads arbitrary URLs.
+  const browser = await chromium.launch({ headless: true, channel: 'chrome', chromiumSandbox: true });
   const sink = opts.jsonl ? createWriteStream(opts.jsonl) : null;
   let done = 0;
   const queue = [...opts.urls];
