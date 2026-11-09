@@ -2,6 +2,9 @@
 #
 # Start a bb thread already on the right branch and diff base.
 #
+# Not for the repos CLAUDE.md says work in their main checkout (bb-plugins,
+# skills, dotfiles, second-brain). Use bb thread spawn --environment there.
+#
 # Usage:
 #   start-branch-thread [<PR URL or number> | <branch>] [--against-pr] [--base <branch>]
 #                       [--repo owner/repo] (--prompt <text> | --prompt-file <path|->)

@@ -26,7 +26,7 @@
 
 ## Git workflow
 
-- Do not create git commits unless I explicitly ask. Leave changes in the working tree for review.
+- Do not create git commits unless I explicitly ask. Leave changes in the working tree for review. The main-checkout repos listed under bb are the exception: commit and push each round there.
   - An instruction to open a pull request, including one in the prompt that started the thread, is not that ask. Finish the work, draft the PR description, and stop. Commit, push, and open the PR only after I confirm.
 - Push after every commit you make, so the remote stays current. Plain pushes only: anything that rewrites history, including `gh stack push`, still needs my go-ahead.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
@@ -72,7 +72,14 @@ The Bash tool runs zsh, which differs from bash in ways that break common comman
 - When you link a file in a bb thread, such as a draft in `~/projects/drafts/`, the link text can be the filename or a partial path, but the link target must be the absolute path. For example: `[pull-request-my-branch.md](/Users/danielb/projects/drafts/pull-request-my-branch.md)`. Don't use a `~`-relative path, a path relative to the working directory, or a `file://` URL as the target. bb only renders absolute-path links as clickable files.
   - This applies to every file reference, not only links to drafts. A `file:line` code reference to a file outside the working directory, such as a skill under `~/.claude/skills/`, needs an absolute target: `[writing.md:67](/Users/danielb/.claude/skills/draft-pr-description/writing.md)`, not a bare `writing.md:67`, which bb opens relative to the worktree and fails with a 404.
   - Image embeds in a draft need absolute paths too. A `./before.png` embed shows as a broken image in the preview. Keep PR media in `~/projects/drafts/<draft-name>-media/` and embed each file by its absolute path.
-- Start a bb thread that works on a branch with `~/.claude/scripts/start-branch-thread`, not `bb thread spawn`. It puts the thread on the right branch, sets its diff base to a remote branch, and prints the thread ID. Pass the prompt with `--prompt-file -`, and `bb thread spawn` options such as `--title` or `--parent-self` after `--`.
+- Threads in these repos work in the repo's main checkout on its default branch, with no branch thread, no worktree, and no PR, unless I explicitly ask for a worktree:
+  - `danielbachhuber/bb-plugins` (`~/projects/bb-plugins`, on `main`)
+  - `danielbachhuber/skills` (`~/projects/skills`, on `main`)
+  - `danielbachhuber/dotfiles` (`~/.dotfiles`, on `master`)
+  - `danielbachhuber/second-brain` (`~/projects/second-brain`, on `main`)
+
+  Commit and push at the end of each round of work there, so other threads see the change right away. This overrides "Do not create git commits unless I explicitly ask" for these repos. Other threads share the checkout, so stage and commit only the files you changed. In bb-plugins, also build and reload each plugin whose code the commit touched, as its AGENTS.md describes. To spawn a thread in one of these repos, use `bb thread spawn --environment <main checkout path>`, not `start-branch-thread`.
+- Start a bb thread that works on a branch with `~/.claude/scripts/start-branch-thread`, not `bb thread spawn`, except in the main-checkout repos above. It puts the thread on the right branch, sets its diff base to a remote branch, and prints the thread ID. Pass the prompt with `--prompt-file -`, and `bb thread spawn` options such as `--title` or `--parent-self` after `--`.
   - `start-branch-thread <PR URL>` runs in the worktree that has the PR's branch checked out, creating one if none does, with `origin/<PR base branch>` as the diff base. Add `--against-pr` for a fix PR against that PR: a new worktree branched from `origin/<PR head branch>`, with that as the diff base.
   - `start-branch-thread <branch> [--base <base>]` does the same for a branch, creating it from `origin/<base>` if it doesn't exist yet. The base defaults to the branch's open PR's base, then the repo's default branch. Use `--base <parent-branch>` to start a stacked branch.
   - `start-branch-thread [--base <base>]` with no branch starts a new bb worktree from `origin/<base>`.
