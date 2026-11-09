@@ -153,3 +153,15 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # opencode
 export PATH=/Users/danielb/.opencode/bin:$PATH
+
+# Agent shells (Claude Code sets CLAUDECODE=1): make zsh behave closer to bash
+# for commands written with bash habits.
+if [[ -n $CLAUDECODE ]]; then
+	# Pass unmatched globs through literally (`--include=*.ts`) instead of aborting.
+	# Treat a leading `=` as text (`echo =====`) instead of a command lookup.
+	unsetopt nomatch equals
+	# macOS has no `timeout`; fall back to perl's alarm when coreutils isn't installed.
+	if ! (( $+commands[timeout] || $+commands[gtimeout] )); then
+		timeout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+	fi
+fi

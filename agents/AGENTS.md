@@ -55,9 +55,11 @@
 
 The Bash tool runs zsh, which differs from bash in ways that break common commands:
 
-- zsh expands an unquoted glob anywhere in a word, including after `=`. When nothing matches, the whole command aborts with "no matches found", so `grep -rn foo --include=*.ts .` never runs. Quote the glob (`--include='*.ts'`) or use `rg -g '*.ts'`.
-- A word starting with `=` is a command lookup, so `echo =====` fails with "===== not found" and the rest of the command line is skipped. Quote it (`echo '====='`) or use `printf -- '---\n'`.
+- The agent shell turns off `nomatch` and `equals`, so an unmatched glob such as `--include=*.ts` passes through as text and `echo =====` prints. A glob that does match still expands, so quote any pattern meant for the command (`--include='*.ts'`), and don't count on either option in scripts, which run without these settings.
+- macOS has no `timeout`. The agent shell defines one through `perl` when coreutils isn't installed. It exits 142, not 124, when time runs out.
 - zsh doesn't split an unquoted `$VAR` on spaces, so `F="a b c"; git add $F` passes one argument. Use an array: `F=(a b c); git add -- "${F[@]}"`.
+- `path`, `cdpath`, `fpath`, and `manpath` are arrays tied to `PATH`, `CDPATH`, `FPATH`, and `MANPATH`. Never use them as loop variable names: `for path in *.md` overwrites `PATH` and every later command fails with "command not found".
+- A prefix assignment applies to the command, but its variables expand before it takes effect, so `D=/x cat > $D/f` writes to `/f`. Assign first: `D=/x; cat > "$D/f"`.
 
 ## Tools
 
