@@ -26,7 +26,7 @@
 
 ## Git workflow
 
-- Do not create git commits unless I explicitly ask. Leave changes in the working tree for review. The main-checkout repos listed under bb are the exception: commit and push each round there.
+- Do not create git commits unless I explicitly ask. Leave changes in the working tree for review. The main-checkout repos listed under bb are the exception: commit and push each round there, except in second-brain, whose AGENTS.md sets its own rule.
   - An instruction to open a pull request, including one in the prompt that started the thread, is not that ask. Finish the work, draft the PR description, and stop. Commit, push, and open the PR only after I confirm.
 - Push after every commit you make, so the remote stays current. Plain pushes only: anything that rewrites history, including `gh stack push`, still needs my go-ahead.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
@@ -78,7 +78,7 @@ The Bash tool runs zsh, which differs from bash in ways that break common comman
   - `danielbachhuber/dotfiles` (`~/.dotfiles`, on `master`)
   - `danielbachhuber/second-brain` (`~/projects/second-brain`, on `main`)
 
-  Commit and push at the end of each round of work there, so other threads see the change right away. This overrides "Do not create git commits unless I explicitly ask" for these repos. Other threads share the checkout, so stage and commit only the files you changed. In bb-plugins, also build and reload each plugin whose code the commit touched, as its AGENTS.md describes. To spawn a thread in one of these repos, use `bb thread spawn --environment <main checkout path>`, not `start-branch-thread`.
+  Commit and push at the end of each round of work there, so other threads see the change right away. This overrides "Do not create git commits unless I explicitly ask" for these repos, except second-brain, which follows its own AGENTS.md on when to commit. Other threads share the checkout, so stage and commit only the files you changed. In bb-plugins, also build and reload each plugin whose code the commit touched, as its AGENTS.md describes. To spawn a thread in one of these repos, use `bb thread spawn --environment <main checkout path>`, not `start-branch-thread`.
 - Start a bb thread that works on a branch with `~/.claude/scripts/start-branch-thread`, not `bb thread spawn`, except in the main-checkout repos above. It puts the thread on the right branch, sets its diff base to a remote branch, and prints the thread ID. Pass the prompt with `--prompt-file -`, and `bb thread spawn` options such as `--title` or `--parent-self` after `--`.
   - `start-branch-thread <PR URL>` runs in the worktree that has the PR's branch checked out, creating one if none does, with `origin/<PR base branch>` as the diff base. Add `--against-pr` for a fix PR against that PR: a new worktree branched from `origin/<PR head branch>`, with that as the diff base.
   - `start-branch-thread <branch> [--base <base>]` does the same for a branch, creating it from `origin/<base>` if it doesn't exist yet. The base defaults to the branch's open PR's base, then the repo's default branch. Use `--base <parent-branch>` to start a stacked branch.
