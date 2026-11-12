@@ -198,6 +198,31 @@ fi
 CONTEXT="$SETUP"
 [ -z "${ABOUT:-}" ] || CONTEXT="This thread is for $ABOUT $SETUP"
 
+# gh-context links a thread to an issue when its first prompt's first line
+# names "issue #N", and this script's setup sentence would otherwise be that
+# line. So when the title's #N is an issue rather than a pull request, open
+# with it.
+TITLE_ARG=""
+NEXT_IS_TITLE=0
+for ARG in ${SPAWN_ARGS[@]+"${SPAWN_ARGS[@]}"}; do
+	if [ "$NEXT_IS_TITLE" = 1 ]; then TITLE_ARG="$ARG"; NEXT_IS_TITLE=0; continue; fi
+	case "$ARG" in
+		--title) NEXT_IS_TITLE=1 ;;
+		--title=*) TITLE_ARG="${ARG#--title=}" ;;
+	esac
+done
+if [[ "$TITLE_ARG" =~ ^[A-Za-z-]+\ \#([0-9]+): ]]; then
+	TITLE_NUMBER="${BASH_REMATCH[1]}"
+	ISSUE_URL=$(gh api "repos/$NWO/issues/$TITLE_NUMBER" \
+		--jq 'if .pull_request then empty else .html_url end' 2>/dev/null) || ISSUE_URL=""
+	if [ -n "$ISSUE_URL" ]; then
+		CONTEXT="This thread works on issue #$TITLE_NUMBER: $ISSUE_URL
+
+$CONTEXT"
+		log "linked to issue #$TITLE_NUMBER"
+	fi
+fi
+
 # 6. Start the thread, then make sure its environment has the merge base.
 THREAD_JSON=$(printf '%s\n\n%s\n' "$CONTEXT" "$PROMPT" | bb thread spawn --json \
 	--project "$PROJECT_ID" "${ENV_ARGS[@]}" --prompt-file - ${SPAWN_ARGS[@]+"${SPAWN_ARGS[@]}"})
