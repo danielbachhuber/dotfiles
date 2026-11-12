@@ -8,7 +8,7 @@
 # Usage:
 #   start-branch-thread [<PR URL or number> | <branch>] [--against-pr] [--base <branch>]
 #                       [--repo owner/repo] (--prompt <text> | --prompt-file <path|->)
-#                       [-- <bb thread spawn options>]
+#                       -- --title <title> [<other bb thread spawn options>]
 #
 # <PR URL or number>  Runs in the worktree that has the PR's head branch checked
 #                     out, creating <project checkout>-pr-<number> if none does.
@@ -25,6 +25,8 @@
 # --base <branch>     The base for <branch> or a new worktree. Defaults to the
 #                     base of the branch's open PR, then the repo's default branch.
 # --repo owner/repo   The repo, when it isn't in a PR URL or the current directory.
+# --title <title>     Required, after --. "<Action> #<n>: <gist>", such as
+#                     "Refine #7160: rebase onto main". See CLAUDE.md for the parts.
 #
 # Prints the new thread ID on stdout. Progress and timing go to stderr.
 
@@ -55,7 +57,7 @@ while [ $# -gt 0 ]; do
 		--prompt) PROMPT="$2"; shift ;;
 		--prompt-file) PROMPT_FILE="$2"; shift ;;
 		--) shift; SPAWN_ARGS=("$@"); break ;;
-		-h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 0 ;;
+		-h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 0 ;;
 		-*) die "unknown option $1" ;;
 		*) [ -z "$TARGET" ] || die "unexpected argument $1"; TARGET="$1" ;;
 	esac
@@ -66,6 +68,12 @@ if [ -n "$PROMPT_FILE" ]; then
 	PROMPT=$(cat "$PROMPT_FILE")
 fi
 [ -n "$PROMPT" ] || die "pass --prompt or --prompt-file"
+
+HAS_TITLE=0
+for ARG in ${SPAWN_ARGS[@]+"${SPAWN_ARGS[@]}"}; do
+	case "$ARG" in --title|--title=*) HAS_TITLE=1 ;; esac
+done
+[ "$HAS_TITLE" = 1 ] || die 'pass a title after --, such as -- --title "Refine #7160: rebase onto main"'
 
 if [[ "$TARGET" =~ ^https://github\.com/[^/]+/[^/]+/pull/[0-9]+ || "$TARGET" =~ ^[0-9]+$ ]]; then
 	MODE=pr
