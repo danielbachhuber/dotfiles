@@ -9,16 +9,7 @@
 - Describe the current system on its own terms. Do not document prior-state behavior unless I explicitly ask for it.
 - Mannered prose substitutes metaphor and flourish for direct statement. Instead of "a parameter worth varying," the mannered writer produces "a dial worth turning." Instead of "this point still matters," they write "this point earns its keep." The phrases exist to display the writer, not to convey the idea, and readers can tell. That is why mannered prose irritates: it makes the reader work harder so the writer can perform. It is also imprecise. Metaphors drag in connotations the writer did not choose and cannot control. The fix is to say what you mean. When a literal phrase is available, use it.
 - Use approachable English without jargon or mannered prose and without assumed contextual references.
-- When explaining something to me, include a worked example: show the actual thing, such as the row, the request, the file, or the output, with real names and values rather than placeholders, and walk through what happens to it. Then state the general point. For example, instead of only saying "an item should show its story's current details on every backend," show the Firebase row whose story was deleted:
-
-  ```
-  related_content/q_812/items/rc_3
-    url:      https://example.org/budget-vote
-    story_id: st_4471                 ← stories.delete removed this story
-    title:    "Budget vote delayed"   ← copied when the URL was added, so the card still shows it
-  ```
-
-  Add a simple illustration where it helps, such as a small table, a before and after, or a numbered sequence of what happens. The `show-dont-tell` skill covers when a diagram is worth drawing.
+- When explaining something to me, load the `worked-example` skill.
 - When referring to a GitHub issue or pull request, always give both its full title and its number, and make the whole title and number one link to its URL, e.g. `[Fix login redirect loop (#123)](https://github.com/owner/repo/issues/123)`. Outside GitHub, a bare `#123` isn't clickable. Write the number as `owner/repo#123` when it's in a different repo from the one under discussion. Get the owner and repo from `gh repo view` or the git remote rather than guessing. An `/issues/<n>` URL redirects to the PR when the number is a PR. Read the title from `gh issue view` or `gh pr view` rather than paraphrasing or shortening it.
 
 ## Pull Requests
