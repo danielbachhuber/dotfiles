@@ -30,6 +30,7 @@
 - Do not create git commits unless I explicitly ask. Leave changes in the working tree for review. The main-checkout repos listed under bb are the exception: commit and push each round there, except in second-brain, whose AGENTS.md sets its own rule.
   - An instruction to open a pull request, including one in the prompt that started the thread, is not that ask. Finish the work, draft the PR description, and stop. Commit, push, and open the PR only after I confirm.
 - Push after every commit you make, so the remote stays current. Plain pushes only: anything that rewrites history, including `gh stack push`, still needs my go-ahead.
+- Don't mention GitHub issues or pull requests in commit messages: no `#123`, no `owner/repo#123`, no issue URLs, and no closing keywords like `Fixes #123`. Describe the change on its own terms. Put the issue link in the pull request description instead.
 - Never force-push, amend a pushed commit, or rewrite a pushed branch unless I explicitly ask. Add follow-up commits instead.
 - When I ask for stacked pull requests, I want GitHub to show them as a stack ("stack #N" on the PR page). It doesn't do that for PRs that only point at each other with `--base`. Open each PR from its draft with `gh pr create --base <parent-branch>` as usual, then link it into the stack right away:
   - For the second PR, `gh stack link <parent PR URL> <new PR URL>` creates the stack.
