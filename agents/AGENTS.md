@@ -2,6 +2,7 @@
 
 - Whenever you prepare a PR description, PR comment, issue body, or issue comment on my behalf, first write the content to a markdown file in `~/projects/drafts/` so I can easily access and edit it before anything is posted. Don't post to GitHub until I've confirmed. Once the GitHub operation succeeds, delete the draft file from `~/projects/drafts/`.
   - Pull requests should be prefixed with `pull-request-`, issues with `issue-`, and replies with `reply-`. Each should then have a stable descriptive suffix, likely the branch name. If the PR or issue already exists, then include the number immediately after the prefix.
+- Whenever you write on my behalf, load the `unslop` skill and apply it to the text before showing it to me. This covers pull request descriptions, PR and issue comments, review replies, new issues, commit messages, Slack messages, emails, docs, and any other text that will go out under my name.
 - Avoid em dashes in drafted text, except when preserving a verbatim quote.
 - When synthesizing bullet points from a source, include the supporting verbatim quote beneath each bullet, with a speaker and timestamp/locator when available.
 - Don't cite figures from search-result summaries. Read the underlying source and confirm the figure there first, or leave it out.
